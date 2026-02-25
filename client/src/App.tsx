@@ -7,17 +7,22 @@ import { useAuth } from "@/hooks/use-auth";
 import Login from "@/pages/login";
 import LightEngine from "@/pages/light";
 import NotFound from "@/pages/not-found";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sun, LogOut } from "lucide-react";
 
 function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex items-center justify-end p-2 border-b border-border">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-amber-500/8 bg-card/30">
+        <div className="flex items-center gap-2">
+          <Sun className="w-3.5 h-3.5 text-amber-400/40" />
+          <span className="text-xs font-medium text-amber-300/40 tracking-wide">D.A.T.A. CLOUDWARE</span>
+        </div>
         <button
           onClick={onLogout}
-          className="text-xs text-muted-foreground transition-colors"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
           data-testid="button-logout"
         >
+          <LogOut className="w-3 h-3" />
           Logout
         </button>
       </div>

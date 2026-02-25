@@ -195,14 +195,13 @@ function GoldenCashews({ show }: { show: boolean }) {
   return (
     <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
       {Array.from({ length: 20 }).map((_, i) => (
-        <div key={i} className="absolute animate-bounce"
+        <div key={i} className="absolute"
           style={{
             left: `${10 + Math.random() * 80}%`,
             top: `-${10 + Math.random() * 20}px`,
             animation: `cashewFall ${1 + Math.random() * 1.5}s ease-in forwards`,
             animationDelay: `${Math.random() * 0.5}s`,
             opacity: 0.8 + Math.random() * 0.2,
-            fontSize: `${14 + Math.random() * 10}px`,
           }}>
           <Coins className="text-amber-400" style={{ width: `${14 + Math.random() * 10}px`, height: `${14 + Math.random() * 10}px` }} />
         </div>
@@ -211,7 +210,7 @@ function GoldenCashews({ show }: { show: boolean }) {
         @keyframes cashewFall {
           0% { transform: translateY(0) rotate(0deg); opacity: 0.9; }
           70% { opacity: 0.7; }
-          100% { transform: translateY(100vh) rotate(${360 + Math.random() * 360}deg); opacity: 0; }
+          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
         }
       `}</style>
     </div>
@@ -521,12 +520,26 @@ export default function LightEngine() {
         prefill[f.name || ""] = `I identified ${lead.company} as a strong candidate for significant tax credit opportunities${credit}.${credits} I'd welcome the opportunity to discuss how we can help maximize your eligible credits.`;
       } else if (name.includes("subject") || name.includes("topic")) {
         prefill[f.name || ""] = `Tax Credit Opportunities — ${lead.company}`;
+      } else if (name.includes("email") || type === "email") {
+        prefill[f.name || ""] = senderProfile.email || "";
+      } else if (name.includes("firstname") || name.includes("first_name") || name.includes("first-name") || name.includes("fname")) {
+        prefill[f.name || ""] = (senderProfile.name || "").split(" ")[0] || "";
+      } else if (name.includes("lastname") || name.includes("last_name") || name.includes("last-name") || name.includes("lname") || name.includes("surname")) {
+        prefill[f.name || ""] = (senderProfile.name || "").split(" ").slice(1).join(" ") || "";
+      } else if (name.includes("name") || name.includes("fullname") || name.includes("full_name")) {
+        prefill[f.name || ""] = senderProfile.name || "";
+      } else if (name.includes("phone") || name.includes("tel") || type === "tel") {
+        prefill[f.name || ""] = senderProfile.phone || "";
+      } else if (name.includes("company") || name.includes("organization") || name.includes("organisation") || name.includes("business")) {
+        prefill[f.name || ""] = senderProfile.company || "";
+      } else if (name.includes("title") || name.includes("jobtitle") || name.includes("position") || name.includes("role")) {
+        prefill[f.name || ""] = senderProfile.title || "";
       } else {
         prefill[f.name || ""] = "";
       }
     }
     setComposeFields(prefill);
-  }, []);
+  }, [senderProfile]);
 
   const saveCompose = useCallback(() => {
     if (!composeForm) return;
@@ -748,7 +761,11 @@ export default function LightEngine() {
         {!bloomRunning && bloomLog.length > 0 && (
           <div className={`text-xs text-amber-300/30 flex items-center gap-2 ${hasLeads ? "mt-2" : ""}`}>
             <CheckCircle className="w-3 h-3 text-emerald-400/40" />
-            <span>{bloomPhase}</span>
+            <span className="flex-1">{bloomPhase}</span>
+            <button onClick={(e) => { e.stopPropagation(); setBloomLog([]); setBloomPhase(""); }}
+              className="text-amber-400/15 hover:text-amber-400/30 transition-colors" data-testid="button-clear-bloom-log">
+              <XCircle className="w-3 h-3" />
+            </button>
           </div>
         )}
       </div>
@@ -1007,7 +1024,7 @@ export default function LightEngine() {
 
           return (
             <Card key={lead.leadId} data-testid={`card-light-lead-${lead.leadId}`}
-              className={`transition-all cursor-pointer border bg-card/40 border-amber-500/10 ${expanded ? "border-amber-400/25" : ""}`}
+              className={`transition-all cursor-pointer border bg-card/40 border-amber-500/10 hover:border-amber-400/20 hover:bg-card/60 ${expanded ? "border-amber-400/25 bg-card/60" : ""}`}
               onClick={() => setExpandedId(expanded ? null : lead.leadId)}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between gap-3">
@@ -1069,7 +1086,7 @@ export default function LightEngine() {
 
                     {lead.domain && (
                       <button onClick={e => { e.stopPropagation(); setSecurityDomain(lead.domain); }} data-testid={`button-security-${lead.leadId}`}
-                        className="text-zinc-500/30 transition-colors" title="Check defenses before approach">
+                        className="text-zinc-500/30 hover:text-zinc-400/50 transition-colors" title="Check defenses before approach">
                         <ShieldCheck className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -1175,7 +1192,7 @@ export default function LightEngine() {
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <button onClick={() => { navigator.clipboard.writeText(form.action); toast({ title: "URL copied" }); }}
-                              className="text-amber-400/20 transition-colors" data-testid={`button-copy-form-${i}`}>
+                              className="text-amber-400/20 hover:text-amber-400/40 transition-colors" data-testid={`button-copy-form-${i}`}>
                               <Copy className="w-3.5 h-3.5" />
                             </button>
                             <Button variant="outline" size="sm" data-testid={`button-fill-form-${i}`}
@@ -1264,7 +1281,7 @@ export default function LightEngine() {
                               <span className="text-[11px] text-amber-400/25">{h.status}</span>
                               {h.status !== "received" && (
                                 <button data-testid={`button-advance-${lead.leadId}-${i}`}
-                                  className="text-amber-400/20 transition-colors"
+                                  className="text-amber-400/20 hover:text-amber-400/40 transition-colors"
                                   onClick={() => {
                                     const next = h.status === "composed" ? "pushed" : h.status === "pushed" ? "exchanged" : "received";
                                     advanceMutation.mutate({ leadId: lead.leadId, outreachIndex: i, status: next });

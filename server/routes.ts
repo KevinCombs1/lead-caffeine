@@ -532,7 +532,9 @@ export async function registerRoutes(
                 enrichmentData: { ...enrichment, outreachHistory: history },
               });
             }
-          } catch {}
+          } catch (recordErr: any) {
+            console.warn(`[SUBMIT] Failed to record outreach for ${event.data.leadId}:`, recordErr.message);
+          }
         }
       }
     } catch (err: any) {
@@ -650,7 +652,7 @@ export async function registerRoutes(
       return res.status(400).json({ error: "Valid industry key required" });
     }
     const industryConfig = SIC_INDUSTRIES[industry];
-    const targetCount = Math.min(Math.max(count, 1), 50);
+    const targetCount = Math.min(Math.max(count, 1), 500);
 
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
     const send = (event: string, data: any) => { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
@@ -738,7 +740,7 @@ export async function registerRoutes(
               },
               applicableCredits: applicableCredits.length,
             };
-          } catch { return null; }
+          } catch (err: any) { console.warn(`[BLOOM] Skipping candidate:`, err.message); return null; }
         }));
 
         for (const r of results) {

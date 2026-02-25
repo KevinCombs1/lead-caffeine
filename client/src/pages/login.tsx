@@ -33,6 +33,7 @@ export default function Login({ onLogin }: { onLogin: (password: string) => Prom
             </div>
             <h1 className="text-lg font-semibold text-foreground/90" data-testid="text-login-title">Light Engine</h1>
             <p className="text-xs text-muted-foreground">Tax credit intelligence platform</p>
+            <p className="text-[10px] text-muted-foreground/40 tracking-wider">D.A.T.A. CLOUDWARE</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">

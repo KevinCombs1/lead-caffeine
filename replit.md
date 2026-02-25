@@ -56,7 +56,17 @@ client/src/hooks/use-auth.ts → Auth state hook
 - `GET /api/light/security/:domain` — Domain security profile
 
 ## Theme
-Dark mode default (cyan command center aesthetic). Primary accent: `hsl(192, 90%, 50%)`. Light Engine uses amber/emerald/yellow palette for credit/form/cycle indicators.
+Dark mode default (cyan command center aesthetic). Primary accent: `hsl(192, 90%, 50%)`. Light Engine uses amber/emerald/yellow palette for credit/form/cycle indicators. D.A.T.A. CLOUDWARE branding in header bar and login page.
+
+## SEO
+Title: "Light Engine — Tax Credit Intelligence | D.A.T.A. Cloudware". Open Graph tags for social sharing. Meta description for search engines.
+
+## Polish Notes
+- Compose dialog auto-fills sender profile fields (email, name, first/last, phone, company, title) from saved sender profile
+- Discover route supports up to 500 leads (matching UI count options: 100/250/500)
+- Card hover states for lead cards, icon button hover feedback throughout
+- Bloom log clearable after completion
+- GoldenCashews animation uses CSS keyframes without conflicting utility classes
 
 ## Future Evolution
 Phase 2+: Quantum Deep Search, full D.A.T.A. Cloudware scanner platform, Sonar cascade discovery, entity resolution, financial analysis, and the pyramid intelligence network.
