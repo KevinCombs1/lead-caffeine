@@ -52,7 +52,7 @@ client/src/hooks/use-auth.ts → Auth state hook
 - `POST /api/light/outreach` — Save composition
 - `PATCH /api/light/outreach` — Advance Light Cycle stage
 - `GET /api/light/credits` — 38 tax credits
-- `GET /api/light/industries` — SIC industry tree (352 industries)
+- `GET /api/light/industries` — SIC industry tree (401 industries, 93 Tier-1 across 40 categories)
 - `GET /api/light/security/:domain` — Domain security profile
 
 ## Theme

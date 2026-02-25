@@ -659,20 +659,29 @@ export async function registerRoutes(
 
     try {
       send("phase", { phase: "Finding flowers", detail: `Searching ${industryConfig.label} (${industryConfig.codes.length} SIC codes)` });
+      console.log(`[BLOOM] Starting discover: industry=${industry}, codes=${industryConfig.codes.join(",")}, targetCount=${targetCount}, state=${state || "ALL"}`);
 
       const sicMatches = await findCompaniesBySIC(industryConfig.codes, targetCount * 8);
+      console.log(`[BLOOM] SIC search returned ${sicMatches.length} candidates`);
       send("phase", { phase: "Gathering pollen", detail: `Found ${sicMatches.length} candidates` });
 
+      if (sicMatches.length === 0) {
+        console.warn(`[BLOOM] Zero candidates from findCompaniesBySIC for codes: ${industryConfig.codes.join(",")}`);
+      }
+
       const allCompanies = await loadAllCompanies();
+      console.log(`[BLOOM] Loaded ${allCompanies.length} ticker entries`);
 
       const targetState = state?.toUpperCase();
       let candidates = sicMatches;
       if (targetState) {
         candidates = candidates.filter(c => c.state?.toUpperCase() === targetState);
+        console.log(`[BLOOM] After state filter (${targetState}): ${candidates.length} candidates`);
       }
 
       const existingLeads = await storage.getFiscalLeads({});
       const existingCompanies = new Set(existingLeads.map(l => l.company?.toLowerCase()).filter(Boolean));
+      console.log(`[BLOOM] ${existingCompanies.size} existing companies to skip`);
 
       let discovered = 0;
       let stored = 0;
@@ -775,9 +784,11 @@ export async function registerRoutes(
         send("progress", { discovered, stored, total: targetCount, scanned: Math.min(i + batchSize, candidates.length), candidates: candidates.length });
       }
 
+      console.log(`[BLOOM] Complete: discovered=${discovered}, stored=${stored}, industry=${industryConfig.label}`);
       send("complete", { discovered, stored, industry: industryConfig.label, category: industryConfig.category });
       res.end();
     } catch (err: any) {
+      console.error(`[BLOOM] Discover route error:`, err);
       send("error", { error: err.message });
       res.end();
     }

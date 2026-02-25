@@ -400,6 +400,68 @@ export const SIC_INDUSTRIES: Record<string, IndustryEntry> = {
   housing_urban: { label: "Housing & Urban Development", tier: 3, category: "Government & Public Administration", codes: ["9531", "9532"] },
   national_security: { label: "National Security & International Affairs", tier: 3, category: "Government & Public Administration", codes: ["9711", "9721"] },
   space_research: { label: "Space Research & Technology", tier: 1, category: "Government & Public Administration", codes: ["9661"] },
+
+  commercial_space_launch: { label: "Commercial Space Launch", tier: 1, category: "Space & Commercial Space", codes: ["3761", "3764", "3769", "9661"] },
+  satellite_internet: { label: "Satellite Internet & Constellations", tier: 1, category: "Space & Commercial Space", codes: ["3812", "3669", "4899"] },
+  space_mining: { label: "Space Mining & Resources", tier: 1, category: "Space & Commercial Space", codes: ["3761", "1090", "9661"] },
+  space_tourism: { label: "Space Tourism", tier: 1, category: "Space & Commercial Space", codes: ["3761", "3769", "9661"] },
+
+  carbon_capture: { label: "Carbon Capture & Sequestration", tier: 1, category: "Climate Tech & Carbon", codes: ["3589", "3443", "2819"] },
+  direct_air_capture: { label: "Direct Air Capture", tier: 1, category: "Climate Tech & Carbon", codes: ["3589", "3559", "2819"] },
+  climate_analytics: { label: "Climate Analytics & Modeling", tier: 2, category: "Climate Tech & Carbon", codes: ["7372", "7371", "8999"] },
+  carbon_credit_platforms: { label: "Carbon Credit Platforms", tier: 2, category: "Climate Tech & Carbon", codes: ["7372", "6199", "8999"] },
+  green_hydrogen: { label: "Green Hydrogen Production", tier: 1, category: "Climate Tech & Carbon", codes: ["2813", "2819", "3674"] },
+
+  cultivated_meat: { label: "Lab-Grown / Cultivated Meat", tier: 1, category: "Alternative Protein & Food Science", codes: ["2011", "2099", "8731"] },
+  plant_based_protein: { label: "Plant-Based Protein", tier: 1, category: "Alternative Protein & Food Science", codes: ["2099", "2037", "2048"] },
+  precision_fermentation: { label: "Precision Fermentation", tier: 1, category: "Alternative Protein & Food Science", codes: ["2099", "2869", "8731"] },
+  vertical_farming: { label: "Vertical Farming & Indoor Agriculture", tier: 1, category: "Alternative Protein & Food Science", codes: ["0182", "0181", "3589"] },
+  cellular_agriculture: { label: "Cellular Agriculture", tier: 1, category: "Alternative Protein & Food Science", codes: ["2099", "2836", "8731"] },
+
+  additive_manufacturing: { label: "Additive Manufacturing / 3D Printing", tier: 1, category: "Advanced Manufacturing", codes: ["3559", "3599", "3699"] },
+  digital_twins: { label: "Digital Twins & Simulation", tier: 1, category: "Advanced Manufacturing", codes: ["7372", "7371", "3559"] },
+  smart_factory: { label: "Smart Factory / Industry 4.0", tier: 1, category: "Advanced Manufacturing", codes: ["3559", "3679", "7371"] },
+  advanced_robotics: { label: "Advanced Robotics & Cobots", tier: 1, category: "Advanced Manufacturing", codes: ["3559", "3679", "3699"] },
+
+  edge_computing: { label: "Edge Computing", tier: 1, category: "Next-Gen Computing", codes: ["3572", "7372", "3669"] },
+  neuromorphic_computing: { label: "Neuromorphic Computing", tier: 1, category: "Next-Gen Computing", codes: ["3674", "3679", "7371"] },
+  quantum_networking: { label: "Quantum Networking & Communications", tier: 1, category: "Next-Gen Computing", codes: ["3669", "3674", "7372"] },
+  photonic_computing: { label: "Photonic Computing", tier: 1, category: "Next-Gen Computing", codes: ["3674", "3827", "3699"] },
+
+  mrna_therapeutics: { label: "mRNA Therapeutics & Vaccines", tier: 1, category: "Frontier Biotech", codes: ["2836", "2835", "8731"] },
+  crispr_gene_editing: { label: "CRISPR & Gene Editing", tier: 1, category: "Frontier Biotech", codes: ["2836", "8731", "8733"] },
+  longevity_science: { label: "Longevity & Anti-Aging Science", tier: 1, category: "Frontier Biotech", codes: ["2836", "2834", "8731"] },
+  psychedelic_medicine: { label: "Psychedelic Medicine", tier: 1, category: "Frontier Biotech", codes: ["2833", "2834", "8731"] },
+  brain_computer_interfaces: { label: "Brain-Computer Interfaces", tier: 1, category: "Frontier Biotech", codes: ["3845", "3841", "3674"] },
+  microbiome_therapeutics: { label: "Microbiome Therapeutics", tier: 1, category: "Frontier Biotech", codes: ["2836", "2834", "8731"] },
+  digital_therapeutics: { label: "Digital Therapeutics", tier: 1, category: "Frontier Biotech", codes: ["7372", "3845", "8731"] },
+
+  evtol_urban_air: { label: "eVTOL & Urban Air Mobility", tier: 1, category: "Electric Aviation", codes: ["3721", "3728", "3699"] },
+  electric_aircraft: { label: "Electric Aircraft", tier: 1, category: "Electric Aviation", codes: ["3721", "3724", "3679"] },
+  sustainable_aviation_fuel: { label: "Sustainable Aviation Fuel", tier: 1, category: "Electric Aviation", codes: ["2911", "2869", "2899"] },
+
+  fusion_energy: { label: "Fusion Energy Research", tier: 1, category: "Fusion & Advanced Energy", codes: ["2819", "3699", "8731"] },
+  small_modular_reactors: { label: "Small Modular Reactors (SMR)", tier: 1, category: "Fusion & Advanced Energy", codes: ["3443", "2819", "4911"] },
+  advanced_geothermal: { label: "Advanced Geothermal", tier: 1, category: "Fusion & Advanced Energy", codes: ["4911", "1481", "3559"] },
+
+  real_estate_tech: { label: "Real Estate Technology", tier: 2, category: "PropTech & ConTech", codes: ["7372", "6531", "6512"] },
+  construction_tech: { label: "Construction Technology & BIM", tier: 1, category: "PropTech & ConTech", codes: ["7372", "7371", "1542"] },
+  modular_construction: { label: "Modular / Prefab Construction", tier: 1, category: "PropTech & ConTech", codes: ["1521", "1522", "2452"] },
+  printed_buildings: { label: "3D-Printed Buildings", tier: 1, category: "PropTech & ConTech", codes: ["1542", "3559", "3271"] },
+
+  insurtech: { label: "Insurance Technology", tier: 2, category: "InsurTech & RegTech", codes: ["7372", "6311", "6399"] },
+  regtech: { label: "Regulatory Technology & Compliance AI", tier: 1, category: "InsurTech & RegTech", codes: ["7372", "7371", "6199"] },
+
+  supply_chain_ai: { label: "Supply Chain AI & Optimization", tier: 1, category: "Supply Chain Tech", codes: ["7372", "7371", "4731"] },
+  warehouse_robotics: { label: "Warehouse Robotics & Automation", tier: 1, category: "Supply Chain Tech", codes: ["3559", "3537", "4226"] },
+  autonomous_logistics: { label: "Autonomous Logistics", tier: 1, category: "Supply Chain Tech", codes: ["3711", "7371", "4213"] },
+
+  cannabis_biotech: { label: "Cannabis Biotech & Cultivation R&D", tier: 2, category: "Cannabis & Hemp Tech", codes: ["2833", "0181", "8731"] },
+  hemp_processing: { label: "Hemp Processing & Extraction Technology", tier: 2, category: "Cannabis & Hemp Tech", codes: ["2099", "2833", "2869"] },
+
+  zero_trust_architecture: { label: "Zero Trust Architecture", tier: 1, category: "Advanced Cybersecurity", codes: ["7372", "7371", "7374"] },
+  threat_intelligence: { label: "Threat Intelligence Platforms", tier: 1, category: "Advanced Cybersecurity", codes: ["7372", "7371", "7374"] },
+  security_ai_soar: { label: "Security AI & SOAR", tier: 1, category: "Advanced Cybersecurity", codes: ["7372", "7371", "7374"] },
 };
 
 export const US_STATES: Record<string, string> = {
@@ -480,12 +542,16 @@ export async function findCompaniesBySIC(sicCodes: string[], maxResults: number 
           }
         }
       }
-    } catch {}
+    } catch (e: any) {
+      console.warn(`[BLOOM] findCompaniesBySIC error for SIC ${sic}:`, e.message || e);
+    }
     if (results.length >= maxResults) break;
   }
 
-  sicCache.set(cacheKey, results);
-  sicCacheTime = Date.now();
+  if (results.length > 0) {
+    sicCache.set(cacheKey, results);
+    sicCacheTime = Date.now();
+  }
   return results;
 }
 
@@ -549,7 +615,8 @@ export async function getCompanyDetails(cik: string): Promise<{
     }
 
     return { sic, sicDescription, stateOfIncorporation, rdExpense, rdPeriod, revenue, creditIndicator, entityType, ein, employeeCount, totalAssets };
-  } catch {
+  } catch (e: any) {
+    console.warn(`[BLOOM] getCompanyDetails error for CIK ${cik}:`, e.message || e);
     return null;
   }
 }
