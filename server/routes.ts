@@ -6,7 +6,7 @@ import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { scrapedResults, scrapeJobs, domainSecurityProfiles } from "@shared/schema";
 import { TAX_CREDIT_UNIVERSE, matchLeadCredits, analyzeCompanyCreditPosition } from "./credit-universe";
-import { SIC_INDUSTRIES, findCompaniesBySIC, getCompanyDetails, loadAllCompanies } from "./gradient-sweep";
+import { SIC_INDUSTRIES, findCompaniesBySIC, findCompaniesByFormD, findCompaniesByFilingText, getCompanyDetails, loadAllCompanies, type RecentEvent } from "./gradient-sweep";
 import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-blocklist";
 import { submitSingleForm, runBatchSubmission, isActionableForm, type SenderProfile, type FormTarget, type BatchItem } from "./form-submitter";
 import * as cheerio from "cheerio";
@@ -1122,33 +1122,63 @@ export async function registerRoutes(
   });
 
   app.post("/api/light/discover", requireAuth, async (req, res) => {
-    const { industry, state, count = 10, xbrlGate = true } = req.body;
+    const { industry, state, count = 10, xbrlGate = true, sources = ["sic"], eftsQuery = "" } = req.body;
     if (!industry || !SIC_INDUSTRIES[industry]) {
       return res.status(400).json({ error: "Valid industry key required" });
     }
     const industryConfig = SIC_INDUSTRIES[industry];
     const targetCount = Math.min(Math.max(count, 1), 500);
+    const activeSources: string[] = Array.isArray(sources) ? sources : ["sic"];
 
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
     const send = (event: string, data: any) => { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
 
     try {
-      send("phase", { phase: "Finding flowers", detail: `Searching ${industryConfig.label} (${industryConfig.codes.length} SIC codes)` });
-      console.log(`[BLOOM] Starting discover: industry=${industry}, codes=${industryConfig.codes.join(",")}, targetCount=${targetCount}, state=${state || "ALL"}`);
+      send("phase", { phase: "Finding flowers", detail: `Searching ${industryConfig.label} via ${activeSources.join(", ")}` });
+      console.log(`[BLOOM] Starting discover: industry=${industry}, sources=${activeSources.join(",")}, targetCount=${targetCount}, state=${state || "ALL"}`);
 
-      const sicMatches = await findCompaniesBySIC(industryConfig.codes, targetCount * 8);
-      console.log(`[BLOOM] SIC search returned ${sicMatches.length} candidates`);
-      send("phase", { phase: "Gathering pollen", detail: `Found ${sicMatches.length} candidates` });
+      const allCandidates: { cik: string; name: string; sic: string; state?: string; source?: string }[] = [];
+      const seenCIKs = new Set<string>();
+      const sourceCounts: Record<string, number> = {};
 
-      if (sicMatches.length === 0) {
-        console.warn(`[BLOOM] Zero candidates from findCompaniesBySIC for codes: ${industryConfig.codes.join(",")}`);
+      if (activeSources.includes("sic")) {
+        const sicMatches = await findCompaniesBySIC(industryConfig.codes, targetCount * 8);
+        console.log(`[BLOOM] SIC search returned ${sicMatches.length} candidates`);
+        for (const m of sicMatches) {
+          if (!seenCIKs.has(m.cik)) { seenCIKs.add(m.cik); allCandidates.push({ ...m, source: "sic" }); }
+        }
+        sourceCounts.sic = sicMatches.length;
+      }
+
+      if (activeSources.includes("formD")) {
+        const formDMatches = await findCompaniesByFormD(targetCount * 4, state);
+        console.log(`[BLOOM] Form D search returned ${formDMatches.length} candidates`);
+        for (const m of formDMatches) {
+          if (!seenCIKs.has(m.cik)) { seenCIKs.add(m.cik); allCandidates.push(m); }
+        }
+        sourceCounts.formD = formDMatches.length;
+      }
+
+      if (activeSources.includes("efts") && eftsQuery) {
+        const eftsMatches = await findCompaniesByFilingText(eftsQuery, targetCount * 4);
+        console.log(`[BLOOM] EFTS search returned ${eftsMatches.length} candidates`);
+        for (const m of eftsMatches) {
+          if (!seenCIKs.has(m.cik)) { seenCIKs.add(m.cik); allCandidates.push(m); }
+        }
+        sourceCounts.efts = eftsMatches.length;
+      }
+
+      send("phase", { phase: "Gathering pollen", detail: `Found ${allCandidates.length} candidates from ${activeSources.length} source(s)` });
+
+      if (allCandidates.length === 0) {
+        console.warn(`[BLOOM] Zero candidates from all sources`);
       }
 
       const allCompanies = await loadAllCompanies();
       console.log(`[BLOOM] Loaded ${allCompanies.length} ticker entries`);
 
       const targetState = state?.toUpperCase();
-      let candidates = sicMatches;
+      let candidates = allCandidates;
       if (targetState) {
         candidates = candidates.filter(c => c.state?.toUpperCase() === targetState);
         console.log(`[BLOOM] After state filter (${targetState}): ${candidates.length} candidates`);
@@ -1253,7 +1283,7 @@ export async function registerRoutes(
               estimatedCreditHigh: estimatedCreditHigh.toString(),
               pipelineStage: "discovered" as const,
               enrichmentData: {
-                discoverySource: `light_${industry}`,
+                discoverySource: c.source || "sic",
                 cik: c.cik,
                 ticker,
                 revenue: details.revenue || 0,
@@ -1264,10 +1294,13 @@ export async function registerRoutes(
                 totalAssets: details.totalAssets || 0,
                 creditXRay: details.creditXRay || null,
                 creditPosition: creditPosition || null,
+                recentEvents: details.recentEvents || [],
               },
               applicableCredits: applicableCredits.length,
               creditHealthScore,
               xbrlDepth: hasXbrlData ? (details.creditXRay as any).xbrlDepth : 0,
+              discoverySource: c.source || "sic",
+              recentEventCount: (details.recentEvents || []).length,
             };
           } catch (err: any) { console.warn(`[BLOOM] Skipping candidate:`, err.message); return null; }
         }));
@@ -1302,7 +1335,7 @@ export async function registerRoutes(
               });
               stored++;
               if ((r.xbrlDepth || 0) > 0) withXbrl++; else withoutXbrl++;
-              send("lead", { company: r.company, domain: r.domain, sic: r.sic, sicDescription: r.sicDescription, opportunityLevel: r.opportunityLevel, credits: r.applicableCredits, creditHealthScore: r.creditHealthScore, xbrlDepth: r.xbrlDepth || 0, stored, total: targetCount });
+              send("lead", { company: r.company, domain: r.domain, sic: r.sic, sicDescription: r.sicDescription, opportunityLevel: r.opportunityLevel, credits: r.applicableCredits, creditHealthScore: r.creditHealthScore, xbrlDepth: r.xbrlDepth || 0, discoverySource: r.discoverySource || "sic", recentEventCount: r.recentEventCount || 0, stored, total: targetCount });
             }
           } catch (storeErr: any) {
             send("error", { company: r.company, error: storeErr.message });
@@ -1312,8 +1345,8 @@ export async function registerRoutes(
         send("progress", { discovered, stored, total: targetCount, scanned: Math.min(i + batchSize, candidates.length), candidates: candidates.length });
       }
 
-      console.log(`[BLOOM] Complete: discovered=${discovered}, stored=${stored}, withXbrl=${withXbrl}, withoutXbrl=${withoutXbrl}, skippedNoXbrl=${skippedNoXbrl}, skippedStale=${skippedStale}, industry=${industryConfig.label}`);
-      send("complete", { discovered, stored, withXbrl, withoutXbrl, skippedNoXbrl, skippedStale, scanned: discovered + skippedNoXbrl + skippedStale, industry: industryConfig.label, category: industryConfig.category });
+      console.log(`[BLOOM] Complete: discovered=${discovered}, stored=${stored}, withXbrl=${withXbrl}, withoutXbrl=${withoutXbrl}, skippedNoXbrl=${skippedNoXbrl}, skippedStale=${skippedStale}, sources=${JSON.stringify(sourceCounts)}, industry=${industryConfig.label}`);
+      send("complete", { discovered, stored, withXbrl, withoutXbrl, skippedNoXbrl, skippedStale, scanned: discovered + skippedNoXbrl + skippedStale, industry: industryConfig.label, category: industryConfig.category, sourceCounts });
       res.end();
     } catch (err: any) {
       console.error(`[BLOOM] Discover route error:`, err);

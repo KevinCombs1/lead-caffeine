@@ -656,6 +656,167 @@ export async function findCompaniesBySIC(sicCodes: string[], maxResults: number 
   return results;
 }
 
+const formDCache = new Map<string, { cik: string; name: string; sic: string; state?: string; source: string }[]>();
+let formDCacheTime = 0;
+
+export async function findCompaniesByFormD(maxResults: number = 200, stateFilter?: string): Promise<{ cik: string; name: string; sic: string; state?: string; source: string }[]> {
+  const cacheKey = `formD_${stateFilter || "ALL"}`;
+  const cached = formDCache.get(cacheKey);
+  if (cached && Date.now() - formDCacheTime < SIC_CACHE_TTL) return cached;
+
+  const results: { cik: string; name: string; sic: string; state?: string; source: string }[] = [];
+  const seenCIKs = new Set<string>();
+
+  try {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    const startDate = oneYearAgo.toISOString().slice(0, 10);
+    const endDate = new Date().toISOString().slice(0, 10);
+
+    const stateParam = stateFilter ? `&State=${stateFilter.toUpperCase()}` : "";
+    const res = await secFetch(
+      `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=D&dateb=${endDate.replace(/-/g, "")}&owner=include&count=${Math.min(maxResults, 100)}&search_text=&action=getcompany${stateParam}&output=atom`,
+      "application/atom+xml",
+    );
+    if (res.ok) {
+      const text = await res.text();
+      const entryRegex = /<entry>[\s\S]*?<\/entry>/g;
+      let match;
+      while ((match = entryRegex.exec(text)) !== null) {
+        const entry = match[0];
+        const cikMatch = entry.match(/<cik>(\d+)<\/cik>/);
+        const nameMatch = entry.match(/<name>([^<]+)<\/name>/);
+        const stateMatch = entry.match(/<state>([^<]+)<\/state>/);
+        const sicMatch = entry.match(/<sic>(\d+)<\/sic>/);
+
+        if (cikMatch) {
+          const cik = cikMatch[1].padStart(10, "0");
+          if (!seenCIKs.has(cik)) {
+            seenCIKs.add(cik);
+            results.push({
+              cik,
+              name: (nameMatch?.[1] || "").replace(/&amp;/g, "&"),
+              sic: sicMatch?.[1] || "",
+              state: stateMatch?.[1],
+              source: "formD",
+            });
+          }
+        }
+        if (results.length >= maxResults) break;
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[BLOOM] findCompaniesByFormD error:`, e.message || e);
+  }
+
+  if (results.length > 0) {
+    formDCache.set(cacheKey, results);
+    formDCacheTime = Date.now();
+  }
+  console.log(`[BLOOM] Form D search returned ${results.length} candidates`);
+  return results;
+}
+
+const eftsCache = new Map<string, { cik: string; name: string; sic: string; state?: string; source: string }[]>();
+let eftsCacheTime = 0;
+
+export async function findCompaniesByFilingText(query: string, maxResults: number = 200, forms: string = "10-K,10-Q"): Promise<{ cik: string; name: string; sic: string; state?: string; source: string }[]> {
+  const cacheKey = `efts_${query}_${forms}`;
+  const cached = eftsCache.get(cacheKey);
+  if (cached && Date.now() - eftsCacheTime < SIC_CACHE_TTL) return cached;
+
+  const results: { cik: string; name: string; sic: string; state?: string; source: string }[] = [];
+  const seenCIKs = new Set<string>();
+
+  try {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    const startDate = oneYearAgo.toISOString().slice(0, 10);
+    const endDate = new Date().toISOString().slice(0, 10);
+
+    const encodedQuery = encodeURIComponent(`"${query}"`);
+    const encodedForms = encodeURIComponent(forms);
+    const res = await secFetch(
+      `https://efts.sec.gov/LATEST/search-index?q=${encodedQuery}&dateRange=custom&startdt=${startDate}&enddt=${endDate}&forms=${encodedForms}`,
+    );
+
+    if (res.ok) {
+      const data = await res.json() as any;
+      const hits = data?.hits?.hits || [];
+      for (const hit of hits) {
+        const source = hit._source || {};
+        const cik = String(source.entity_id || "").padStart(10, "0");
+        if (!cik || cik === "0000000000") continue;
+        if (seenCIKs.has(cik)) continue;
+        seenCIKs.add(cik);
+        results.push({
+          cik,
+          name: (source.entity_name || source.display_names?.[0] || "").replace(/&amp;/g, "&"),
+          sic: "",
+          source: "efts",
+        });
+        if (results.length >= maxResults) break;
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[BLOOM] findCompaniesByFilingText error:`, e.message || e);
+  }
+
+  if (results.length > 0) {
+    eftsCache.set(cacheKey, results);
+    eftsCacheTime = Date.now();
+  }
+  console.log(`[BLOOM] EFTS search for "${query}" returned ${results.length} candidates`);
+  return results;
+}
+
+export interface RecentEvent {
+  type: string;
+  date: string;
+  signal: string;
+  creditRelevance: string[];
+}
+
+const EVENT_SIGNAL_MAP: Record<string, { signal: string; credits: string[] }> = {
+  "1.01": { signal: "New material agreement", credits: ["rd_41", "opportunity_zones"] },
+  "1.02": { signal: "Terminated material agreement", credits: ["erc", "wotc"] },
+  "1.03": { signal: "Bankruptcy or receivership", credits: ["erc", "wotc", "paid_leave_45s"] },
+  "2.01": { signal: "Completed acquisition/disposition", credits: ["rd_41", "rd_payroll_offset", "qsbs_1202"] },
+  "2.05": { signal: "Exit/disposal costs — restructuring", credits: ["erc", "wotc", "paid_leave_45s"] },
+  "2.06": { signal: "Material impairment", credits: ["bonus_depreciation_168k", "sec179_expensing"] },
+  "4.01": { signal: "Accountant change", credits: ["rd_41"] },
+  "4.02": { signal: "Financial restatement", credits: ["rd_41"] },
+  "5.02": { signal: "Officer departure/appointment", credits: ["wotc"] },
+  "7.01": { signal: "Regulation FD disclosure", credits: ["rd_41", "opportunity_zones"] },
+  "8.01": { signal: "Other material event", credits: ["rd_41"] },
+};
+
+export function extract8KSignals(filings: { forms: string[]; dates: string[]; items?: string[] }): RecentEvent[] {
+  const events: RecentEvent[] = [];
+  const twoYearsAgo = new Date();
+  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+  const twoYearsAgoStr = twoYearsAgo.toISOString().slice(0, 10);
+
+  for (let i = 0; i < filings.forms.length && events.length < 10; i++) {
+    const form = filings.forms[i];
+    if (form !== "8-K" && form !== "8-K/A") continue;
+    const date = filings.dates[i];
+    if (!date || date < twoYearsAgoStr) continue;
+
+    const item = filings.items?.[i] || "";
+    const itemCode = item.match(/^(\d+\.\d+)/)?.[1] || "";
+    const mapped = EVENT_SIGNAL_MAP[itemCode];
+
+    events.push({
+      type: itemCode || "8-K",
+      date,
+      signal: mapped?.signal || "Material event filing",
+      creditRelevance: mapped?.credits || ["rd_41"],
+    });
+  }
+  return events;
+}
+
 export function extractXbrlValue(
   concept: string,
   namespace: Record<string, any>,
@@ -822,6 +983,7 @@ export async function getCompanyDetails(cik: string): Promise<{
   entityType?: string; ein?: string; employeeCount?: number; totalAssets?: number;
   creditXRay?: CreditXRay;
   lastFilingDate?: string; last10KDate?: string;
+  recentEvents?: RecentEvent[];
 } | null> {
   try {
     const [subRes, factsRes] = await Promise.all([
@@ -832,6 +994,7 @@ export async function getCompanyDetails(cik: string): Promise<{
     let sic: string | undefined, sicDescription: string | undefined, stateOfIncorporation: string | undefined;
     let entityType: string | undefined, ein: string | undefined;
     let lastFilingDate: string | undefined, last10KDate: string | undefined;
+    let recentEvents: RecentEvent[] = [];
 
     if (subRes.ok) {
       const subs = await subRes.json() as any;
@@ -845,6 +1008,7 @@ export async function getCompanyDetails(cik: string): Promise<{
       if (recentFilings?.filingDate && recentFilings?.form) {
         const dates: string[] = recentFilings.filingDate;
         const forms: string[] = recentFilings.form;
+        const items: string[] = recentFilings.items || [];
         if (dates.length > 0) {
           lastFilingDate = dates[0];
         }
@@ -855,6 +1019,7 @@ export async function getCompanyDetails(cik: string): Promise<{
             break;
           }
         }
+        recentEvents = extract8KSignals({ forms, dates, items });
       }
     }
 
@@ -892,7 +1057,7 @@ export async function getCompanyDetails(cik: string): Promise<{
       }
     }
 
-    return { sic, sicDescription, stateOfIncorporation, rdExpense, rdPeriod, revenue, creditIndicator, entityType, ein, employeeCount, totalAssets, creditXRay, lastFilingDate, last10KDate };
+    return { sic, sicDescription, stateOfIncorporation, rdExpense, rdPeriod, revenue, creditIndicator, entityType, ein, employeeCount, totalAssets, creditXRay, lastFilingDate, last10KDate, recentEvents };
   } catch (e: any) {
     console.warn(`[BLOOM] getCompanyDetails error for CIK ${cik}:`, e.message || e);
     return null;

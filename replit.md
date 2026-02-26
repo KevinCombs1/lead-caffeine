@@ -37,7 +37,9 @@ client/src/hooks/use-auth.ts → Auth state hook
 - `SCANNER_PASSWORD` — Login password (default: `"passwardo"`)
 
 ## Key Concepts
-- **Bloom Discovery**: SEC EDGAR sweep by SIC industry code → optional XBRL gate (toggle ON/OFF) → filing recency check (10-K within 5 years) → Credit X-Ray → R&D credit scoring. With XBRL gate ON (default): only companies with structured XBRL financial data pass through. With gate OFF: all SEC-registered companies are discovered — non-XBRL companies get industry-matched credits but no Credit X-Ray analysis. Bloom log shows XBRL vs non-XBRL status per lead.
+- **Bloom Discovery**: Multi-source SEC EDGAR sweep supporting 3 discovery channels: SIC Industry (default), Form D (private placements), and EFTS Filing Search (full-text search across SEC filings). Optional XBRL gate toggle (ON by default) → filing recency check (10-K within 5 years) → Credit X-Ray → R&D credit scoring. With XBRL gate ON: only companies with structured XBRL financial data pass through. With gate OFF: all SEC-registered companies are discovered — non-XBRL companies get industry-matched credits but no Credit X-Ray analysis. Bloom log shows discovery source (SIC/Form D/EFTS), XBRL status, and 8-K event count per lead. Each lead is tagged with its discovery source in enrichmentData.
+- **Discovery Sources**: SIC Industry searches by Standard Industrial Classification codes. Form D discovers private companies that have filed Regulation D offerings (capital raises). EFTS searches SEC filing text for specific terms (e.g., companies mentioning or not mentioning "R&D tax credit"). Sources are selectable via chip toggles in the bloom UI.
+- **8-K Event Signals**: Recent 8-K material event filings are extracted per company and mapped to credit opportunity signals (e.g., restructuring → ERC/WOTC, facility changes → ITC/Opportunity Zones, M&A → R&D credit carryforward). Stored in enrichmentData.recentEvents and displayed in lead card expanded view.
 - **Credit X-Ray**: Per-company quantum financial scan extracting 76+ XBRL tax concepts across 12 categories (active credits, credit carryforwards, effective rate breakdown, deferred tax assets, deferred tax liabilities, tax cash flow, pre-tax income, capital expenditures, employment data, supplemental financials, DEI fields, rate reconciliation). Produces per-credit analysis with status/evidence/amounts/confidence, credit health score (0-100), tax position summary (effective rate, cash tax rate, R&D intensity, NOL, VA ratio, credit density, employees, capex, PP&E, goodwill, state rate impact, foreign income), and estimated unclaimed value. Employee-based credit analysis (WOTC, ERC, paid leave) uses actual headcount/wage data. Depreciation analysis uses real PP&E deferred tax liabilities. Built in `gradient-sweep.ts` (extraction) and `credit-universe.ts` (analysis).
 - **Delta Map**: Joins fiscal leads with scraped forms/ads/tracking/credit-xray to build the outreach view
 - **Grace Check**: Bumblebee antenna — checks honeypots, WAF confidence, bot scripts, JS challenges. If defenses are up, the bee moves on gracefully
@@ -47,7 +49,7 @@ client/src/hooks/use-auth.ts → Auth state hook
 ## API Endpoints
 - `POST /api/auth/login` / `GET /api/auth/check` / `POST /api/auth/logout`
 - `GET /api/light/delta` — Delta map with leads, forms, credits, ads
-- `POST /api/light/discover` — SSE bloom sweep
+- `POST /api/light/discover` — SSE bloom sweep. Accepts `sources: string[]` (default `["sic"]`; options: `"sic"`, `"formD"`, `"efts"`), `eftsQuery: string` for filing text search, `xbrlGate: boolean` (default `true`). Returns per-lead SSE events with `discoverySource` and `recentEventCount` fields.
 - `POST /api/light/submit` — SSE batch bumblebee submission
 - `POST /api/light/submit-single` — Single form submit
 - `POST /api/light/outreach` — Save composition

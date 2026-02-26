@@ -315,6 +315,8 @@ export default function LightEngine() {
   const [bloomState, setBloomState] = useState<string>("");
   const [bloomCount, setBloomCount] = useState<string>("100");
   const [bloomXbrlGate, setBloomXbrlGate] = useState(true);
+  const [bloomSources, setBloomSources] = useState<string[]>(["sic"]);
+  const [bloomEftsQuery, setBloomEftsQuery] = useState("R&D tax credit");
   const [bloomRunning, setBloomRunning] = useState(false);
   const [bloomPhase, setBloomPhase] = useState("");
   const [bloomProgress, setBloomProgress] = useState<{ stored: number; total: number; scanned: number }>({ stored: 0, total: 0, scanned: 0 });
@@ -474,7 +476,7 @@ export default function LightEngine() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ industry: bloomIndustry, state: bloomState || undefined, count: parseInt(bloomCount) || 10, xbrlGate: bloomXbrlGate }),
+        body: JSON.stringify({ industry: bloomIndustry, state: bloomState || undefined, count: parseInt(bloomCount) || 10, xbrlGate: bloomXbrlGate, sources: bloomSources, eftsQuery: bloomSources.includes("efts") ? bloomEftsQuery : undefined }),
       });
 
       const reader = res.body?.getReader();
@@ -500,8 +502,10 @@ export default function LightEngine() {
               const data = JSON.parse(dataStr);
               if (event === "phase") setBloomPhase(data.detail || data.phase);
               else if (event === "lead") {
-                const xbrlTag = data.xbrlDepth > 0 ? `${data.credits} credits · ${data.xbrlDepth} XBRL` : `${data.credits} credits · no XBRL`;
-                setBloomLog(prev => [...prev, `${data.company} — ${xbrlTag}`]);
+                const xbrlTag = data.xbrlDepth > 0 ? `${data.xbrlDepth} XBRL` : "no XBRL";
+                const srcTag = data.discoverySource === "formD" ? "Form D" : data.discoverySource === "efts" ? "EFTS" : "SIC";
+                const evtTag = data.recentEventCount > 0 ? ` · ${data.recentEventCount} 8-K` : "";
+                setBloomLog(prev => [...prev, `${data.company} — ${data.credits} credits · ${xbrlTag} · ${srcTag}${evtTag}`]);
                 setBloomProgress(prev => ({ ...prev, stored: data.stored }));
               } else if (event === "progress") {
                 setBloomProgress({ stored: data.stored, total: data.total, scanned: data.scanned });
@@ -513,6 +517,12 @@ export default function LightEngine() {
                 if (data.withXbrl > 0 || data.withoutXbrl > 0) parts.push(`${data.withXbrl || 0} XBRL / ${data.withoutXbrl || 0} non-XBRL`);
                 if (data.skippedNoXbrl > 0) parts.push(`${data.skippedNoXbrl} filtered no XBRL`);
                 if (data.skippedStale > 0) parts.push(`${data.skippedStale} stale`);
+                const sc = data.sourceCounts || {};
+                const srcParts: string[] = [];
+                if (sc.sic) srcParts.push(`SIC:${sc.sic}`);
+                if (sc.formD) srcParts.push(`Form D:${sc.formD}`);
+                if (sc.efts) srcParts.push(`EFTS:${sc.efts}`);
+                if (srcParts.length > 1) parts.push(srcParts.join(" "));
                 const qualityLine = parts.length > 0 ? ` · ${parts.join(" · ")}` : "";
                 setBloomPhase(`Bloomed ${data.stored} living leads in ${data.industry}${qualityLine}`);
                 queryClient.invalidateQueries({ queryKey: ["/api/light/delta"] });
@@ -529,7 +539,7 @@ export default function LightEngine() {
     } finally {
       setBloomRunning(false);
     }
-  }, [bloomIndustry, bloomState, bloomCount, bloomXbrlGate, bloomRunning, queryClient, toast]);
+  }, [bloomIndustry, bloomState, bloomCount, bloomXbrlGate, bloomSources, bloomEftsQuery, bloomRunning, queryClient, toast]);
 
   useEffect(() => {
     localStorage.setItem("light_sender", JSON.stringify(senderProfile));
@@ -1436,6 +1446,27 @@ export default function LightEngine() {
                 {bloomRunning ? "Blooming..." : "Bloom"}
               </Button>
             </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] text-amber-400/25 mr-1">Sources:</span>
+              {[
+                { id: "sic", label: "SIC Industry" },
+                { id: "formD", label: "Form D" },
+                { id: "efts", label: "Filing Search" },
+              ].map(src => (
+                <button key={src.id} data-testid={`source-chip-${src.id}`}
+                  onClick={() => setBloomSources(prev => prev.includes(src.id) ? (src.id === "sic" ? prev : prev.filter(s => s !== src.id)) : [...prev, src.id])}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-medium border transition-colors ${bloomSources.includes(src.id)
+                    ? "bg-amber-500/20 border-amber-400/25 text-amber-200/70"
+                    : "bg-transparent border-amber-500/10 text-amber-400/20 hover:border-amber-400/20"}`}>
+                  {src.label}
+                </button>
+              ))}
+              {bloomSources.includes("efts") && (
+                <Input placeholder="Search query..." value={bloomEftsQuery} onChange={e => setBloomEftsQuery(e.target.value)}
+                  className="w-40 h-7 text-[10px] bg-transparent border-amber-500/10 placeholder:text-amber-400/15"
+                  data-testid="input-efts-query" />
+              )}
+            </div>
             {!bloomXbrlGate && (
               <p className="text-[10px] text-amber-400/25 flex items-center gap-1.5">
                 <Leaf className="w-3 h-3 text-amber-400/20" />
@@ -1481,6 +1512,15 @@ export default function LightEngine() {
               <Switch checked={bloomXbrlGate} onCheckedChange={setBloomXbrlGate} className="scale-[0.6]" />
               <span className={`text-[9px] ${bloomXbrlGate ? "text-amber-200/40" : "text-amber-400/20"}`}>XBRL</span>
             </div>
+            {["formD", "efts"].map(src => (
+              <button key={src} data-testid={`source-chip-compact-${src}`}
+                onClick={() => setBloomSources(prev => prev.includes(src) ? prev.filter(s => s !== src) : [...prev, src])}
+                className={`px-1.5 h-7 rounded text-[9px] font-medium border border-dashed transition-colors ${bloomSources.includes(src)
+                  ? "bg-amber-500/15 border-amber-400/20 text-amber-200/60"
+                  : "border-amber-500/8 text-amber-400/20"}`}>
+                {src === "formD" ? "D" : "EFTS"}
+              </button>
+            ))}
             <Button onClick={startBloom} disabled={!bloomIndustry || bloomRunning} data-testid="button-bloom"
               size="sm" className="h-7 px-3 text-[11px] border border-amber-400/12 bg-amber-500/10 text-amber-200/60">
               {bloomRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Flower2 className="w-3 h-3" />}
@@ -1833,6 +1873,24 @@ export default function LightEngine() {
                         {lead.xbrlDepth === 0 && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-500/10 text-zinc-500/50 border border-zinc-500/10" data-testid={`badge-no-xbrl-${lead.leadId}`}>No XBRL</span>
                         )}
+                        {(() => {
+                          const src = (lead as any).enrichmentData?.discoverySource || (lead as any).discoverySource;
+                          const evtCount = (lead as any).enrichmentData?.recentEvents?.length || 0;
+                          return (
+                            <>
+                              {src && src !== "sic" && (
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded border ${src === "formD" ? "bg-violet-500/10 text-violet-400/60 border-violet-500/15" : "bg-cyan-500/10 text-cyan-400/60 border-cyan-500/15"}`} data-testid={`badge-source-${lead.leadId}`}>
+                                  {src === "formD" ? "Form D" : "EFTS"}
+                                </span>
+                              )}
+                              {evtCount > 0 && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400/60 border border-orange-500/15" data-testid={`badge-events-${lead.leadId}`}>
+                                  {evtCount} 8-K
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()}
                         {lead.industryCategory && (
                           <span className="text-[10px] text-amber-400/25 truncate hidden sm:inline">{lead.industryCategory}</span>
                         )}
@@ -2101,6 +2159,36 @@ export default function LightEngine() {
                               <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${NEGLECT_COLORS[c.neglectLevel]}`}>
                                 {c.neglectLevel === "high" ? "overlooked" : c.neglectLevel === "medium" ? "underused" : "known"}
                               </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {((lead as any).enrichmentData?.recentEvents?.length > 0) && (
+                      <div className="rounded-lg border border-orange-500/10 bg-orange-950/5 p-4 space-y-2" data-testid={`section-events-${lead.leadId}`}>
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-3.5 h-3.5 text-orange-400/50" />
+                          <span className="text-xs font-medium text-orange-300/60">Recent 8-K Events</span>
+                          <span className="text-[10px] text-orange-400/30">{(lead as any).enrichmentData.recentEvents.length} filings</span>
+                        </div>
+                        <div className="space-y-1">
+                          {((lead as any).enrichmentData.recentEvents as { type: string; date: string; signal: string; creditRelevance: string[] }[]).slice(0, 5).map((evt, ei) => (
+                            <div key={ei} className="flex items-center gap-3 py-1.5 px-3 rounded border border-orange-500/5 bg-orange-950/3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-orange-200/60 font-medium">{evt.signal}</span>
+                                  <span className="text-[10px] text-orange-400/30">{evt.date}</span>
+                                </div>
+                                {evt.creditRelevance.length > 0 && (
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    {evt.creditRelevance.slice(0, 3).map((cr, cri) => (
+                                      <span key={cri} className="text-[9px] text-orange-400/40">{cr.replace(/_/g, " ")}</span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <span className="text-[9px] text-orange-400/25 font-mono shrink-0">{evt.type || "8-K"}</span>
                             </div>
                           ))}
                         </div>
