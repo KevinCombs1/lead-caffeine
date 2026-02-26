@@ -299,6 +299,7 @@ export default function LightEngine() {
     credit?: string;
     cluster?: string;
     entityType?: string;
+    discoverySource?: string;
   }>({});
   const [intelTab, setIntelTab] = useState<"overview" | "crossref" | "legislation" | "clusters">("overview");
   const [searchTerm, setSearchTerm] = useState("");
@@ -789,6 +790,12 @@ export default function LightEngine() {
         return true;
       });
     }
+    if (intelFilter.discoverySource) {
+      list = list.filter(l => {
+        const src = (l as any).enrichmentData?.discoverySource || "sic";
+        return src === intelFilter.discoverySource;
+      });
+    }
     list.sort((a, b) => {
       if (sortBy === "forms") return b.formCount - a.formCount;
       if (sortBy === "ads") return b.adNetworkCount - a.adNetworkCount;
@@ -948,10 +955,13 @@ export default function LightEngine() {
 
         {hasLeads && agg && agg.leadsWithXray > 0 && (
           <button onClick={() => setShowIntel(prev => !prev)} data-testid="button-toggle-intel"
-            className="flex items-center gap-2 text-xs text-amber-400/30 hover:text-amber-400/50 transition-colors">
-            <BarChart3 className="w-3.5 h-3.5" />
-            <span>{showIntel ? "Hide" : "Show"} Quantum Intelligence</span>
-            {showIntel ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg border text-xs transition-all ${showIntel
+              ? "bg-amber-500/10 border-amber-400/20 text-amber-200/70 shadow-sm shadow-amber-500/5"
+              : "bg-amber-500/5 border-amber-500/10 text-amber-400/35 hover:bg-amber-500/8 hover:border-amber-400/15 hover:text-amber-400/50"}`}>
+            <BarChart3 className="w-4 h-4" />
+            <span className="font-medium">{showIntel ? "Hide" : "Show"} Quantum Intelligence</span>
+            <span className="text-[10px] text-amber-400/25 ml-1">{agg.leadsWithXray} x-rayed</span>
+            {showIntel ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           </button>
         )}
       </div>

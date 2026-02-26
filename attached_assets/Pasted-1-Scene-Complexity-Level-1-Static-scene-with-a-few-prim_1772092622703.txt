@@ -1,0 +1,40 @@
+1. Scene Complexity
+Level 1: Static scene with a few primitives (e.g., cubes, spheres).
+Level 2: Dynamic scene with animated objects and basic transformations.
+Level 3: Highly complex scene with thousands of objects, LOD (Level of Detail) management, and spatial partitioning (e.g., Octree).
+2. Lighting Techniques
+Level 1: Basic ambient and directional lighting.
+Level 2: Point and spotlights with shadows.
+Level 3: Advanced global illumination (e.g., baked lightmaps, radiosity approximations, or real-time GI via custom shaders).
+3. Material Complexity
+Level 1: Basic materials (e.g., MeshBasicMaterial, MeshLambertMaterial).
+Level 2: Physically-based rendering (PBR) with MeshStandardMaterial or MeshPhysicalMaterial.
+Level 3: Custom shader materials (GLSL) for effects like subsurface scattering, iridescence, or procedural patterns.
+4. Geometry Detail
+Level 1: Simple built-in geometries.
+Level 2: Imported models (e.g., GLTF) with moderate polygon counts.
+Level 3: High-poly sculpted models, displacement mapping, or procedural geometry (e.g., using BufferGeometry).
+5. Animation Systems
+Level 1: Simple property animations (e.g., Tween.js or gsap).
+Level 2: Skeletal animation with imported armatures (e.g., GLTF skins).
+Level 3: Complex state machines, blend shapes, and physics-driven animation.
+6. Performance Optimization
+Level 1: Basic optimizations (e.g., disposing unused objects).
+Level 2: Instancing, merging geometries, and texture atlasing.
+Level 3: Advanced techniques like GPU compute shaders, Web Workers, and custom render pipelines.
+7. Post-Processing Effects
+Level 1: No post-processing or simple effects (e.g., bloom).
+Level 2: Chains of effects (e.g., depth of field, SSAO).
+Level 3: Custom post-processing shaders for artistic effects (e.g., glitch, watercolor).
+8. Interactivity and Controls
+Level 1: Basic mouse/touch input (e.g., OrbitControls).
+Level 2: Complex interactions (e.g., raycasting for picking, drag-and-drop).
+Level 3: VR/AR support with WebXR and advanced gesture recognition.
+9. Shader Programming
+Level 1: Modifying existing Three.js shader uniforms.
+Level 2: Writing custom vertex and fragment shaders for simple effects.
+Level 3: Advanced techniques like tessellation, raymarching, or compute shaders.
+10. Ecosystem Integration
+Level 1: Standalone Three.js app with no external dependencies.
+Level 2: Integration with frameworks (e.g., React Three Fiber) or tools (e.g., Blender).
+Level 3: Full-stack integration (e.g., server-side rendering, WebRTC streaming, or multiplayer synchronization).
