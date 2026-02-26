@@ -388,8 +388,8 @@ export default function DealsPage() {
             </div>
 
             <div className="qi-panel p-3 rounded-lg" data-testid="sources-panel">
-              <h4 className="text-[11px] font-semibold text-muted-foreground/60 mb-2">DATA SOURCES</h4>
-              <div className="space-y-1.5">
+              <h4 className="text-[11px] font-semibold text-muted-foreground/60 mb-2">DATA SOURCES ({sourcesQuery.data?.length || 0})</h4>
+              <div className="space-y-1.5 max-h-[320px] overflow-y-auto scrollbar-hide">
                 {sourcesQuery.data?.map((src: any) => (
                   <div key={src.id} className="flex items-center justify-between group/src">
                     <div className="flex items-center gap-2">
