@@ -134,6 +134,7 @@ interface DeltaMap {
     avgCreditHealth: number;
     totalUnclaimedValue: number;
     leadsWithXray: number;
+    leadsWithoutXbrl: number;
   };
 }
 
@@ -263,6 +264,7 @@ export default function LightEngine() {
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"forms" | "company" | "ads" | "credits" | "creditHealth" | "unclaimed">("forms");
+  const [hideDead, setHideDead] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -293,12 +295,14 @@ export default function LightEngine() {
   const [submitAbort, setSubmitAbort] = useState<AbortController | null>(null);
   const [submittedLeads, setSubmittedLeads] = useState<Map<string, "success" | "blocked" | "failed" | "skipped" | "graceful">>(new Map());
   const [xrayRunning, setXrayRunning] = useState(false);
-  const [xrayProgress, setXrayProgress] = useState<{ scanned: number; updated: number; failed: number; total: number }>({ scanned: 0, updated: 0, failed: 0, total: 0 });
+  const [xrayForceMode, setXrayForceMode] = useState(false);
+  const [xrayProgress, setXrayProgress] = useState<{ scanned: number; updated: number; failed: number; total: number; skippedDead?: number }>({ scanned: 0, updated: 0, failed: 0, total: 0 });
   const [xrayLog, setXrayLog] = useState<string[]>([]);
 
-  const startReXray = useCallback(async () => {
+  const startReXray = useCallback(async (force?: boolean) => {
     if (xrayRunning) return;
     setXrayRunning(true);
+    setXrayForceMode(!!force);
     setXrayProgress({ scanned: 0, updated: 0, failed: 0, total: 0 });
     setXrayLog([]);
 
@@ -307,6 +311,7 @@ export default function LightEngine() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({ force: !!force }),
       });
 
       const reader = res.body?.getReader();
@@ -329,6 +334,9 @@ export default function LightEngine() {
               const data = JSON.parse(dataStr);
               if (event === "phase") {
                 setXrayLog(prev => [...prev, `${data.phase}: ${data.detail}`]);
+                if (data.skippedDead > 0) {
+                  setXrayProgress(prev => ({ ...prev, skippedDead: data.skippedDead }));
+                }
               } else if (event === "xray") {
                 setXrayProgress({ scanned: data.scanned, updated: data.updated, failed: 0, total: data.total });
                 const label = data.healthLabel || "Unknown";
@@ -339,10 +347,11 @@ export default function LightEngine() {
               } else if (event === "error") {
                 setXrayLog(prev => [...prev, `${data.company}: ERROR — ${data.error}`]);
               } else if (event === "progress") {
-                setXrayProgress({ scanned: data.scanned, updated: data.updated, failed: data.failed, total: data.total });
+                setXrayProgress({ scanned: data.scanned, updated: data.updated, failed: data.failed, total: data.total, skippedDead: data.skippedDead });
               } else if (event === "complete") {
-                setXrayProgress({ scanned: data.scanned, updated: data.updated, failed: data.failed || 0, total: data.total });
-                setXrayLog(prev => [...prev, `Complete: ${data.updated} leads x-rayed, ${data.scanned} scanned${data.message ? ` — ${data.message}` : ""}`]);
+                setXrayProgress({ scanned: data.scanned, updated: data.updated, failed: data.failed || 0, total: data.total, skippedDead: data.skippedDead });
+                const deadNote = data.skippedDead > 0 ? ` · ${data.skippedDead} dead skipped` : "";
+                setXrayLog(prev => [...prev, `Complete: ${data.updated} leads x-rayed, ${data.scanned} scanned${deadNote}${data.message ? ` — ${data.message}` : ""}`]);
               }
             } catch {}
           }
@@ -398,10 +407,15 @@ export default function LightEngine() {
                 setBloomProgress(prev => ({ ...prev, stored: data.stored }));
               } else if (event === "progress") {
                 setBloomProgress({ stored: data.stored, total: data.total, scanned: data.scanned });
+              } else if (event === "skip") {
+                setBloomLog(prev => [...prev, `Filtered: ${data.company} — ${data.reason}`]);
               } else if (event === "complete") {
-                setBloomPhase(`Bloomed ${data.stored} leads in ${data.industry}`);
+                const qualityLine = data.skippedNoXbrl || data.skippedStale
+                  ? ` · ${data.scanned} scanned · ${data.skippedNoXbrl || 0} no XBRL · ${data.skippedStale || 0} stale`
+                  : "";
+                setBloomPhase(`Bloomed ${data.stored} living leads in ${data.industry}${qualityLine}`);
                 queryClient.invalidateQueries({ queryKey: ["/api/light/delta"] });
-                toast({ title: `Discovered ${data.stored} leads`, description: `${data.industry} · ${data.category}` });
+                toast({ title: `Discovered ${data.stored} living leads`, description: `${data.industry} · ${data.category}${qualityLine}` });
               } else if (event === "error") {
                 setBloomLog(prev => [...prev, `Error: ${data.error || data.company}`]);
               }
@@ -598,6 +612,9 @@ export default function LightEngine() {
         return score >= ms || l.estimatedCreditHigh > 0;
       });
     }
+    if (hideDead) {
+      list = list.filter(l => l.xbrlDepth > 0);
+    }
     list.sort((a, b) => {
       if (sortBy === "forms") return b.formCount - a.formCount;
       if (sortBy === "ads") return b.adNetworkCount - a.adNetworkCount;
@@ -607,7 +624,7 @@ export default function LightEngine() {
       return a.company.localeCompare(b.company);
     });
     return list;
-  }, [deltaQuery.data, sortBy, searchTerm, selectedCategory, selectedSubIndustry, minCredit, minRdScore]);
+  }, [deltaQuery.data, sortBy, searchTerm, selectedCategory, selectedSubIndustry, minCredit, minRdScore, hideDead]);
 
   const openCompose = useCallback((lead: LeadDelta, form: DiscoveredForm) => {
     setComposeForm({ lead, form });
@@ -734,7 +751,7 @@ export default function LightEngine() {
           <p className="text-sm text-amber-300/50" data-testid="text-aggregate-summary">
             {agg.totalForms} {agg.totalForms === 1 ? "form" : "forms"}
             {agg.totalWithAds > 0 && <span> · <Flower2 className="w-3 h-3 inline -mt-0.5" /> {agg.totalAdNetworks} ad {agg.totalAdNetworks === 1 ? "network" : "networks"}</span>}
-            <span className="text-amber-400/30"> across {agg.totalLeads} leads</span>
+            <span className="text-amber-400/30"> across {agg.leadsWithXray > 0 ? <span className="text-amber-300/50" data-testid="text-living-count">{agg.leadsWithXray} living</span> : ""}{agg.leadsWithXray > 0 && agg.leadsWithoutXbrl > 0 ? " / " : ""}{agg.leadsWithoutXbrl > 0 ? <span className="text-zinc-500/50" data-testid="text-dead-count">{agg.leadsWithoutXbrl} dormant</span> : ""}{(agg.leadsWithXray === 0 && agg.leadsWithoutXbrl === 0) ? `${agg.totalLeads} leads` : ""}</span>
             {tree && <span className="text-amber-400/20"> · {tree.totalCount} industries</span>}
             {agg.leadsWithXray > 0 && (
               <span className="text-amber-400/25"> · <Radar className="w-3 h-3 inline -mt-0.5" /> {agg.leadsWithXray} x-rayed · avg health {agg.avgCreditHealth}</span>
@@ -876,10 +893,11 @@ export default function LightEngine() {
               {bloomRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Flower2 className="w-3 h-3" />}
             </Button>
             <Separator orientation="vertical" className="h-5 bg-amber-500/8" />
-            <Button onClick={startReXray} disabled={xrayRunning || bloomRunning} data-testid="button-re-xray"
-              size="sm" className="h-7 px-3 text-[11px] border border-cyan-400/15 bg-cyan-500/10 text-cyan-200/60">
+            <Button onClick={(e) => startReXray(e.shiftKey)} disabled={xrayRunning || bloomRunning} data-testid="button-re-xray"
+              size="sm" className="h-7 px-3 text-[11px] border border-cyan-400/15 bg-cyan-500/10 text-cyan-200/60"
+              title="Shift+click to force rescan all leads">
               {xrayRunning ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Radar className="w-3 h-3 mr-1" />}
-              {xrayRunning ? "X-Raying..." : "Re-X-Ray"}
+              {xrayRunning ? (xrayForceMode ? "Force X-Raying..." : "X-Raying...") : "Re-X-Ray"}
             </Button>
           </div>
         )}
@@ -890,11 +908,13 @@ export default function LightEngine() {
               <div className="flex items-center gap-2">
                 <Radar className={`w-3.5 h-3.5 text-cyan-400/50 ${xrayRunning ? "animate-pulse" : ""}`} />
                 <span className="text-xs font-medium text-cyan-300/60">Credit X-Ray Scanner</span>
+                {xrayForceMode && <Badge variant="outline" className="text-[9px] border-orange-400/30 text-orange-300/60" data-testid="badge-xray-force">FORCE</Badge>}
               </div>
               {xrayProgress.total > 0 && (
                 <span className="text-[11px] text-cyan-400/40 tabular-nums">
                   {xrayProgress.scanned}/{xrayProgress.total} scanned · {xrayProgress.updated} enriched
                   {xrayProgress.failed > 0 && <span className="text-red-400/40"> · {xrayProgress.failed} failed</span>}
+                  {(xrayProgress.skippedDead || 0) > 0 && <span className="text-amber-400/30"> · {xrayProgress.skippedDead} dead skipped</span>}
                 </span>
               )}
             </div>
@@ -1151,6 +1171,12 @@ export default function LightEngine() {
                 </button>
               ))}
             </div>
+            {agg && agg.leadsWithoutXbrl > 0 && (
+              <button onClick={() => setHideDead(prev => !prev)} data-testid="button-hide-dead"
+                className={`px-2.5 py-1.5 text-xs rounded-md border transition-colors ${hideDead ? "bg-zinc-500/15 border-zinc-400/20 text-zinc-300" : "border-zinc-500/10 text-zinc-500/40"}`}>
+                {hideDead ? `${agg.leadsWithoutXbrl} dormant hidden` : `Hide ${agg.leadsWithoutXbrl} dormant`}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1211,6 +1237,9 @@ export default function LightEngine() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-foreground/90 truncate">{lead.company}</span>
+                        {lead.xbrlDepth === 0 && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-500/10 text-zinc-500/50 border border-zinc-500/10" data-testid={`badge-no-xbrl-${lead.leadId}`}>No XBRL</span>
+                        )}
                         {lead.industryCategory && (
                           <span className="text-[10px] text-amber-400/25 truncate hidden sm:inline">{lead.industryCategory}</span>
                         )}

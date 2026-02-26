@@ -37,7 +37,7 @@ client/src/hooks/use-auth.ts → Auth state hook
 - `SCANNER_PASSWORD` — Login password (default: `"passwardo"`)
 
 ## Key Concepts
-- **Bloom Discovery**: SEC EDGAR sweep by SIC industry code → XBRL financial data → Credit X-Ray → R&D credit scoring
+- **Bloom Discovery**: SEC EDGAR sweep by SIC industry code → XBRL gate (requires XBRL data) → filing recency check (10-K within 5 years) → Credit X-Ray → R&D credit scoring. Filters out dead/defunct companies, pre-XBRL filers, and stale filings. Only creates leads for living companies with actual financial data.
 - **Credit X-Ray**: Per-company quantum financial scan extracting 76+ XBRL tax concepts across 12 categories (active credits, credit carryforwards, effective rate breakdown, deferred tax assets, deferred tax liabilities, tax cash flow, pre-tax income, capital expenditures, employment data, supplemental financials, DEI fields, rate reconciliation). Produces per-credit analysis with status/evidence/amounts/confidence, credit health score (0-100), tax position summary (effective rate, cash tax rate, R&D intensity, NOL, VA ratio, credit density, employees, capex, PP&E, goodwill, state rate impact, foreign income), and estimated unclaimed value. Employee-based credit analysis (WOTC, ERC, paid leave) uses actual headcount/wage data. Depreciation analysis uses real PP&E deferred tax liabilities. Built in `gradient-sweep.ts` (extraction) and `credit-universe.ts` (analysis).
 - **Delta Map**: Joins fiscal leads with scraped forms/ads/tracking/credit-xray to build the outreach view
 - **Grace Check**: Bumblebee antenna — checks honeypots, WAF confidence, bot scripts, JS challenges. If defenses are up, the bee moves on gracefully
@@ -54,7 +54,7 @@ client/src/hooks/use-auth.ts → Auth state hook
 - `PATCH /api/light/outreach` — Advance Light Cycle stage
 - `GET /api/light/credits` — 38 tax credits
 - `GET /api/light/industries` — SIC industry tree (401 industries, 93 Tier-1 across 40 categories)
-- `POST /api/light/re-xray` — SSE retroactive credit x-ray scan for existing leads
+- `POST /api/light/re-xray` — SSE retroactive credit x-ray scan for existing leads (supports `force: true` to rescan confirmed dead leads; tracks scan attempts with xrayAttempted/xrayResult markers to skip dead leads on subsequent scans)
 - `GET /api/light/security/:domain` — Domain security profile
 
 ## Theme

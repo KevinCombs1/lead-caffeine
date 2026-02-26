@@ -375,6 +375,7 @@ export async function registerRoutes(
       leadDeltas.sort((a, b) => b.formCount - a.formCount);
 
       const leadsWithXray = leadDeltas.filter(l => l.xbrlDepth > 0);
+      const leadsWithoutXbrl = leadDeltas.filter(l => l.xbrlDepth === 0);
       const avgCreditHealth = leadsWithXray.length > 0
         ? Math.round(leadsWithXray.reduce((s, l) => s + l.creditHealthScore, 0) / leadsWithXray.length)
         : 0;
@@ -387,6 +388,7 @@ export async function registerRoutes(
           lightCycle: { composed: totalComposed, pushed: totalPushed, received: totalReceived },
           totalWithAds, totalAdNetworks: Object.keys(adNetworkCounts).length, adNetworkCounts,
           avgCreditHealth, totalUnclaimedValue, leadsWithXray: leadsWithXray.length,
+          leadsWithoutXbrl: leadsWithoutXbrl.length,
         },
       });
     } catch (err: any) {
@@ -689,20 +691,33 @@ export async function registerRoutes(
   });
 
   app.post("/api/light/re-xray", requireAuth, async (req, res) => {
+    const force = req.body?.force === true;
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
     const send = (event: string, data: any) => { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
 
     try {
       const allLeads = await storage.getFiscalLeads({}, 1000, 0);
+      let skippedDead = 0;
       const needsXray = allLeads.filter(l => {
         const enrichment = l.enrichmentData as any;
-        return enrichment?.cik && (!enrichment?.creditXRay || !enrichment?.creditPosition);
+        if (!enrichment?.cik) return false;
+        if (!force && enrichment?.xrayAttempted === true && enrichment?.xrayResult === "no_data") {
+          skippedDead++;
+          return false;
+        }
+        if (!enrichment?.creditXRay || !enrichment?.creditPosition) return true;
+        if (force) return true;
+        return false;
       });
 
-      send("phase", { phase: "Scanning", detail: `${needsXray.length} leads need x-ray (${allLeads.length - needsXray.length} already scanned)` });
+      const alreadyScanned = allLeads.length - needsXray.length - skippedDead;
+      const detail = force
+        ? `Force mode: ${needsXray.length} leads to scan (ignoring previous results)`
+        : `${needsXray.length} leads need x-ray (${alreadyScanned} already scanned${skippedDead > 0 ? `, ${skippedDead} confirmed dead` : ""})`;
+      send("phase", { phase: "Scanning", detail, force, skippedDead });
 
       if (needsXray.length === 0) {
-        send("complete", { scanned: 0, updated: 0, total: allLeads.length, message: "All leads already have credit x-ray data" });
+        send("complete", { scanned: 0, updated: 0, total: allLeads.length, skippedDead, force, message: skippedDead > 0 ? `All leads scanned (${skippedDead} confirmed dead skipped)` : "All leads already have credit x-ray data" });
         res.end();
         return;
       }
@@ -721,7 +736,15 @@ export async function registerRoutes(
             const details = await getCompanyDetails(cik);
             if (!details?.creditXRay) {
               scanned++;
-              send("skip", { company: lead.company, reason: "No XBRL data available" });
+              await storage.updateFiscalLead(lead.id, {
+                enrichmentData: {
+                  ...enrichment,
+                  xrayAttempted: true,
+                  xrayResult: "no_data",
+                  xrayAttemptedAt: new Date().toISOString(),
+                },
+              });
+              send("skip", { company: lead.company, reason: "No XBRL data available (marked dead)" });
               return;
             }
 
@@ -746,6 +769,9 @@ export async function registerRoutes(
               rdExpense: details.rdExpense || enrichment.rdExpense || 0,
               rdPeriod: details.rdPeriod || enrichment.rdPeriod || "unknown",
               totalAssets: details.totalAssets || enrichment.totalAssets || 0,
+              xrayAttempted: true,
+              xrayResult: "enriched",
+              xrayAttemptedAt: new Date().toISOString(),
             };
 
             let opportunityLevel = lead.opportunityLevel;
@@ -787,8 +813,8 @@ export async function registerRoutes(
         send("progress", { scanned, updated, failed, total: needsXray.length });
       }
 
-      console.log(`[RE-XRAY] Complete: scanned=${scanned}, updated=${updated}, failed=${failed}`);
-      send("complete", { scanned, updated, failed, total: needsXray.length });
+      console.log(`[RE-XRAY] Complete: scanned=${scanned}, updated=${updated}, failed=${failed}, skippedDead=${skippedDead}`);
+      send("complete", { scanned, updated, failed, total: needsXray.length, skippedDead, force });
       res.end();
     } catch (err: any) {
       console.error("[RE-XRAY] Error:", err);
@@ -836,7 +862,12 @@ export async function registerRoutes(
 
       let discovered = 0;
       let stored = 0;
+      let skippedNoXbrl = 0;
+      let skippedStale = 0;
       const batchSize = 3;
+      const FIVE_YEARS_AGO = new Date();
+      FIVE_YEARS_AGO.setFullYear(FIVE_YEARS_AGO.getFullYear() - 5);
+      const fiveYearsAgoStr = FIVE_YEARS_AGO.toISOString().slice(0, 10);
 
       for (let i = 0; i < candidates.length && stored < targetCount; i += batchSize) {
         const batch = candidates.slice(i, i + batchSize);
@@ -851,6 +882,19 @@ export async function registerRoutes(
 
             if (existingCompanies.has(companyName.toLowerCase())) return null;
 
+            const hasXbrlData = details.creditXRay && (details.creditXRay as any).xbrlDepth > 0;
+            if (!hasXbrlData) {
+              console.log(`[BLOOM] Skipping ${c.name || 'unknown'} — no XBRL data`);
+              return { skipped: true, company: c.name || 'unknown', reason: 'no_xbrl' };
+            }
+
+            if (details.last10KDate && details.last10KDate < fiveYearsAgoStr) {
+              console.log(`[BLOOM] Skipping ${companyName} — last 10-K filed ${details.last10KDate} (stale)`);
+              skippedStale++;
+              send("skip", { company: companyName, reason: `Last 10-K filed ${details.last10KDate} — older than 5 years` });
+              return { skipped: true, company: companyName, reason: 'stale_filing' };
+            }
+
             const hasExplicitRD = details.rdExpense && details.rdExpense > 0;
             let effectiveRD = details.rdExpense || 0;
             if (!hasExplicitRD && details.revenue && details.revenue > 0) {
@@ -858,12 +902,16 @@ export async function registerRoutes(
               effectiveRD = Math.round(details.revenue * rdRate);
             }
 
+            if (effectiveRD <= 0 && !hasExplicitRD) {
+              console.log(`[BLOOM] Skipping ${c.name || 'unknown'} — no R&D data and no XBRL depth`);
+              return { skipped: true, company: c.name || 'unknown', reason: 'no_xbrl' };
+            }
+
             const creditClaimed = details.creditIndicator !== undefined && details.creditIndicator < 0;
             let opportunityLevel: "high" | "moderate" | "low" | "unknown" = "unknown";
             if (!creditClaimed && hasExplicitRD && effectiveRD > 1_000_000) opportunityLevel = "high";
             else if (!creditClaimed && (hasExplicitRD || effectiveRD > 100_000)) opportunityLevel = "moderate";
             else if (creditClaimed) opportunityLevel = "low";
-            else opportunityLevel = "moderate";
 
             const estimatedCreditLow = creditClaimed ? 0 : Math.round(effectiveRD * 0.065);
             const estimatedCreditHigh = creditClaimed ? 0 : Math.round(effectiveRD * 0.10);
@@ -925,6 +973,13 @@ export async function registerRoutes(
 
         for (const r of results) {
           if (!r) continue;
+          if ((r as any).skipped) {
+            if ((r as any).reason === 'no_xbrl') {
+              skippedNoXbrl++;
+              send("skip", { company: (r as any).company, reason: "No XBRL data" });
+            }
+            continue;
+          }
           discovered++;
 
           try {
@@ -955,8 +1010,8 @@ export async function registerRoutes(
         send("progress", { discovered, stored, total: targetCount, scanned: Math.min(i + batchSize, candidates.length), candidates: candidates.length });
       }
 
-      console.log(`[BLOOM] Complete: discovered=${discovered}, stored=${stored}, industry=${industryConfig.label}`);
-      send("complete", { discovered, stored, industry: industryConfig.label, category: industryConfig.category });
+      console.log(`[BLOOM] Complete: discovered=${discovered}, stored=${stored}, skippedNoXbrl=${skippedNoXbrl}, skippedStale=${skippedStale}, industry=${industryConfig.label}`);
+      send("complete", { discovered, stored, skippedNoXbrl, skippedStale, scanned: discovered + skippedNoXbrl + skippedStale, industry: industryConfig.label, category: industryConfig.category });
       res.end();
     } catch (err: any) {
       console.error(`[BLOOM] Discover route error:`, err);

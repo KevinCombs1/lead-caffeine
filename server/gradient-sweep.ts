@@ -821,6 +821,7 @@ export async function getCompanyDetails(cik: string): Promise<{
   rdExpense?: number; rdPeriod?: string; revenue?: number; creditIndicator?: number;
   entityType?: string; ein?: string; employeeCount?: number; totalAssets?: number;
   creditXRay?: CreditXRay;
+  lastFilingDate?: string; last10KDate?: string;
 } | null> {
   try {
     const [subRes, factsRes] = await Promise.all([
@@ -830,6 +831,7 @@ export async function getCompanyDetails(cik: string): Promise<{
 
     let sic: string | undefined, sicDescription: string | undefined, stateOfIncorporation: string | undefined;
     let entityType: string | undefined, ein: string | undefined;
+    let lastFilingDate: string | undefined, last10KDate: string | undefined;
 
     if (subRes.ok) {
       const subs = await subRes.json() as any;
@@ -838,6 +840,22 @@ export async function getCompanyDetails(cik: string): Promise<{
       stateOfIncorporation = subs.stateOfIncorporation;
       entityType = subs.entityType;
       ein = subs.ein;
+
+      const recentFilings = subs.filings?.recent;
+      if (recentFilings?.filingDate && recentFilings?.form) {
+        const dates: string[] = recentFilings.filingDate;
+        const forms: string[] = recentFilings.form;
+        if (dates.length > 0) {
+          lastFilingDate = dates[0];
+        }
+        for (let fi = 0; fi < forms.length; fi++) {
+          const formType = forms[fi];
+          if (formType === "10-K" || formType === "10-K/A") {
+            last10KDate = dates[fi];
+            break;
+          }
+        }
+      }
     }
 
     let rdExpense: number | undefined, rdPeriod: string | undefined, revenue: number | undefined;
@@ -874,7 +892,7 @@ export async function getCompanyDetails(cik: string): Promise<{
       }
     }
 
-    return { sic, sicDescription, stateOfIncorporation, rdExpense, rdPeriod, revenue, creditIndicator, entityType, ein, employeeCount, totalAssets, creditXRay };
+    return { sic, sicDescription, stateOfIncorporation, rdExpense, rdPeriod, revenue, creditIndicator, entityType, ein, employeeCount, totalAssets, creditXRay, lastFilingDate, last10KDate };
   } catch (e: any) {
     console.warn(`[BLOOM] getCompanyDetails error for CIK ${cik}:`, e.message || e);
     return null;
