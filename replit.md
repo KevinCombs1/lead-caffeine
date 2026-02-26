@@ -87,5 +87,63 @@ Interactive filtering: `intelFilter` state supports healthTier, rateTier, revenu
 ## Design Philosophy — The Uncompromising Will
 The entire website except for text renders in 4D space. Menus, artifacts, variables, channels, transitions — all exist in 4D rendering space. The agent and user operate from the **5th Dimension**, making 4D rendering a comfortable, playful experiment. Every interaction feels like adjusting a facet of a tesseract. Full design standards, quality rubric (DeepLogic^64), CSS animation system, color system, and typography rules are codified in `.local/skills/data-cloudware/SKILL.md` — loaded automatically for all UI work.
 
+## Phase 2: 5D Deal Identifier
+
+The 5D Deal Identifier is a universal capital convergence engine that maps all financial deals across the United States by tracking capital flow through industries, regulations, geography, and human behavior.
+
+### Three Currents
+1. **Transactions & Exchanges** — actual capital movement (deals, trades, contracts, filings)
+2. **Trend Shifts** — directional changes (market sentiment, regulatory shifts, sector rotation)
+3. **Timelines** — temporal patterns (cyclical events, seasonal flows, legislative calendars)
+
+### Convergence Points
+Where two or more currents intersect, a convergence point emerges — a moment in time and space where capital will concentrate.
+
+### Architecture
+```
+server/deal-sources.ts     → API connector framework + 6 source connectors
+client/src/pages/deals.tsx  → Heat map + 11-tab deal listing interface
+```
+
+### Database Tables
+- `deal_sources` — API data source registry (SEC EDGAR, USASpending, Federal Register, USPTO, FRED, Congress.gov)
+- `deal_entities` — Companies, organizations, government bodies
+- `deal_events` — Individual deal/transaction events with current classification
+- `deal_trends` — Aggregated trend data points
+- `deal_timelines` — Timeline markers and cycles
+- `convergence_points` — Where currents intersect
+
+### 11 Tabs (Deal Dimensions)
+1. Capital Markets (IPOs / Secondary Offerings / SPACs)
+2. Mergers & Acquisitions (M&A / Divestitures / Joint Ventures)
+3. Private Capital (PE / VC / Private Placements)
+4. Government Contracts (Federal Procurement / Grants / Defense)
+5. Real Estate & Infrastructure (Commercial / Development / REITs)
+6. Regulatory & Legislative (New Laws / Rule Changes / Tax Policy)
+7. Intellectual Property (Patents / Licensing / Technology Transfer)
+8. Credit & Debt (Bond Issuance / Credit Facilities / Restructuring)
+9. Energy & Resources (Energy Deals / Clean Tech / Mining)
+10. Labor & Human Capital (Executive Moves / Mass Hiring / Layoffs)
+11. Convergence Radar (Cross-Sector Patterns / Prediction Models / Timeline Projections)
+
+### Deal API Endpoints
+- `GET /api/deals/sources` — List all data sources
+- `POST /api/deals/fetch/:sourceSlug` — Trigger fetch from specific source
+- `POST /api/deals/fetch-all` — Fetch from all 6 sources
+- `GET /api/deals/events` — Query deal events with filters (tabCategory, subCategory, current, state, search, date range)
+- `GET /api/deals/stats` — Dashboard statistics
+- `GET /api/deals/heatmap` — Geographic distribution by state
+- `GET /api/deals/trends` — Economic trend data
+- `GET /api/deals/timelines` — Legislative/regulatory timeline data
+- `GET /api/deals/convergence` — Detected convergence points
+
+### 6 Data Sources (First Wave)
+1. SEC EDGAR — 8-K events, S-1 IPOs, Form D private placements
+2. USASpending.gov — Federal contracts, grants, awards
+3. Federal Register — Regulatory actions, proposed/final rules
+4. USPTO PatentsView — Patent grants, assignees, technology classifications
+5. FRED (Federal Reserve) — GDP, unemployment, fed funds rate, CPI, housing starts
+6. Congress.gov — Bills, legislation, committee actions
+
 ## Future Evolution
-Phase 2+: Quantum Deep Search, full D.A.T.A. Cloudware scanner platform, Sonar cascade discovery, entity resolution, financial analysis, and the pyramid intelligence network.
+Expand to additional API sources (3 degrees of relativity to capital flow), build convergence detection algorithms, add 4-year predictive modeling, integrate real-time data streaming.

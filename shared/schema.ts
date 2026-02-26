@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, jsonb, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, jsonb, timestamp, index, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -846,3 +846,174 @@ export const fiscalLeads = pgTable("fiscal_leads", {
 export const insertFiscalLeadSchema = createInsertSchema(fiscalLeads).omit({ id: true, createdAt: true, updatedAt: true });
 export type FiscalLead = typeof fiscalLeads.$inferSelect;
 export type InsertFiscalLead = z.infer<typeof insertFiscalLeadSchema>;
+
+export const DEAL_CURRENTS = {
+  TRANSACTIONS: "transactions",
+  TRENDS: "trends",
+  TIMELINES: "timelines",
+} as const;
+
+export const DEAL_TAB_CATEGORIES = {
+  CAPITAL_MARKETS: { name: "Capital Markets", subs: ["IPOs", "Secondary Offerings", "SPACs"] },
+  MERGERS_ACQUISITIONS: { name: "Mergers & Acquisitions", subs: ["M&A", "Divestitures", "Joint Ventures"] },
+  PRIVATE_CAPITAL: { name: "Private Capital", subs: ["PE Rounds", "VC Rounds", "Private Placements"] },
+  GOVERNMENT_CONTRACTS: { name: "Government Contracts", subs: ["Federal Procurement", "Grants & Awards", "Defense"] },
+  REAL_ESTATE: { name: "Real Estate & Infrastructure", subs: ["Commercial", "Development", "REITs"] },
+  REGULATORY: { name: "Regulatory & Legislative", subs: ["New Laws", "Rule Changes", "Tax Policy"] },
+  INTELLECTUAL_PROPERTY: { name: "Intellectual Property", subs: ["Patents", "Licensing", "Technology Transfer"] },
+  CREDIT_DEBT: { name: "Credit & Debt", subs: ["Bond Issuance", "Credit Facilities", "Restructuring"] },
+  ENERGY: { name: "Energy & Resources", subs: ["Energy Deals", "Clean Tech", "Mining & Extraction"] },
+  LABOR: { name: "Labor & Human Capital", subs: ["Executive Moves", "Mass Hiring", "Layoffs & Restructuring"] },
+  CONVERGENCE: { name: "Convergence Radar", subs: ["Cross-Sector Patterns", "Prediction Models", "Timeline Projections"] },
+} as const;
+
+export const dealSources = pgTable("deal_sources", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  slug: varchar("slug").notNull().unique(),
+  baseUrl: varchar("base_url").notNull(),
+  dataCategory: varchar("data_category").notNull(),
+  currents: text("currents").array().notNull(),
+  rateLimitMs: integer("rate_limit_ms").default(200),
+  status: varchar("status").notNull().default("active"),
+  lastFetchedAt: timestamp("last_fetched_at"),
+  totalEvents: integer("total_events").default(0),
+  metadata: jsonb("metadata"),
+}, (table) => [
+  index("ds_slug_idx").on(table.slug),
+  index("ds_status_idx").on(table.status),
+]);
+
+export const insertDealSourceSchema = createInsertSchema(dealSources).omit({ id: true });
+export type DealSource = typeof dealSources.$inferSelect;
+export type InsertDealSource = z.infer<typeof insertDealSourceSchema>;
+
+export const dealEntities = pgTable("deal_entities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  entityType: varchar("entity_type").notNull(),
+  sector: varchar("sector"),
+  sectorSic: varchar("sector_sic"),
+  geography: varchar("geography"),
+  state: varchar("state"),
+  identifiers: jsonb("identifiers"),
+  metadata: jsonb("metadata"),
+}, (table) => [
+  index("de_name_idx").on(table.name),
+  index("de_type_idx").on(table.entityType),
+  index("de_sector_idx").on(table.sector),
+  index("de_state_idx").on(table.state),
+]);
+
+export const insertDealEntitySchema = createInsertSchema(dealEntities).omit({ id: true });
+export type DealEntity = typeof dealEntities.$inferSelect;
+export type InsertDealEntity = z.infer<typeof insertDealEntitySchema>;
+
+export const dealEvents = pgTable("deal_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sourceId: varchar("source_id").notNull(),
+  entityId: varchar("entity_id"),
+  eventType: varchar("event_type").notNull(),
+  tabCategory: varchar("tab_category").notNull(),
+  subCategory: varchar("sub_category"),
+  current: varchar("current").notNull(),
+  title: text("title").notNull(),
+  value: real("value"),
+  currency: varchar("currency").default("USD"),
+  eventDate: timestamp("event_date"),
+  geography: varchar("geography"),
+  state: varchar("state"),
+  probability: real("probability"),
+  sourceUrl: varchar("source_url"),
+  metadata: jsonb("metadata"),
+}, (table) => [
+  index("dev_source_idx").on(table.sourceId),
+  index("dev_entity_idx").on(table.entityId),
+  index("dev_type_idx").on(table.eventType),
+  index("dev_tab_idx").on(table.tabCategory),
+  index("dev_current_idx").on(table.current),
+  index("dev_date_idx").on(table.eventDate),
+  index("dev_state_idx").on(table.state),
+]);
+
+export const insertDealEventSchema = createInsertSchema(dealEvents).omit({ id: true });
+export type DealEvent = typeof dealEvents.$inferSelect;
+export type InsertDealEvent = z.infer<typeof insertDealEventSchema>;
+
+export const dealTrends = pgTable("deal_trends", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sourceId: varchar("source_id"),
+  sector: varchar("sector"),
+  geography: varchar("geography"),
+  state: varchar("state"),
+  metric: varchar("metric").notNull(),
+  value: real("value").notNull(),
+  previousValue: real("previous_value"),
+  period: varchar("period").notNull(),
+  direction: varchar("direction").notNull(),
+  confidence: real("confidence"),
+  metadata: jsonb("metadata"),
+  recordedAt: timestamp("recorded_at").defaultNow(),
+}, (table) => [
+  index("dt_sector_idx").on(table.sector),
+  index("dt_metric_idx").on(table.metric),
+  index("dt_state_idx").on(table.state),
+  index("dt_period_idx").on(table.period),
+]);
+
+export const insertDealTrendSchema = createInsertSchema(dealTrends).omit({ id: true, recordedAt: true });
+export type DealTrend = typeof dealTrends.$inferSelect;
+export type InsertDealTrend = z.infer<typeof insertDealTrendSchema>;
+
+export const dealTimelines = pgTable("deal_timelines", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sourceId: varchar("source_id"),
+  eventType: varchar("event_type").notNull(),
+  title: text("title").notNull(),
+  expectedDate: timestamp("expected_date"),
+  recurrence: varchar("recurrence"),
+  legislativeRef: varchar("legislative_ref"),
+  sector: varchar("sector"),
+  geography: varchar("geography"),
+  state: varchar("state"),
+  confidence: real("confidence"),
+  metadata: jsonb("metadata"),
+  recordedAt: timestamp("recorded_at").defaultNow(),
+}, (table) => [
+  index("dtl_type_idx").on(table.eventType),
+  index("dtl_date_idx").on(table.expectedDate),
+  index("dtl_sector_idx").on(table.sector),
+  index("dtl_state_idx").on(table.state),
+]);
+
+export const insertDealTimelineSchema = createInsertSchema(dealTimelines).omit({ id: true, recordedAt: true });
+export type DealTimeline = typeof dealTimelines.$inferSelect;
+export type InsertDealTimeline = z.infer<typeof insertDealTimelineSchema>;
+
+export const convergencePoints = pgTable("convergence_points", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description"),
+  involvedEventIds: text("involved_event_ids").array(),
+  involvedTrendIds: text("involved_trend_ids").array(),
+  involvedTimelineIds: text("involved_timeline_ids").array(),
+  currentsInvolved: text("currents_involved").array().notNull(),
+  probability: real("probability").notNull(),
+  estimatedValue: real("estimated_value"),
+  geography: varchar("geography"),
+  state: varchar("state"),
+  sector: varchar("sector"),
+  timeHorizon: varchar("time_horizon"),
+  status: varchar("status").notNull().default("detected"),
+  metadata: jsonb("metadata"),
+  detectedAt: timestamp("detected_at").defaultNow(),
+}, (table) => [
+  index("cp_prob_idx").on(table.probability),
+  index("cp_state_idx").on(table.state),
+  index("cp_sector_idx").on(table.sector),
+  index("cp_status_idx").on(table.status),
+]);
+
+export const insertConvergencePointSchema = createInsertSchema(convergencePoints).omit({ id: true, detectedAt: true });
+export type ConvergencePoint = typeof convergencePoints.$inferSelect;
+export type InsertConvergencePoint = z.infer<typeof insertConvergencePointSchema>;

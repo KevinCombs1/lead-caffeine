@@ -11,6 +11,7 @@ import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-block
 import { submitSingleForm, runBatchSubmission, isActionableForm, type SenderProfile, type FormTarget, type BatchItem } from "./form-submitter";
 import * as cheerio from "cheerio";
 import { smartGet } from "./smart-retry";
+import { initializeSources, getSources, fetchSource, fetchAllSources, getEvents, getEventsCount, getEventsByState, getTrends, getTimelines, getConvergencePoints, getDealStats } from "./deal-sources";
 
 function getOwnerPassword() {
   return process.env.SCANNER_PASSWORD || "passwardo";
@@ -1352,6 +1353,103 @@ export async function registerRoutes(
       console.error(`[BLOOM] Discover route error:`, err);
       send("error", { error: err.message });
       res.end();
+    }
+  });
+
+  initializeSources().catch(err => console.error("[DEAL-SOURCES] Init error:", err.message));
+
+  app.get("/api/deals/sources", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const sources = await getSources();
+      res.json(sources);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/deals/fetch/:sourceSlug", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const result = await fetchSource(req.params.sourceSlug);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/deals/fetch-all", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const results = await fetchAllSources();
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/deals/events", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const filters = {
+        tabCategory: req.query.tabCategory as string | undefined,
+        subCategory: req.query.subCategory as string | undefined,
+        current: req.query.current as string | undefined,
+        state: req.query.state as string | undefined,
+        search: req.query.search as string | undefined,
+        startDate: req.query.startDate as string | undefined,
+        endDate: req.query.endDate as string | undefined,
+      };
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const [events, count] = await Promise.all([
+        getEvents(filters, limit, offset),
+        getEventsCount(filters),
+      ]);
+      res.json({ events, total: count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/deals/stats", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const stats = await getDealStats();
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/deals/heatmap", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const stateData = await getEventsByState();
+      res.json(stateData);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/deals/trends", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const trends = await getTrends();
+      res.json(trends);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/deals/timelines", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const timelines = await getTimelines();
+      res.json(timelines);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/deals/convergence", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const points = await getConvergencePoints();
+      res.json(points);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 

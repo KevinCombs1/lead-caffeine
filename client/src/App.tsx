@@ -7,8 +7,9 @@ import { useAuth } from "@/hooks/use-auth";
 import Login from "@/pages/login";
 import LightEngine from "@/pages/light";
 import ShapesPage from "@/pages/shapes";
+import DealsPage from "@/pages/deals";
 import NotFound from "@/pages/not-found";
-import { Loader2, Sun, LogOut, Box } from "lucide-react";
+import { Loader2, Sun, LogOut, Box, Radio } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
@@ -30,6 +31,15 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
               data-testid="nav-light-engine"
             >
               Light Engine
+            </Link>
+            <Link href="/deals"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/deals" ? "text-amber-300/70 bg-amber-500/10" : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-deal-identifier"
+            >
+              <Radio className="w-3 h-3" />
+              Deal Identifier
             </Link>
             <Link href="/shapes"
               className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
@@ -53,6 +63,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
       </div>
       <Switch>
         <Route path="/" component={LightEngine} />
+        <Route path="/deals" component={DealsPage} />
         <Route path="/shapes" component={ShapesPage} />
         <Route component={NotFound} />
       </Switch>
