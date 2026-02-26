@@ -1,0 +1,45 @@
+The Batch Strategy
+Batch 1 — "The Foundation" (6 → 15 sources)
+The highest-value no-auth sources that immediately thicken every tab:
+
+Treasury Fiscal Data (debt, spending, revenue, exchange rates, bond auctions)
+FDIC BankFind (every bank, quarterly financials, failures)
+OpenFEMA (disaster declarations, assistance grants, flood insurance)
+BLS v1 (unemployment, CPI, wages, JOLTS — no registration)
+openFDA (drug/device approvals, recalls, adverse events)
+Census Bureau (county business patterns, international trade)
+NHTSA (vehicle recalls, safety data)
+World Bank (global indicators)
+ExchangeRate-API (currency rates)
+This batch covers all 4 pillars and all 11 tabs get real data. We also refactor the connector framework to be config-driven here, so every batch after this is faster.
+
+Batch 2 — "Deepen the Currents" (15 → 25 sources)
+Sub-endpoints within existing sources + new ones:
+
+SEC EDGAR expanded (Form 4 insider trading, 13F institutional holdings, proxy statements)
+Treasury expanded (daily statements, TIPS, savings bonds)
+OpenFEMA expanded (public assistance details, hazard mitigation)
+USGS (earthquakes, water resources)
+Open-Meteo (weather/climate for agriculture and energy correlation)
+CoinGecko (crypto market data)
+CDC WONDER (health surveillance)
+USDA FAS (agricultural trade)
+Batch 3 — "The Intelligence Layer" (25 → 50+ sources)
+Census sub-endpoints (50+ datasets), Treasury sub-endpoints (20+), openFDA sub-endpoints (15), plus building the convergence detection algorithm. This is where the system stops just collecting and starts thinking.
+
+Batch 4+ — "The Long Tail" (50 → 330)
+Config-driven at this point. Each new stream is just a config entry — URL, field mappings, category, current. Mass onboarding. The architecture does the heavy lifting.
+
+The Architecture Shift
+The key insight: Batch 1 isn't just adding 9 sources. It's rebuilding the connector framework so that Batch 2 takes half the time, Batch 3 takes a quarter, and Batch 4 is mostly configuration.
+
+That means Batch 1 includes:
+
+A generic ConfigurableConnector that reads from a source config object
+A background scheduler with staggered fetch intervals
+Rate limit management across all sources
+A unified normalization pipeline
+After Batch 1, adding a new source is a config object instead of a new function.
+
+When to Build the Convergence Algorithm
+After Batch 1. We need enough data variety across all three currents (transactions, trends, timelines) before the algorithm has anything meaningful to detect. 9 more sources gives us that critical mass.
