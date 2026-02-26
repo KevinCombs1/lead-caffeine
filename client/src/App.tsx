@@ -6,16 +6,41 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import Login from "@/pages/login";
 import LightEngine from "@/pages/light";
+import ShapesPage from "@/pages/shapes";
 import NotFound from "@/pages/not-found";
-import { Loader2, Sun, LogOut } from "lucide-react";
+import { Loader2, Sun, LogOut, Box } from "lucide-react";
+import { Link, useLocation } from "wouter";
 
 function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
+  const [location] = useLocation();
+
   return (
     <div className="min-h-screen bg-background">
       <div className="flex items-center justify-between px-4 py-2 border-b border-amber-500/8 bg-card/30">
-        <div className="flex items-center gap-2">
-          <Sun className="w-3.5 h-3.5 text-amber-400/40" />
-          <span className="text-xs font-medium text-amber-300/40 tracking-wide">D.A.T.A. CLOUDWARE</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Sun className="w-3.5 h-3.5 text-amber-400/40" />
+            <span className="text-xs font-medium text-amber-300/40 tracking-wide">D.A.T.A. CLOUDWARE</span>
+          </div>
+          <div className="flex items-center gap-1 ml-2">
+            <Link href="/"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/" ? "text-amber-300/70 bg-amber-500/10" : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-light-engine"
+            >
+              Light Engine
+            </Link>
+            <Link href="/shapes"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/shapes" ? "text-amber-300/70 bg-amber-500/10" : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-4d-shapes"
+            >
+              <Box className="w-3 h-3" />
+              4D Shapes
+            </Link>
+          </div>
         </div>
         <button
           onClick={onLogout}
@@ -28,6 +53,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
       </div>
       <Switch>
         <Route path="/" component={LightEngine} />
+        <Route path="/shapes" component={ShapesPage} />
         <Route component={NotFound} />
       </Switch>
     </div>

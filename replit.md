@@ -14,7 +14,9 @@ server/smart-retry.ts     → Stealth HTTP with WAF detection + exponential back
 server/form-submitter.ts  → Bumblebee: grace checks + gentle form submission
 server/routes.ts          → Auth + all Light Engine API endpoints
 client/src/pages/light.tsx → Full Light Engine UI (delta map, bloom, forms)
+client/src/pages/shapes.tsx → 4D Shape Showcase page
 client/src/pages/login.tsx → Password auth page
+client/src/components/shapes-4d.tsx → 4D shape renderer (Three.js + react-three-fiber)
 client/src/hooks/use-auth.ts → Auth state hook
 ```
 

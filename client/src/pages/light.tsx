@@ -23,6 +23,7 @@ import {
   Rocket, User, Mail, Briefcase, XCircle, MinusCircle, PauseCircle, Leaf,
   BarChart3, MapPin, TrendingUp, DollarSign, Users, FileText, Factory,
 } from "lucide-react";
+import { Shape4DCanvas } from "@/components/shapes-4d";
 
 interface FormField {
   tag?: string;
@@ -1082,11 +1083,21 @@ export default function LightEngine() {
           <div className="flex items-center justify-center" style={{ animation: "fadeSlideIn 0.5s ease-out both" }}>
             <div className="relative flex flex-col items-center py-4 px-8" style={{ animation: "coreGlow 4s ease-in-out infinite" }}>
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-amber-500/5 via-transparent to-amber-500/3" />
-              <span className="text-[11px] uppercase tracking-widest text-amber-400/35 font-medium mb-1 relative">Unclaimed Value</span>
-              <span className="text-3xl font-bold text-amber-200/85 tabular-nums relative" data-testid="stat-total-unclaimed-hero">
+              <div className="absolute inset-0 pointer-events-none" style={{ opacity: 0.12 }}>
+                <Shape4DCanvas
+                  shapeKey="orthoplex"
+                  autoRotate={true}
+                  showControls={false}
+                  scale={1.8}
+                  opacity={0.6}
+                  className="w-full h-full"
+                />
+              </div>
+              <span className="text-[11px] uppercase tracking-widest text-amber-400/35 font-medium mb-1 relative z-10">Unclaimed Value</span>
+              <span className="text-3xl font-bold text-amber-200/85 tabular-nums relative z-10" data-testid="stat-total-unclaimed-hero">
                 {formatCurrency(agg.totalUnclaimedValue)}
               </span>
-              <div className="flex items-center gap-4 mt-2 text-xs text-amber-400/35 relative">
+              <div className="flex items-center gap-4 mt-2 text-xs text-amber-400/35 relative z-10">
                 <span className="tabular-nums">{agg.totalLeads} leads</span>
                 <span className="text-amber-500/15">|</span>
                 <span className="tabular-nums">{agg.leadsWithXray} x-rayed</span>
