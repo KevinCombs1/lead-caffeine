@@ -314,6 +314,7 @@ export default function LightEngine() {
   const [bloomIndustry, setBloomIndustry] = useState<string>("");
   const [bloomState, setBloomState] = useState<string>("");
   const [bloomCount, setBloomCount] = useState<string>("100");
+  const [bloomXbrlGate, setBloomXbrlGate] = useState(true);
   const [bloomRunning, setBloomRunning] = useState(false);
   const [bloomPhase, setBloomPhase] = useState("");
   const [bloomProgress, setBloomProgress] = useState<{ stored: number; total: number; scanned: number }>({ stored: 0, total: 0, scanned: 0 });
@@ -473,7 +474,7 @@ export default function LightEngine() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ industry: bloomIndustry, state: bloomState || undefined, count: parseInt(bloomCount) || 10 }),
+        body: JSON.stringify({ industry: bloomIndustry, state: bloomState || undefined, count: parseInt(bloomCount) || 10, xbrlGate: bloomXbrlGate }),
       });
 
       const reader = res.body?.getReader();
@@ -499,16 +500,20 @@ export default function LightEngine() {
               const data = JSON.parse(dataStr);
               if (event === "phase") setBloomPhase(data.detail || data.phase);
               else if (event === "lead") {
-                setBloomLog(prev => [...prev, `${data.company} — ${data.credits} credits`]);
+                const xbrlTag = data.xbrlDepth > 0 ? `${data.credits} credits · ${data.xbrlDepth} XBRL` : `${data.credits} credits · no XBRL`;
+                setBloomLog(prev => [...prev, `${data.company} — ${xbrlTag}`]);
                 setBloomProgress(prev => ({ ...prev, stored: data.stored }));
               } else if (event === "progress") {
                 setBloomProgress({ stored: data.stored, total: data.total, scanned: data.scanned });
               } else if (event === "skip") {
                 setBloomLog(prev => [...prev, `Filtered: ${data.company} — ${data.reason}`]);
               } else if (event === "complete") {
-                const qualityLine = data.skippedNoXbrl || data.skippedStale
-                  ? ` · ${data.scanned} scanned · ${data.skippedNoXbrl || 0} no XBRL · ${data.skippedStale || 0} stale`
-                  : "";
+                const parts: string[] = [];
+                if (data.scanned) parts.push(`${data.scanned} scanned`);
+                if (data.withXbrl > 0 || data.withoutXbrl > 0) parts.push(`${data.withXbrl || 0} XBRL / ${data.withoutXbrl || 0} non-XBRL`);
+                if (data.skippedNoXbrl > 0) parts.push(`${data.skippedNoXbrl} filtered no XBRL`);
+                if (data.skippedStale > 0) parts.push(`${data.skippedStale} stale`);
+                const qualityLine = parts.length > 0 ? ` · ${parts.join(" · ")}` : "";
                 setBloomPhase(`Bloomed ${data.stored} living leads in ${data.industry}${qualityLine}`);
                 queryClient.invalidateQueries({ queryKey: ["/api/light/delta"] });
                 toast({ title: `Discovered ${data.stored} living leads`, description: `${data.industry} · ${data.category}${qualityLine}` });
@@ -524,7 +529,7 @@ export default function LightEngine() {
     } finally {
       setBloomRunning(false);
     }
-  }, [bloomIndustry, bloomState, bloomCount, bloomRunning, queryClient, toast]);
+  }, [bloomIndustry, bloomState, bloomCount, bloomXbrlGate, bloomRunning, queryClient, toast]);
 
   useEffect(() => {
     localStorage.setItem("light_sender", JSON.stringify(senderProfile));
@@ -1421,12 +1426,22 @@ export default function LightEngine() {
                   </button>
                 ))}
               </div>
+              <div className="flex items-center gap-2 px-3 h-10 rounded-md border border-amber-500/12" data-testid="toggle-xbrl-gate">
+                <Switch checked={bloomXbrlGate} onCheckedChange={setBloomXbrlGate} className="scale-75" />
+                <span className={`text-[11px] ${bloomXbrlGate ? "text-amber-200/50" : "text-amber-400/30"}`}>XBRL Gate</span>
+              </div>
               <Button onClick={startBloom} disabled={!bloomIndustry || bloomRunning} data-testid="button-bloom"
                 className="h-10 px-6 text-xs font-medium border border-amber-400/15 bg-amber-500/20 text-amber-100/80">
                 {bloomRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Flower2 className="w-3.5 h-3.5 mr-1.5" />}
                 {bloomRunning ? "Blooming..." : "Bloom"}
               </Button>
             </div>
+            {!bloomXbrlGate && (
+              <p className="text-[10px] text-amber-400/25 flex items-center gap-1.5">
+                <Leaf className="w-3 h-3 text-amber-400/20" />
+                XBRL Gate off — companies without structured financial data will be discovered but won't have Credit X-Ray analysis
+              </p>
+            )}
           </>
         )}
 
@@ -1461,6 +1476,10 @@ export default function LightEngine() {
                   {n}
                 </button>
               ))}
+            </div>
+            <div className="flex items-center gap-1.5 px-2 h-7 rounded border border-amber-500/8 border-dashed" data-testid="toggle-xbrl-gate-compact">
+              <Switch checked={bloomXbrlGate} onCheckedChange={setBloomXbrlGate} className="scale-[0.6]" />
+              <span className={`text-[9px] ${bloomXbrlGate ? "text-amber-200/40" : "text-amber-400/20"}`}>XBRL</span>
             </div>
             <Button onClick={startBloom} disabled={!bloomIndustry || bloomRunning} data-testid="button-bloom"
               size="sm" className="h-7 px-3 text-[11px] border border-amber-400/12 bg-amber-500/10 text-amber-200/60">

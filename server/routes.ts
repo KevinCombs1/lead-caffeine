@@ -1122,7 +1122,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/light/discover", requireAuth, async (req, res) => {
-    const { industry, state, count = 10 } = req.body;
+    const { industry, state, count = 10, xbrlGate = true } = req.body;
     if (!industry || !SIC_INDUSTRIES[industry]) {
       return res.status(400).json({ error: "Valid industry key required" });
     }
@@ -1162,6 +1162,8 @@ export async function registerRoutes(
       let stored = 0;
       let skippedNoXbrl = 0;
       let skippedStale = 0;
+      let withXbrl = 0;
+      let withoutXbrl = 0;
       const batchSize = 3;
       const FIVE_YEARS_AGO = new Date();
       FIVE_YEARS_AGO.setFullYear(FIVE_YEARS_AGO.getFullYear() - 5);
@@ -1181,8 +1183,8 @@ export async function registerRoutes(
             if (existingCompanies.has(companyName.toLowerCase())) return null;
 
             const hasXbrlData = details.creditXRay && (details.creditXRay as any).xbrlDepth > 0;
-            if (!hasXbrlData) {
-              console.log(`[BLOOM] Skipping ${c.name || 'unknown'} — no XBRL data`);
+            if (!hasXbrlData && xbrlGate) {
+              console.log(`[BLOOM] Skipping ${c.name || 'unknown'} — no XBRL data (gate ON)`);
               return { skipped: true, company: c.name || 'unknown', reason: 'no_xbrl' };
             }
 
@@ -1200,8 +1202,8 @@ export async function registerRoutes(
               effectiveRD = Math.round(details.revenue * rdRate);
             }
 
-            if (effectiveRD <= 0 && !hasExplicitRD) {
-              console.log(`[BLOOM] Skipping ${c.name || 'unknown'} — no R&D data and no XBRL depth`);
+            if (effectiveRD <= 0 && !hasExplicitRD && xbrlGate) {
+              console.log(`[BLOOM] Skipping ${c.name || 'unknown'} — no R&D data and no XBRL depth (gate ON)`);
               return { skipped: true, company: c.name || 'unknown', reason: 'no_xbrl' };
             }
 
@@ -1265,6 +1267,7 @@ export async function registerRoutes(
               },
               applicableCredits: applicableCredits.length,
               creditHealthScore,
+              xbrlDepth: hasXbrlData ? (details.creditXRay as any).xbrlDepth : 0,
             };
           } catch (err: any) { console.warn(`[BLOOM] Skipping candidate:`, err.message); return null; }
         }));
@@ -1298,7 +1301,8 @@ export async function registerRoutes(
                 enrichmentData: r.enrichmentData,
               });
               stored++;
-              send("lead", { company: r.company, domain: r.domain, sic: r.sic, sicDescription: r.sicDescription, opportunityLevel: r.opportunityLevel, credits: r.applicableCredits, creditHealthScore: r.creditHealthScore, stored, total: targetCount });
+              if ((r.xbrlDepth || 0) > 0) withXbrl++; else withoutXbrl++;
+              send("lead", { company: r.company, domain: r.domain, sic: r.sic, sicDescription: r.sicDescription, opportunityLevel: r.opportunityLevel, credits: r.applicableCredits, creditHealthScore: r.creditHealthScore, xbrlDepth: r.xbrlDepth || 0, stored, total: targetCount });
             }
           } catch (storeErr: any) {
             send("error", { company: r.company, error: storeErr.message });
@@ -1308,8 +1312,8 @@ export async function registerRoutes(
         send("progress", { discovered, stored, total: targetCount, scanned: Math.min(i + batchSize, candidates.length), candidates: candidates.length });
       }
 
-      console.log(`[BLOOM] Complete: discovered=${discovered}, stored=${stored}, skippedNoXbrl=${skippedNoXbrl}, skippedStale=${skippedStale}, industry=${industryConfig.label}`);
-      send("complete", { discovered, stored, skippedNoXbrl, skippedStale, scanned: discovered + skippedNoXbrl + skippedStale, industry: industryConfig.label, category: industryConfig.category });
+      console.log(`[BLOOM] Complete: discovered=${discovered}, stored=${stored}, withXbrl=${withXbrl}, withoutXbrl=${withoutXbrl}, skippedNoXbrl=${skippedNoXbrl}, skippedStale=${skippedStale}, industry=${industryConfig.label}`);
+      send("complete", { discovered, stored, withXbrl, withoutXbrl, skippedNoXbrl, skippedStale, scanned: discovered + skippedNoXbrl + skippedStale, industry: industryConfig.label, category: industryConfig.category });
       res.end();
     } catch (err: any) {
       console.error(`[BLOOM] Discover route error:`, err);
