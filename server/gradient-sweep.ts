@@ -26,12 +26,14 @@ export interface CreditXRay {
     foreignTaxCredit: XbrlValue | null;
     investmentCredit: XbrlValue | null;
     generalCredits: XbrlValue | null;
+    otherCredits: XbrlValue | null;
   };
   creditCarryforwards: {
     researchCarryforward: XbrlValue | null;
     foreignCarryforward: XbrlValue | null;
     otherCarryforward: XbrlValue | null;
     totalCarryforwards: XbrlValue | null;
+    carryforwardAmount: XbrlValue | null;
   };
   effectiveRateBreakdown: {
     effectiveRate: XbrlValue | null;
@@ -39,6 +41,10 @@ export interface CreditXRay {
     researchRateImpact: XbrlValue | null;
     foreignRateImpact: XbrlValue | null;
     valuationAllowanceChange: XbrlValue | null;
+    stateRateImpact: XbrlValue | null;
+    nondeductibleExpenses: XbrlValue | null;
+    stockCompImpact: XbrlValue | null;
+    otherAdjustments: XbrlValue | null;
   };
   deferredTaxPosition: {
     grossDeferredAssets: XbrlValue | null;
@@ -46,16 +52,29 @@ export interface CreditXRay {
     valuationAllowance: XbrlValue | null;
     nolCarryforwards: XbrlValue | null;
     nolDomestic: XbrlValue | null;
+    nolForeign: XbrlValue | null;
     deferredIncome: XbrlValue | null;
     inventory: XbrlValue | null;
     otherDeferredAssets: XbrlValue | null;
+    compensationAndBenefits: XbrlValue | null;
+    capitalizedRd: XbrlValue | null;
+  };
+  deferredTaxLiabilities: {
+    propertyPlantEquipment: XbrlValue | null;
+    intangibleAssets: XbrlValue | null;
+    undistributedForeignEarnings: XbrlValue | null;
+    leasingArrangements: XbrlValue | null;
+    otherLiabilities: XbrlValue | null;
+    grossDeferredLiabilities: XbrlValue | null;
   };
   taxCashFlow: {
     totalTaxExpense: XbrlValue | null;
     currentTaxExpense: XbrlValue | null;
     currentFederalTax: XbrlValue | null;
     currentForeignTax: XbrlValue | null;
+    currentStateTax: XbrlValue | null;
     deferredTaxExpense: XbrlValue | null;
+    deferredStateTax: XbrlValue | null;
     taxesPaidNet: XbrlValue | null;
     taxesPaid: XbrlValue | null;
   };
@@ -63,6 +82,17 @@ export interface CreditXRay {
     totalPreTax: XbrlValue | null;
     domesticPreTax: XbrlValue | null;
     foreignPreTax: XbrlValue | null;
+  };
+  capitalExpenditures: {
+    capex: XbrlValue | null;
+    ppeNet: XbrlValue | null;
+    ppeGross: XbrlValue | null;
+    accumulatedDepreciation: XbrlValue | null;
+  };
+  employment: {
+    employeeCount: XbrlValue | null;
+    salariesAndWages: XbrlValue | null;
+    pensionCost: XbrlValue | null;
   };
   supplemental: {
     rdExpense: XbrlValue | null;
@@ -72,6 +102,12 @@ export interface CreditXRay {
     netIncome: XbrlValue | null;
     goodwill: XbrlValue | null;
     stockCompensation: XbrlValue | null;
+    operatingIncome: XbrlValue | null;
+    interestExpense: XbrlValue | null;
+    longTermDebt: XbrlValue | null;
+    costOfRevenue: XbrlValue | null;
+    sgaExpense: XbrlValue | null;
+    acquisitionCost: XbrlValue | null;
   };
   deiFields: {
     sharesOutstanding: XbrlValue | null;
@@ -653,6 +689,7 @@ function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>
     foreignTaxCredit: g("IncomeTaxReconciliationTaxCreditsForeign"),
     investmentCredit: g("IncomeTaxReconciliationTaxCreditsInvestment"),
     generalCredits: g("IncomeTaxReconciliationTaxCredits"),
+    otherCredits: g("IncomeTaxReconciliationTaxCreditsOther"),
   };
   countNonNull(activeCredits);
 
@@ -661,6 +698,7 @@ function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>
     foreignCarryforward: g("DeferredTaxAssetsTaxCreditCarryforwardsForeign"),
     otherCarryforward: g("DeferredTaxAssetsTaxCreditCarryforwardsOther"),
     totalCarryforwards: g("DeferredTaxAssetsTaxCreditCarryforwards"),
+    carryforwardAmount: g("TaxCreditCarryforwardAmount"),
   };
   countNonNull(creditCarryforwards);
 
@@ -670,6 +708,10 @@ function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>
     researchRateImpact: g("EffectiveIncomeTaxRateReconciliationTaxCreditsResearch"),
     foreignRateImpact: g("EffectiveIncomeTaxRateReconciliationTaxCreditsForeign"),
     valuationAllowanceChange: g("EffectiveIncomeTaxRateReconciliationChangeInDeferredTaxAssetsValuationAllowance"),
+    stateRateImpact: g("EffectiveIncomeTaxRateReconciliationStateAndLocalIncomeTaxes"),
+    nondeductibleExpenses: g("EffectiveIncomeTaxRateReconciliationNondeductibleExpense"),
+    stockCompImpact: g("EffectiveIncomeTaxRateReconciliationShareBasedCompensationExcessTaxBenefitPercent"),
+    otherAdjustments: g("EffectiveIncomeTaxRateReconciliationOtherAdjustments"),
   };
   countNonNull(effectiveRateBreakdown);
 
@@ -679,18 +721,33 @@ function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>
     valuationAllowance: g("DeferredTaxAssetsValuationAllowance"),
     nolCarryforwards: g("DeferredTaxAssetsOperatingLossCarryforwards"),
     nolDomestic: g("DeferredTaxAssetsOperatingLossCarryforwardsDomestic"),
+    nolForeign: g("DeferredTaxAssetsOperatingLossCarryforwardsForeign"),
     deferredIncome: g("DeferredTaxAssetsDeferredIncome"),
     inventory: g("DeferredTaxAssetsInventory"),
     otherDeferredAssets: g("DeferredTaxAssetsOther"),
+    compensationAndBenefits: g("DeferredTaxAssetsTaxDeferredExpenseCompensationAndBenefits") || g("DeferredTaxAssetsTaxDeferredExpenseCompensationAndBenefitsShareBasedCompensationCost"),
+    capitalizedRd: g("DeferredTaxAssetsTaxDeferredExpenseReservesAndAccrualsResearchAndDevelopmentCosts") || g("DeferredTaxAssetsDeferredResearchAndDevelopmentCosts"),
   };
   countNonNull(deferredTaxPosition);
+
+  const deferredTaxLiabilities = {
+    propertyPlantEquipment: g("DeferredTaxLiabilitiesPropertyPlantAndEquipment"),
+    intangibleAssets: g("DeferredTaxLiabilitiesGoodwillAndIntangibleAssets"),
+    undistributedForeignEarnings: g("DeferredTaxLiabilitiesUndistributedForeignEarnings"),
+    leasingArrangements: g("DeferredTaxLiabilitiesLeasingArrangements"),
+    otherLiabilities: g("DeferredTaxLiabilitiesOther"),
+    grossDeferredLiabilities: g("DeferredIncomeTaxLiabilities") || g("DeferredTaxLiabilitiesGross"),
+  };
+  countNonNull(deferredTaxLiabilities);
 
   const taxCashFlow = {
     totalTaxExpense: g("IncomeTaxExpenseBenefit"),
     currentTaxExpense: g("CurrentIncomeTaxExpenseBenefit"),
     currentFederalTax: g("CurrentFederalTaxExpenseBenefit"),
     currentForeignTax: g("CurrentForeignTaxExpenseBenefit"),
+    currentStateTax: g("CurrentStateAndLocalTaxExpenseBenefit"),
     deferredTaxExpense: g("DeferredIncomeTaxExpenseBenefit"),
+    deferredStateTax: g("DeferredStateAndLocalIncomeTaxExpenseBenefit"),
     taxesPaidNet: g("IncomeTaxesPaidNet"),
     taxesPaid: g("IncomeTaxesPaid"),
   };
@@ -703,6 +760,21 @@ function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>
   };
   countNonNull(preTaxIncome);
 
+  const capitalExpenditures = {
+    capex: g("PaymentsToAcquirePropertyPlantAndEquipment"),
+    ppeNet: g("PropertyPlantAndEquipmentNet"),
+    ppeGross: g("PropertyPlantAndEquipmentGross"),
+    accumulatedDepreciation: g("AccumulatedDepreciationDepletionAndAmortizationPropertyPlantAndEquipment"),
+  };
+  countNonNull(capitalExpenditures);
+
+  const employment = {
+    employeeCount: d("EntityNumberOfEmployees"),
+    salariesAndWages: g("LaborAndRelatedExpense") || g("SalariesAndWages"),
+    pensionCost: g("DefinedBenefitPlanNetPeriodicBenefitCost"),
+  };
+  countNonNull(employment);
+
   const rdVal = g("ResearchAndDevelopmentExpense") || g("ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost");
   const revVal = g("Revenues") || g("RevenueFromContractWithCustomerExcludingAssessedTax") || g("SalesRevenueNet");
   const supplemental = {
@@ -713,6 +785,12 @@ function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>
     netIncome: g("NetIncomeLoss"),
     goodwill: g("Goodwill"),
     stockCompensation: g("AllocatedShareBasedCompensationExpense"),
+    operatingIncome: g("OperatingIncomeLoss"),
+    interestExpense: g("InterestExpense"),
+    longTermDebt: g("LongTermDebt"),
+    costOfRevenue: g("CostOfGoodsAndServicesSold") || g("CostOfRevenue"),
+    sgaExpense: g("SellingGeneralAndAdministrativeExpense"),
+    acquisitionCost: g("BusinessCombinationConsiderationTransferred1"),
   };
   countNonNull(supplemental);
 
@@ -727,8 +805,11 @@ function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>
     creditCarryforwards,
     effectiveRateBreakdown,
     deferredTaxPosition,
+    deferredTaxLiabilities,
     taxCashFlow,
     preTaxIncome,
+    capitalExpenditures,
+    employment,
     supplemental,
     deiFields,
     xbrlDepth,
@@ -784,8 +865,9 @@ export async function getCompanyDetails(cik: string): Promise<{
         creditIndicator = creditXRay.taxCashFlow.totalTaxExpense.value;
       }
 
-      const emp = extractXbrlValue("EntityNumberOfEmployees", dei);
-      if (emp) employeeCount = emp.value;
+      if (creditXRay.employment.employeeCount) {
+        employeeCount = creditXRay.employment.employeeCount.value;
+      }
 
       if (creditXRay.supplemental.totalAssets) {
         totalAssets = creditXRay.supplemental.totalAssets.value;

@@ -613,6 +613,12 @@ export interface TaxPositionSummary {
   rdExpenseAmount: number | null;
   rdIntensity: number | null;
   creditDensity: number | null;
+  employeeCount: number | null;
+  capex: number | null;
+  ppeNet: number | null;
+  goodwill: number | null;
+  stateRateImpact: number | null;
+  foreignIncome: number | null;
 }
 
 export interface CreditPositionAnalysis {
@@ -751,28 +757,92 @@ function analyzeForeignCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalys
 }
 
 function analyzeDepreciationCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
-  const ppeLiability: number | null = null;
-  const totalAssets = v(xray.supplemental.totalAssets);
+  const ppeLiability = v(xray.deferredTaxLiabilities?.propertyPlantEquipment);
+  const totalAssets = v(xray.supplemental?.totalAssets);
+  const ppeNet = v(xray.capitalExpenditures?.ppeNet);
+  const capex = v(xray.capitalExpenditures?.capex);
+  const accDepr = v(xray.capitalExpenditures?.accumulatedDepreciation);
 
   let status: CreditStatus = "unknown";
   let evidence = "";
+  let potentialAmount: number | null = null;
   let confidence: CreditConfidence = "estimated";
 
   if (ppeLiability !== null && ppeLiability > 0) {
     status = "active";
-    evidence = `${formatDollars(ppeLiability)} deferred tax liability on PP&E indicates active depreciation deductions`;
+    evidence = `${formatDollars(ppeLiability)} deferred tax liability on PP&E indicates active accelerated depreciation`;
+    if (ppeNet !== null) evidence += ` against ${formatDollars(ppeNet)} net PP&E`;
+    if (capex !== null && capex > 0) evidence += `. ${formatDollars(capex)} annual capex`;
     confidence = "xbrl_verified";
-  } else if (ppeLiability === null && totalAssets !== null && totalAssets > 5e6) {
+  } else if (ppeNet !== null && ppeNet > 1e6 && ppeLiability === null) {
+    status = "likely_unclaimed";
+    evidence = `${formatDollars(ppeNet)} in net PP&E but no accelerated depreciation detected`;
+    if (capex !== null && capex > 0) {
+      potentialAmount = Math.round(capex * 0.6 * 0.21);
+      evidence += ` — ${formatDollars(capex)} annual capex could generate ${formatDollars(potentialAmount)} in first-year tax savings via bonus depreciation`;
+    }
+    confidence = "inferred";
+  } else if (totalAssets !== null && totalAssets > 5e6 && ppeLiability === null) {
     status = "likely_unclaimed";
     evidence = `No PP&E deferred tax liability found despite ${formatDollars(totalAssets)} in total assets — §179/bonus depreciation opportunity may exist`;
     confidence = "inferred";
   } else {
     status = "unknown";
     evidence = "Insufficient data to assess depreciation credit utilization";
+    if (accDepr !== null) evidence = `${formatDollars(accDepr)} accumulated depreciation on books — unable to determine if accelerated methods are used`;
     confidence = "estimated";
   }
 
-  return { creditId: credit.id, creditName: credit.name, section: credit.section, status, evidence, claimedAmount: null, potentialAmount: null, confidence };
+  return { creditId: credit.id, creditName: credit.name, section: credit.section, status, evidence, claimedAmount: null, potentialAmount, confidence };
+}
+
+function analyzeEmploymentCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
+  const employeeCount = v(xray.employment?.employeeCount);
+  const wages = v(xray.employment?.salariesAndWages);
+  const stockComp = v(xray.supplemental?.stockCompensation);
+  const totalGeneralCredits = v(xray.activeCredits?.generalCredits);
+  const otherCarryforward = v(xray.creditCarryforwards?.otherCarryforward);
+
+  let status: CreditStatus = "unknown";
+  let evidence = "";
+  let potentialAmount: number | null = null;
+  let confidence: CreditConfidence = "estimated";
+
+  const hasEmployeeSignals = employeeCount !== null || wages !== null || stockComp !== null;
+
+  if (totalGeneralCredits !== null && totalGeneralCredits > 0) {
+    status = "unknown";
+    evidence = `${formatDollars(totalGeneralCredits)} in general credits — ${credit.name} may be included but no specific breakdown available`;
+    confidence = "inferred";
+  } else if (otherCarryforward !== null && otherCarryforward === 0 && totalGeneralCredits !== null && totalGeneralCredits === 0) {
+    status = "likely_unclaimed";
+    if (employeeCount !== null && employeeCount > 0) {
+      evidence = `${employeeCount.toLocaleString()} employees reported but no employment-related credits found`;
+      if (credit.id === "wotc" && employeeCount > 50) {
+        potentialAmount = Math.round(Math.min(employeeCount * 0.05, 100) * 4800);
+        evidence += ` — estimated ${formatDollars(potentialAmount)} potential (5% qualifying hire rate)`;
+      }
+    } else if (wages !== null && wages > 0) {
+      evidence = `${formatDollars(wages)} in labor costs but no employment-related credits claimed`;
+    } else {
+      evidence = `No credit activity found that would indicate ${credit.name} utilization`;
+    }
+    confidence = hasEmployeeSignals ? "inferred" : "estimated";
+  } else if (hasEmployeeSignals) {
+    if (employeeCount !== null) {
+      evidence = `${employeeCount.toLocaleString()} employees — ${credit.name} eligibility likely but utilization unknown`;
+    } else if (wages !== null) {
+      evidence = `${formatDollars(wages)} in labor costs — ${credit.name} eligibility possible`;
+    }
+    status = "unknown";
+    confidence = "inferred";
+  } else {
+    status = "likely_unclaimed";
+    evidence = `No credit activity found that would indicate ${credit.name} utilization`;
+    confidence = "estimated";
+  }
+
+  return { creditId: credit.id, creditName: credit.name, section: credit.section, status, evidence, claimedAmount: null, potentialAmount, confidence };
 }
 
 function analyzeGenericCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
@@ -814,6 +884,9 @@ function analyzeSingleCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysi
   }
   if (credit.id === "sec179_expensing" || credit.id === "bonus_depreciation_168k" || credit.id === "cost_segregation") {
     return analyzeDepreciationCredit(xray, credit);
+  }
+  if (credit.id === "wotc" || credit.id === "erc" || credit.id === "paid_leave_45s" || credit.id === "childcare") {
+    return analyzeEmploymentCredit(xray, credit);
   }
   return analyzeGenericCredit(xray, credit);
 }
@@ -862,6 +935,12 @@ function computeTaxPositionSummary(xray: CreditXRay): TaxPositionSummary {
     rdExpenseAmount: rdExpense,
     rdIntensity,
     creditDensity,
+    employeeCount: v(xray.employment?.employeeCount),
+    capex: v(xray.capitalExpenditures?.capex),
+    ppeNet: v(xray.capitalExpenditures?.ppeNet),
+    goodwill: v(xray.supplemental?.goodwill),
+    stateRateImpact: v(xray.effectiveRateBreakdown?.stateRateImpact),
+    foreignIncome: v(xray.preTaxIncome?.foreignPreTax),
   };
 }
 
@@ -891,11 +970,23 @@ function computeCreditHealthScore(analyses: CreditAnalysisItem[], xray: CreditXR
 
   let score = activeRatio * 100 + partialRatio * 50 - unclaimedRatio * 30;
 
-  const valAllowance = v(xray.deferredTaxPosition.valuationAllowance);
-  const grossDeferred = v(xray.deferredTaxPosition.grossDeferredAssets);
+  const valAllowance = v(xray.deferredTaxPosition?.valuationAllowance);
+  const grossDeferred = v(xray.deferredTaxPosition?.grossDeferredAssets);
   if (valAllowance !== null && grossDeferred !== null && grossDeferred > 0) {
     const vaRatio = valAllowance / grossDeferred;
     if (vaRatio > 0.5) score -= 10;
+    if (vaRatio > 0.9) score -= 5;
+  }
+
+  const effectiveRate = v(xray.effectiveRateBreakdown?.effectiveRate);
+  const statutoryRate = v(xray.effectiveRateBreakdown?.statutoryRate) ?? 0.21;
+  if (effectiveRate !== null && effectiveRate < statutoryRate * 0.5) {
+    score += 15;
+  }
+
+  const ppeLiability = v(xray.deferredTaxLiabilities?.propertyPlantEquipment);
+  if (ppeLiability !== null && ppeLiability > 0) {
+    score += 5;
   }
 
   if (xray.xbrlDepth < 5) {

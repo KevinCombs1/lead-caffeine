@@ -82,6 +82,12 @@ interface TaxPositionSummary {
   rdExpenseAmount: number | null;
   rdIntensity: number | null;
   creditDensity: number | null;
+  employeeCount: number | null;
+  capex: number | null;
+  ppeNet: number | null;
+  goodwill: number | null;
+  stateRateImpact: number | null;
+  foreignIncome: number | null;
 }
 
 interface LeadDelta {
@@ -1390,6 +1396,31 @@ export default function LightEngine() {
                               <div className="px-2 py-1.5 rounded bg-amber-950/3 border border-amber-500/5">
                                 <div className="text-[10px] text-amber-400/25">Credit Density</div>
                                 <div className="text-xs text-amber-200/60 font-medium tabular-nums">{(lead.taxPositionSummary.creditDensity * 100).toFixed(2)}%</div>
+                              </div>
+                            )}
+                            {lead.taxPositionSummary.employeeCount !== null && lead.taxPositionSummary.employeeCount > 0 && (
+                              <div className="px-2 py-1.5 rounded bg-amber-950/3 border border-amber-500/5">
+                                <div className="text-[10px] text-amber-400/25">Employees</div>
+                                <div className="text-xs text-amber-200/60 font-medium tabular-nums">{lead.taxPositionSummary.employeeCount.toLocaleString()}</div>
+                              </div>
+                            )}
+                            {lead.taxPositionSummary.capex !== null && lead.taxPositionSummary.capex > 0 && (
+                              <div className="px-2 py-1.5 rounded bg-amber-950/3 border border-amber-500/5">
+                                <div className="text-[10px] text-amber-400/25">Annual Capex</div>
+                                <div className="text-xs text-amber-200/60 font-medium tabular-nums">{formatCurrency(lead.taxPositionSummary.capex)}</div>
+                              </div>
+                            )}
+                            {lead.taxPositionSummary.ppeNet !== null && lead.taxPositionSummary.ppeNet > 0 && (
+                              <div className="px-2 py-1.5 rounded bg-amber-950/3 border border-amber-500/5">
+                                <div className="text-[10px] text-amber-400/25">Net PP&E</div>
+                                <div className="text-xs text-amber-200/60 font-medium tabular-nums">{formatCurrency(lead.taxPositionSummary.ppeNet)}</div>
+                              </div>
+                            )}
+                            {lead.taxPositionSummary.goodwill !== null && lead.taxPositionSummary.goodwill > 0 && (
+                              <div className="px-2 py-1.5 rounded bg-amber-950/3 border border-amber-500/5">
+                                <div className="text-[10px] text-amber-400/25">Goodwill</div>
+                                <div className="text-xs text-amber-200/60 font-medium tabular-nums">{formatCurrency(lead.taxPositionSummary.goodwill)}</div>
+                                <div className="text-[9px] text-amber-400/20">acquisition activity</div>
                               </div>
                             )}
                           </div>
