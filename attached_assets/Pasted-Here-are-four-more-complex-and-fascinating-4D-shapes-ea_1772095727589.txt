@@ -1,0 +1,82 @@
+Here are four more complex and fascinating 4D shapes, each with a unique structure and a complete, self-contained code file for you to explore.
+
+4D Orthoplex (16-Cell): The 4D analogue of an octahedron. It consists of 8 tetrahedral cells, 24 triangular faces, 32 edges, and 8 vertices. It can be visualized as two interlocking tetrahedral "pyramids" in 4D space. Its projection is a beautiful, symmetrical structure of intersecting lines.
+
+4D Duoprism (Torus Duoprism): A 4D shape formed by the Cartesian product of two 2D shapes. A common example is the Torus Duoprism, which is the product of two circles. It's topologically equivalent to a 4D hypertorus but is constructed differently, resulting in a "grid" of interlocking rings.
+
+4D Hypercone: The 4D analogue of a cone. It has a 3D spherical base and a single apex point in the fourth dimension. As you rotate it in the W-axis, the sphere shrinks to a point and then grows back on the "other side," creating a stunning visual of a 4D extrusion.
+
+4D Great Rhombicuboctahedron (Truncated Cuboctahedron): This is one of the Archimedean solids, extended into 4D. It's a highly complex shape with 26 cells: 8 truncated cubes, 18 octagonal prisms, and 12 cubes. Its projection is an incredibly dense and intricate web of polygons.
+
+Code for the 4D Orthoplex (16-Cell)
+This code visualizes the 16-cell. The W-axis rotation causes its vertices to trace paths, making the structure appear to turn itself inside out.
+
+html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4D Orthoplex (16-Cell)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0d0d0d; color: #e0e0e0; font-family: 'Courier New', Courier, monospace; }
+        #root { width: 100vw; height: 100vh; }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #00ffcc; cursor: pointer; margin-top: -6px; box-shadow: 0 0 10px #00ffcc; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #333; border-radius: 2px; }
+        .glass-panel { background: rgba(20, 20, 30, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/@react-three/fiber@8.15.12/dist/react-three-fiber.umd.js"></script>
+    <script src="https://unpkg.com/@react-three/drei@9.92.7/dist/index.umd.js"></script>
+
+    <script type="text/babel">
+        const { useState, useRef, useMemo } = React;
+        const { Canvas, useFrame } = ReactThreeFiber;
+        const { OrbitControls } = ReactThreeDrei;
+
+        // Function to perform 4D rotation around the XW plane
+        const rotateXW = (point, angle) => {
+            const cos_a = Math.cos(angle);
+            const sin_a = Math.sin(angle);
+            const y = point[1];
+            const z = point[2];
+            const w = point[3];
+            return [point[0], y * cos_a - w * sin_a, z, y * sin_a + w * cos_a];
+        };
+
+        function Orthoplex({ wRotation }) {
+            const groupRef = useRef();
+            const lineMaterial = useMemo(() => new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 2 }), []);
+
+            // Define the 8 vertices of the 16-cell in 4D space
+            const vertices4D = useMemo(() => [
+                [1, 0, 0, 0], [-1, 0, 0, 0],
+                [0, 1, 0, 0], [0, -1, 0, 0],
+                [0, 0, 1, 0], [0, 0, -1, 0],
+                [0, 0, 0, 1], [0, 0, 0, -1]
+            ], []);
+
+            // Define the 24 edges of the 16-cell
+            const edges = useMemo(() => [
+                [0, 2], [0, 3], [0, 4], [0, 5], [1, 2], [1, 3], [1, 4], [1, 5],
+                [2, 4], [2, 5], [3, 4], [3, 5],
+                [0, 6], [0, 7], [1, 6], [1, 7], [2, 6], [2, 7], [3, 6], [3, 7],
+                [4, 6], [4, 7], [5, 6], [5, 7]
+            ], []);
+
+            const lines = useMemo(() => {
+                const rotatedVertices = vertices4D.map(v => rotateXW(v, wRotation));
+                const projectedVertices = rotatedVertices.map(v => {
+                    // Simple perspective projection from 4D to 3D
+                    const distance = 2.5;
+                    const w = 1 / (distance - v[3]);
+                    return [v[0] * w, v[1] * w, v[2] *...
