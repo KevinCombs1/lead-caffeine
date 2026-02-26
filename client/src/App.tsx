@@ -39,7 +39,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
               data-testid="nav-deal-identifier"
             >
               <Radio className="w-3 h-3" />
-              Deal Identifier
+              Deal Paradise
             </Link>
             <Link href="/shapes"
               className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
