@@ -26,24 +26,33 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
 - **Database**: PostgreSQL is used via Drizzle ORM. Key tables include `fiscalLeads`, `prospects`, `domainIntel`, and various tables for scan infrastructure, security, and intel aggregation.
 - **Authentication**: Password-based authentication for user access.
 - **API Endpoints**: A comprehensive set of API endpoints manage authentication, lead discovery, form submission, credit analysis, outreach progression, and security insights.
-- **Phase 2 - 5D Deal Identifier**: This future phase aims to map financial deals across the US by tracking capital flow through "Three Currents" (Transactions & Exchanges, Trend Shifts, Timelines) to identify "Convergence Points" where capital will concentrate. Its architecture includes a config-driven API connector framework for integrating numerous data sources.
+- **Phase 2 - Deal Paradise**: Universal capital convergence engine tracking Three Currents (Transactions, Trends, Timelines) across 11 deal categories. Goal: Scale to 3,300 data streams across 6 batches, then activate CDA (33 prompts).
+  - **Batch 1 complete**: Config-driven framework + 15 zero-auth sources (~45 streams)
+  - **Batch 2 complete**: Data quality layer + deepened sources + 2 new sources (~200+ streams)
+    - Data quality: MD5 dedup hash, in-memory dedup set (50K cap), source health monitoring, entity cache eviction (5K cap)
+    - Deepened: Treasury (3→6), FDIC (2→3), OpenFEMA (2→4), openFDA (4→7), NHTSA (3→5), World Bank (4→10), BLS (4→12), Census (2→3), SEC EDGAR (3→5 with 13F + Form 4)
+    - New sources: USGS Earthquakes (2 endpoints), CoinGecko Crypto (top 20 coins)
+  - **18 total sources**, **~200+ data streams** across config-driven + legacy + custom fetchers
+  - Background scheduler: 5-min check intervals, per-source intervals (CoinGecko 30min, Exchange 24hr, others 6-24hr)
 
 ## External Dependencies
 - **PostgreSQL**: Primary database for data storage.
-- **SEC EDGAR**: Source for company discovery and financial filings (8-K, 10-K, Form D, XBRL data).
+- **SEC EDGAR**: Source for company discovery and financial filings (8-K, 10-K, S-1, Form D, 13F, Form 4).
 - **Three.js + react-three-fiber**: Used for 4D shape rendering in the client.
 - **Cheerio**: Utilized for scraping lead domains to discover contact forms.
-- **USASpending.gov**: (Phase 2) Source for federal contracts, grants, and awards.
-- **Federal Register**: (Phase 2) Source for regulatory actions and rules.
-- **USPTO PatentsView**: (Phase 2) Source for patent grants and technology classifications.
-- **FRED (Federal Reserve)**: (Phase 2) Source for macroeconomic data.
-- **Congress.gov**: (Phase 2) Source for legislative information.
-- **Treasury Fiscal Data**: (Phase 2) Source for national debt, exchange rates, and interest rates.
-- **FDIC BankFind**: (Phase 2) Source for bank financials.
-- **OpenFEMA**: (Phase 2) Source for disaster declarations and grants.
-- **openFDA**: (Phase 2) Source for product recalls and approvals.
-- **NHTSA**: (Phase 2) Source for vehicle recalls.
-- **World Bank**: (Phase 2) Source for international economic indicators.
-- **BLS (Bureau of Labor Statistics)**: (Phase 2) Source for labor market data.
-- **Census Bureau**: (Phase 2) Source for business patterns and trade data.
-- **ExchangeRate-API**: (Phase 2) Source for currency exchange rates.
+- **USASpending.gov**: Federal contracts, grants, and awards.
+- **Federal Register**: Regulatory actions and rules.
+- **USPTO PatentsView**: Patent grants and technology classifications.
+- **FRED (Federal Reserve)**: Macroeconomic data (5 series).
+- **Congress.gov**: Legislative information and bills.
+- **Treasury Fiscal Data**: 6 endpoints — national debt, exchange rates, interest rates, monthly statements, savings bonds, net cost.
+- **FDIC BankFind**: 3 endpoints — failures, financials, institutions.
+- **OpenFEMA**: 4 endpoints — disasters, PA grants, mitigation grants, disaster summaries.
+- **openFDA**: 7 endpoints — drug/food recalls, 510k, PMA, drug approvals, device/drug adverse events.
+- **NHTSA**: 5 manufacturer endpoints — Ford, Tesla, Toyota, Chevrolet, Honda recalls.
+- **World Bank**: 10 indicators across 10 economies — GDP, inflation, unemployment, FDI, trade, govt debt, market cap, lending rates, ease of business, official FX rates.
+- **BLS**: 12 labor series — unemployment, CPI, hourly earnings, JOLTS, PPI, import prices, employment cost, weekly hours, employment level, nonfarm payrolls, labor participation, real hourly earnings.
+- **Census Bureau**: 3 endpoints — county business patterns, exports, imports.
+- **ExchangeRate-API**: 20 major currency pairs.
+- **USGS Earthquake Hazards**: 2 endpoints — global M4.5+ and US M2.5-4.5.
+- **CoinGecko Crypto**: Top 20 coins by market cap with 24h/7d trends.

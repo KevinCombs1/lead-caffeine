@@ -11,7 +11,7 @@ import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-block
 import { submitSingleForm, runBatchSubmission, isActionableForm, type SenderProfile, type FormTarget, type BatchItem } from "./form-submitter";
 import * as cheerio from "cheerio";
 import { smartGet } from "./smart-retry";
-import { initializeSources, getSources, fetchSource, fetchAllSources, getEvents, getEventsCount, getEventsByState, getTrends, getTimelines, getConvergencePoints, getDealStats } from "./deal-sources";
+import { initializeSources, getSources, fetchSource, fetchAllSources, getEvents, getEventsCount, getEventsByState, getTrends, getTimelines, getConvergencePoints, getDealStats, getSourceHealth } from "./deal-sources";
 
 function getOwnerPassword() {
   return process.env.SCANNER_PASSWORD || "passwardo";
@@ -1448,6 +1448,15 @@ export async function registerRoutes(
     try {
       const points = await getConvergencePoints();
       res.json(points);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/deals/source-health", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const health = getSourceHealth();
+      res.json(health);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
