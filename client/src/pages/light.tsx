@@ -58,6 +58,32 @@ interface ApplicableCredit {
   neglectLevel: "high" | "medium" | "low";
 }
 
+interface CreditAnalysisItem {
+  creditId: string;
+  creditName: string;
+  section: string;
+  status: "active" | "unclaimed" | "likely_unclaimed" | "partial" | "maxed_out" | "unknown";
+  evidence: string;
+  claimedAmount: number | null;
+  potentialAmount: number | null;
+  confidence: "xbrl_verified" | "inferred" | "estimated";
+}
+
+interface TaxPositionSummary {
+  effectiveRate: number | null;
+  statutoryRate: number;
+  rateGap: number | null;
+  taxesPaid: number | null;
+  preTaxIncome: number | null;
+  cashTaxRate: number | null;
+  valuationAllowanceRatio: number | null;
+  nolCarryforward: number | null;
+  hasRdExpense: boolean;
+  rdExpenseAmount: number | null;
+  rdIntensity: number | null;
+  creditDensity: number | null;
+}
+
 interface LeadDelta {
   leadId: string;
   company: string;
@@ -74,6 +100,12 @@ interface LeadDelta {
   formCount: number;
   fieldCount: number;
   applicableCredits: ApplicableCredit[];
+  creditAnalysis: CreditAnalysisItem[];
+  creditHealthScore: number;
+  creditHealthLabel: string;
+  taxPositionSummary: TaxPositionSummary | null;
+  estimatedUnclaimedValue: number;
+  xbrlDepth: number;
   ads: AdIntel;
   adNetworkCount: number;
   pixelCount: number;
@@ -93,6 +125,9 @@ interface DeltaMap {
     totalWithAds: number;
     totalAdNetworks: number;
     adNetworkCounts: Record<string, number>;
+    avgCreditHealth: number;
+    totalUnclaimedValue: number;
+    leadsWithXray: number;
   };
 }
 
@@ -221,7 +256,7 @@ export default function LightEngine() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<"forms" | "company" | "ads" | "credits">("forms");
+  const [sortBy, setSortBy] = useState<"forms" | "company" | "ads" | "credits" | "creditHealth" | "unclaimed">("forms");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -498,6 +533,8 @@ export default function LightEngine() {
       if (sortBy === "forms") return b.formCount - a.formCount;
       if (sortBy === "ads") return b.adNetworkCount - a.adNetworkCount;
       if (sortBy === "credits") return b.applicableCredits.length - a.applicableCredits.length;
+      if (sortBy === "creditHealth") return (a.creditHealthScore || 0) - (b.creditHealthScore || 0);
+      if (sortBy === "unclaimed") return (b.estimatedUnclaimedValue || 0) - (a.estimatedUnclaimedValue || 0);
       return a.company.localeCompare(b.company);
     });
     return list;
@@ -604,6 +641,12 @@ export default function LightEngine() {
             {agg.totalWithAds > 0 && <span> · <Flower2 className="w-3 h-3 inline -mt-0.5" /> {agg.totalAdNetworks} ad {agg.totalAdNetworks === 1 ? "network" : "networks"}</span>}
             <span className="text-amber-400/30"> across {agg.totalLeads} leads</span>
             {tree && <span className="text-amber-400/20"> · {tree.totalCount} industries</span>}
+            {agg.leadsWithXray > 0 && (
+              <span className="text-amber-400/25"> · <Radar className="w-3 h-3 inline -mt-0.5" /> {agg.leadsWithXray} x-rayed · avg health {agg.avgCreditHealth}</span>
+            )}
+            {agg.totalUnclaimedValue > 0 && (
+              <span className="text-amber-300/40 font-medium" data-testid="text-total-unclaimed"> · {formatCurrency(agg.totalUnclaimedValue)} unclaimed</span>
+            )}
           </p>
         )}
 
@@ -968,10 +1011,10 @@ export default function LightEngine() {
               </div>
             </div>
             <div className="flex items-center border border-amber-500/10 rounded-md overflow-hidden">
-              {(["forms", "ads", "credits", "company"] as const).map(s => (
+              {(["forms", "ads", "credits", "creditHealth", "unclaimed", "company"] as const).map(s => (
                 <button key={s} onClick={() => setSortBy(s)} data-testid={`button-sort-${s}`}
                   className={`px-2.5 py-1.5 text-xs transition-colors ${sortBy === s ? "bg-amber-500/15 text-amber-200" : "text-amber-400/30"}`}>
-                  {s === "forms" ? "Forms" : s === "ads" ? "Ads" : s === "credits" ? "Credits" : "Name"}
+                  {s === "forms" ? "Forms" : s === "ads" ? "Ads" : s === "credits" ? "Credits" : s === "creditHealth" ? "Health" : s === "unclaimed" ? "Unclaimed" : "Name"}
                 </button>
               ))}
             </div>
@@ -1020,6 +1063,8 @@ export default function LightEngine() {
           const hasForms = lead.formCount > 0;
           const hasAds = lead.ads?.adActivity === "active";
           const hasCredits = lead.applicableCredits.length > 0;
+          const hasCreditXray = (lead.xbrlDepth || 0) > 0 && (lead.creditAnalysis?.length || 0) > 0;
+          const healthScore = Math.max(0, Math.min(100, lead.creditHealthScore || 0));
           const highNeglectCredits = lead.applicableCredits.filter(c => c.neglectLevel === "high");
 
           return (
@@ -1072,6 +1117,22 @@ export default function LightEngine() {
                           <Coins className="w-2.5 h-2.5" /><span className="tabular-nums">{lead.applicableCredits.length}</span>
                         </span>
                       )}
+                      {hasCreditXray && (
+                        <span data-testid={`badge-health-${lead.leadId}`} className={`text-[10px] px-1.5 py-0 rounded font-medium tabular-nums ${
+                          healthScore <= 20 ? "text-amber-200 bg-amber-500/20" :
+                          healthScore <= 40 ? "text-amber-300/80 bg-amber-500/12" :
+                          healthScore <= 60 ? "text-yellow-300/70 bg-yellow-500/10" :
+                          healthScore <= 80 ? "text-lime-300/70 bg-lime-500/10" :
+                          "text-emerald-300/70 bg-emerald-500/10"
+                        }`}>
+                          {healthScore}
+                        </span>
+                      )}
+                      {lead.estimatedUnclaimedValue > 0 && (
+                        <span data-testid={`text-unclaimed-${lead.leadId}`} className="text-[10px] text-amber-300/50 font-medium tabular-nums">
+                          {formatCurrency(lead.estimatedUnclaimedValue)}
+                        </span>
+                      )}
                     </div>
 
                     {submittedLeads.has(lead.leadId) && (
@@ -1106,15 +1167,148 @@ export default function LightEngine() {
                 {expanded && (
                   <div className="mt-4 space-y-4" onClick={e => e.stopPropagation()}>
 
-                    {hasCredits && (
-                      <div className="rounded-lg border border-amber-400/10 bg-amber-950/5 p-4 space-y-2" data-testid={`section-credits-${lead.leadId}`}>
-                        <div className="flex items-center gap-2">
-                          <Coins className="w-3.5 h-3.5 text-amber-400/50" />
-                          <span className="text-xs font-medium text-amber-300/60">Applicable Tax Credits</span>
-                          <span className="text-[11px] text-amber-400/20">{lead.applicableCredits.length} opportunities</span>
+                    {(hasCredits || hasCreditXray) && (
+                      <div className="rounded-lg border border-amber-400/10 bg-amber-950/5 p-4 space-y-3" data-testid={`section-credits-${lead.leadId}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Coins className="w-3.5 h-3.5 text-amber-400/50" />
+                            <span className="text-xs font-medium text-amber-300/60">Credit X-Ray</span>
+                            {hasCreditXray && (
+                              <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-amber-500/15 text-amber-400/40" data-testid={`badge-xbrl-depth-${lead.leadId}`}>
+                                <Radar className="w-2 h-2 mr-0.5 inline" />{lead.xbrlDepth} XBRL concepts
+                              </Badge>
+                            )}
+                          </div>
+                          {lead.estimatedUnclaimedValue > 0 && (
+                            <span className="text-sm font-semibold text-amber-200/70 tabular-nums" data-testid={`text-unclaimed-detail-${lead.leadId}`}>
+                              {formatCurrency(lead.estimatedUnclaimedValue)} unclaimed
+                            </span>
+                          )}
                         </div>
+
+                        {hasCreditXray && (
+                          <div className="flex items-center gap-3 px-3 py-2 rounded bg-amber-950/5 border border-amber-500/5">
+                            <div className="flex items-center gap-2 flex-1">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold tabular-nums ${
+                                healthScore <= 20 ? "bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/30" :
+                                healthScore <= 40 ? "bg-amber-500/12 text-amber-300/80" :
+                                healthScore <= 60 ? "bg-yellow-500/10 text-yellow-300/70" :
+                                healthScore <= 80 ? "bg-lime-500/10 text-lime-300/70" :
+                                "bg-emerald-500/10 text-emerald-300/70"
+                              }`} data-testid={`gauge-health-${lead.leadId}`}>
+                                {healthScore}
+                              </div>
+                              <div>
+                                <div className={`text-xs font-medium ${
+                                  healthScore <= 20 ? "text-amber-200" :
+                                  healthScore <= 40 ? "text-amber-300/80" :
+                                  healthScore <= 60 ? "text-yellow-300/70" :
+                                  healthScore <= 80 ? "text-lime-300/70" :
+                                  "text-emerald-300/70"
+                                }`} data-testid={`text-health-label-${lead.leadId}`}>{lead.creditHealthLabel}</div>
+                                <div className="text-[10px] text-amber-400/25">Credit Health Score</div>
+                              </div>
+                            </div>
+                            <div className="w-24 h-1.5 bg-amber-950/10 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full transition-all ${
+                                healthScore <= 20 ? "bg-amber-400/60" :
+                                healthScore <= 40 ? "bg-amber-400/40" :
+                                healthScore <= 60 ? "bg-yellow-400/40" :
+                                healthScore <= 80 ? "bg-lime-400/40" :
+                                "bg-emerald-400/40"
+                              }`} style={{ width: `${healthScore}%` }} />
+                            </div>
+                          </div>
+                        )}
+
+                        {lead.taxPositionSummary && (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" data-testid={`section-tax-position-${lead.leadId}`}>
+                            {lead.taxPositionSummary.effectiveRate !== null && (
+                              <div className="px-2 py-1.5 rounded bg-amber-950/3 border border-amber-500/5">
+                                <div className="text-[10px] text-amber-400/25">Effective Rate</div>
+                                <div className="text-xs text-amber-200/60 font-medium tabular-nums">{(lead.taxPositionSummary.effectiveRate * 100).toFixed(1)}%</div>
+                                {lead.taxPositionSummary.rateGap !== null && (
+                                  <div className="text-[9px] text-amber-400/20">vs {(lead.taxPositionSummary.statutoryRate * 100).toFixed(0)}% statutory ({lead.taxPositionSummary.rateGap > 0 ? "-" : "+"}{Math.abs(lead.taxPositionSummary.rateGap * 100).toFixed(1)}%)</div>
+                                )}
+                              </div>
+                            )}
+                            {lead.taxPositionSummary.cashTaxRate !== null && (
+                              <div className="px-2 py-1.5 rounded bg-amber-950/3 border border-amber-500/5">
+                                <div className="text-[10px] text-amber-400/25">Cash Tax Rate</div>
+                                <div className="text-xs text-amber-200/60 font-medium tabular-nums">{(lead.taxPositionSummary.cashTaxRate * 100).toFixed(1)}%</div>
+                              </div>
+                            )}
+                            {lead.taxPositionSummary.rdIntensity !== null && (
+                              <div className="px-2 py-1.5 rounded bg-amber-950/3 border border-amber-500/5">
+                                <div className="text-[10px] text-amber-400/25">R&D Intensity</div>
+                                <div className="text-xs text-amber-200/60 font-medium tabular-nums">{(lead.taxPositionSummary.rdIntensity * 100).toFixed(1)}%</div>
+                                {lead.taxPositionSummary.rdExpenseAmount !== null && (
+                                  <div className="text-[9px] text-amber-400/20">{formatCurrency(lead.taxPositionSummary.rdExpenseAmount)} R&D spend</div>
+                                )}
+                              </div>
+                            )}
+                            {lead.taxPositionSummary.nolCarryforward !== null && (
+                              <div className="px-2 py-1.5 rounded bg-amber-950/3 border border-amber-500/5">
+                                <div className="text-[10px] text-amber-400/25">NOL Carryforward</div>
+                                <div className="text-xs text-amber-200/60 font-medium tabular-nums">{formatCurrency(lead.taxPositionSummary.nolCarryforward)}</div>
+                              </div>
+                            )}
+                            {lead.taxPositionSummary.valuationAllowanceRatio !== null && (
+                              <div className="px-2 py-1.5 rounded bg-amber-950/3 border border-amber-500/5">
+                                <div className="text-[10px] text-amber-400/25">VA Ratio</div>
+                                <div className="text-xs text-amber-200/60 font-medium tabular-nums">{(lead.taxPositionSummary.valuationAllowanceRatio * 100).toFixed(0)}%</div>
+                              </div>
+                            )}
+                            {lead.taxPositionSummary.creditDensity !== null && (
+                              <div className="px-2 py-1.5 rounded bg-amber-950/3 border border-amber-500/5">
+                                <div className="text-[10px] text-amber-400/25">Credit Density</div>
+                                <div className="text-xs text-amber-200/60 font-medium tabular-nums">{(lead.taxPositionSummary.creditDensity * 100).toFixed(2)}%</div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         <div className="space-y-1">
-                          {lead.applicableCredits.map((c, ci) => (
+                          {hasCreditXray ? lead.creditAnalysis.map((ca, ci) => {
+                            const statusColors: Record<string, string> = {
+                              active: "text-emerald-300/80 border-emerald-500/20 bg-emerald-500/8",
+                              unclaimed: "text-amber-200 border-amber-400/25 bg-amber-500/10 animate-pulse",
+                              likely_unclaimed: "text-amber-300/70 border-amber-500/20 bg-amber-500/8",
+                              partial: "text-yellow-300/70 border-yellow-500/20 bg-yellow-500/8",
+                              maxed_out: "text-emerald-400/60 border-emerald-500/15",
+                              unknown: "text-zinc-400/50 border-zinc-500/15",
+                            };
+                            const statusLabels: Record<string, string> = {
+                              active: "Active", unclaimed: "Unclaimed", likely_unclaimed: "Likely Unclaimed",
+                              partial: "Partial", maxed_out: "Maxed Out", unknown: "Unknown",
+                            };
+                            return (
+                              <div key={ci} className="flex items-start gap-3 py-2 px-3 rounded border border-amber-500/5 bg-amber-950/3" data-testid={`credit-analysis-${lead.leadId}-${ca.creditId}`}>
+                                <Sparkles className={`w-3 h-3 shrink-0 mt-0.5 ${ca.status === "unclaimed" || ca.status === "likely_unclaimed" ? "text-amber-300/60" : ca.status === "active" ? "text-emerald-400/60" : "text-amber-500/25"}`} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs text-amber-200/60 font-medium">{ca.creditName}</span>
+                                    <span className="text-[10px] text-amber-400/30 font-mono">{ca.section}</span>
+                                    <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${statusColors[ca.status] || statusColors.unknown}`}>
+                                      {statusLabels[ca.status] || ca.status}
+                                    </Badge>
+                                    {ca.confidence === "xbrl_verified" && (
+                                      <span className="text-[9px] text-emerald-400/40 flex items-center gap-0.5"><CheckCircle className="w-2 h-2" />XBRL</span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-amber-400/30 mt-0.5 leading-relaxed">{ca.evidence}</p>
+                                  <div className="flex items-center gap-3 mt-1">
+                                    {ca.claimedAmount !== null && ca.claimedAmount > 0 && (
+                                      <span className="text-[10px] text-emerald-300/50 font-medium tabular-nums">{formatCurrency(ca.claimedAmount)} claimed</span>
+                                    )}
+                                    {ca.potentialAmount !== null && ca.potentialAmount > 0 && (
+                                      <span className="text-[10px] text-amber-300/60 font-medium tabular-nums">{formatCurrency(ca.potentialAmount)} potential</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }) : lead.applicableCredits.map((c, ci) => (
                             <div key={ci} className="flex items-center gap-3 py-1.5 px-3 rounded border border-amber-500/5 bg-amber-950/3">
                               <Sparkles className={`w-3 h-3 shrink-0 ${c.neglectLevel === "high" ? "text-amber-300/60" : c.neglectLevel === "medium" ? "text-amber-400/40" : "text-amber-500/25"}`} />
                               <div className="flex-1 min-w-0">

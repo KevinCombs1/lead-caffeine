@@ -37,8 +37,9 @@ client/src/hooks/use-auth.ts → Auth state hook
 - `SCANNER_PASSWORD` — Login password (default: `"passwardo"`)
 
 ## Key Concepts
-- **Bloom Discovery**: SEC EDGAR sweep by SIC industry code → XBRL financial data → R&D credit scoring
-- **Delta Map**: Joins fiscal leads with scraped forms/ads/tracking to build the outreach view
+- **Bloom Discovery**: SEC EDGAR sweep by SIC industry code → XBRL financial data → Credit X-Ray → R&D credit scoring
+- **Credit X-Ray**: Per-company quantum financial scan extracting 30+ XBRL tax concepts (active credits, credit carryforwards, effective rate breakdown, deferred tax position, tax cash flow, pre-tax income, supplemental context, DEI fields). Produces per-credit analysis with status/evidence/amounts/confidence, credit health score (0-100), tax position summary, and estimated unclaimed value. Built in `gradient-sweep.ts` (extraction) and `credit-universe.ts` (analysis).
+- **Delta Map**: Joins fiscal leads with scraped forms/ads/tracking/credit-xray to build the outreach view
 - **Grace Check**: Bumblebee antenna — checks honeypots, WAF confidence, bot scripts, JS challenges. If defenses are up, the bee moves on gracefully
 - **Light Cycle**: Outreach progression: composed → pushed → exchanged → received
 - **Bumblebee Submission**: Human-timed, one-per-domain, grace-checked form delivery

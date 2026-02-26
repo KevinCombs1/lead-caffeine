@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { scrapedResults, domainSecurityProfiles } from "@shared/schema";
-import { TAX_CREDIT_UNIVERSE, matchLeadCredits } from "./credit-universe";
+import { TAX_CREDIT_UNIVERSE, matchLeadCredits, analyzeCompanyCreditPosition } from "./credit-universe";
 import { SIC_INDUSTRIES, findCompaniesBySIC, getCompanyDetails, loadAllCompanies } from "./gradient-sweep";
 import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-blocklist";
 import { submitSingleForm, runBatchSubmission, isActionableForm, type SenderProfile, type FormTarget, type BatchItem } from "./form-submitter";
@@ -312,7 +312,36 @@ export async function registerRoutes(
             if (sicDesc.toLowerCase().includes(entry.label.toLowerCase().split(" ")[0].toLowerCase())) { industryCategory = entry.category; break; }
           }
         }
-        const applicableCredits = matchLeadCredits(sicDesc, industryCategory).map(c => ({ id: c.id, name: c.name, section: c.section, maxValue: c.maxValue, neglectLevel: c.neglectLevel }));
+        const applicableCredits = matchLeadCredits(sicDesc, industryCategory);
+        const applicableCreditsSummary = applicableCredits.map(c => ({ id: c.id, name: c.name, section: c.section, maxValue: c.maxValue, neglectLevel: c.neglectLevel }));
+
+        const enrichment = lead.enrichmentData as any;
+        let creditAnalysis: any[] = [];
+        let creditHealthScore = 0;
+        let creditHealthLabel = "Unknown";
+        let taxPositionSummary: any = null;
+        let estimatedUnclaimedValue = 0;
+        let xbrlDepth = 0;
+
+        if (enrichment?.creditPosition) {
+          const cp = enrichment.creditPosition;
+          creditAnalysis = cp.creditAnalysis || [];
+          creditHealthScore = cp.creditHealthScore || 0;
+          creditHealthLabel = cp.creditHealthLabel || "Unknown";
+          taxPositionSummary = cp.taxPositionSummary || null;
+          estimatedUnclaimedValue = cp.estimatedUnclaimedValue || 0;
+          xbrlDepth = cp.xbrlDepth || 0;
+        } else if (enrichment?.creditXRay) {
+          try {
+            const position = analyzeCompanyCreditPosition(enrichment.creditXRay, applicableCredits);
+            creditAnalysis = position.creditAnalysis;
+            creditHealthScore = position.creditHealthScore;
+            creditHealthLabel = position.creditHealthLabel;
+            taxPositionSummary = position.taxPositionSummary;
+            estimatedUnclaimedValue = position.estimatedUnclaimedValue;
+            xbrlDepth = position.xbrlDepth;
+          } catch {}
+        }
 
         return {
           leadId: lead.id,
@@ -329,7 +358,13 @@ export async function registerRoutes(
           hiddenFields,
           formCount: forms.length,
           fieldCount,
-          applicableCredits,
+          applicableCredits: applicableCreditsSummary,
+          creditAnalysis,
+          creditHealthScore,
+          creditHealthLabel,
+          taxPositionSummary,
+          estimatedUnclaimedValue,
+          xbrlDepth,
           ads: { adNetworks, trackingPixels, adsExchanges, adActivity: hasAds ? "active" : "none" },
           adNetworkCount: adNetworks.length,
           pixelCount: trackingPixels.length,
@@ -339,12 +374,19 @@ export async function registerRoutes(
 
       leadDeltas.sort((a, b) => b.formCount - a.formCount);
 
+      const leadsWithXray = leadDeltas.filter(l => l.xbrlDepth > 0);
+      const avgCreditHealth = leadsWithXray.length > 0
+        ? Math.round(leadsWithXray.reduce((s, l) => s + l.creditHealthScore, 0) / leadsWithXray.length)
+        : 0;
+      const totalUnclaimedValue = leadDeltas.reduce((s, l) => s + l.estimatedUnclaimedValue, 0);
+
       res.json({
         leads: leadDeltas,
         aggregate: {
           totalLeads: allLeads.length, totalForms, totalFields, withForms, withoutForms, formTypeBreakdown,
           lightCycle: { composed: totalComposed, pushed: totalPushed, received: totalReceived },
           totalWithAds, totalAdNetworks: Object.keys(adNetworkCounts).length, adNetworkCounts,
+          avgCreditHealth, totalUnclaimedValue, leadsWithXray: leadsWithXray.length,
         },
       });
     } catch (err: any) {
@@ -724,6 +766,23 @@ export async function registerRoutes(
             const sicDesc = details.sicDescription || "";
             const applicableCredits = matchLeadCredits(sicDesc, industryConfig.category);
 
+            let creditPosition: any = null;
+            let creditHealthScore = 0;
+            if (details.creditXRay) {
+              try {
+                creditPosition = analyzeCompanyCreditPosition(details.creditXRay, applicableCredits);
+                creditHealthScore = creditPosition.creditHealthScore;
+                if (creditPosition.estimatedUnclaimedValue > 0) {
+                  const unclaimed = creditPosition.estimatedUnclaimedValue;
+                  if (!creditClaimed && unclaimed > estimatedCreditLow) {
+                    opportunityLevel = unclaimed > 500_000 ? "high" : "moderate";
+                  }
+                }
+              } catch (e: any) {
+                console.warn(`[BLOOM] Credit analysis failed for ${companyName}:`, e.message);
+              }
+            }
+
             return {
               company: companyName,
               domain,
@@ -746,8 +805,11 @@ export async function registerRoutes(
                 employeeCount: details.employeeCount || 0,
                 entityType: details.entityType || "",
                 totalAssets: details.totalAssets || 0,
+                creditXRay: details.creditXRay || null,
+                creditPosition: creditPosition || null,
               },
               applicableCredits: applicableCredits.length,
+              creditHealthScore,
             };
           } catch (err: any) { console.warn(`[BLOOM] Skipping candidate:`, err.message); return null; }
         }));
@@ -774,7 +836,7 @@ export async function registerRoutes(
                 enrichmentData: r.enrichmentData,
               });
               stored++;
-              send("lead", { company: r.company, domain: r.domain, sic: r.sic, sicDescription: r.sicDescription, opportunityLevel: r.opportunityLevel, credits: r.applicableCredits, stored, total: targetCount });
+              send("lead", { company: r.company, domain: r.domain, sic: r.sic, sicDescription: r.sicDescription, opportunityLevel: r.opportunityLevel, credits: r.applicableCredits, creditHealthScore: r.creditHealthScore, stored, total: targetCount });
             }
           } catch (storeErr: any) {
             send("error", { company: r.company, error: storeErr.message });

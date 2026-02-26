@@ -15,6 +15,71 @@ async function secFetch(url: string, accept?: string): Promise<Response> {
   }
 }
 
+export interface XbrlValue {
+  value: number;
+  period: string;
+}
+
+export interface CreditXRay {
+  activeCredits: {
+    researchCredit: XbrlValue | null;
+    foreignTaxCredit: XbrlValue | null;
+    investmentCredit: XbrlValue | null;
+    generalCredits: XbrlValue | null;
+  };
+  creditCarryforwards: {
+    researchCarryforward: XbrlValue | null;
+    foreignCarryforward: XbrlValue | null;
+    otherCarryforward: XbrlValue | null;
+    totalCarryforwards: XbrlValue | null;
+  };
+  effectiveRateBreakdown: {
+    effectiveRate: XbrlValue | null;
+    statutoryRate: XbrlValue | null;
+    researchRateImpact: XbrlValue | null;
+    foreignRateImpact: XbrlValue | null;
+    valuationAllowanceChange: XbrlValue | null;
+  };
+  deferredTaxPosition: {
+    grossDeferredAssets: XbrlValue | null;
+    netDeferredAssets: XbrlValue | null;
+    valuationAllowance: XbrlValue | null;
+    nolCarryforwards: XbrlValue | null;
+    nolDomestic: XbrlValue | null;
+    deferredIncome: XbrlValue | null;
+    inventory: XbrlValue | null;
+    otherDeferredAssets: XbrlValue | null;
+  };
+  taxCashFlow: {
+    totalTaxExpense: XbrlValue | null;
+    currentTaxExpense: XbrlValue | null;
+    currentFederalTax: XbrlValue | null;
+    currentForeignTax: XbrlValue | null;
+    deferredTaxExpense: XbrlValue | null;
+    taxesPaidNet: XbrlValue | null;
+    taxesPaid: XbrlValue | null;
+  };
+  preTaxIncome: {
+    totalPreTax: XbrlValue | null;
+    domesticPreTax: XbrlValue | null;
+    foreignPreTax: XbrlValue | null;
+  };
+  supplemental: {
+    rdExpense: XbrlValue | null;
+    revenue: XbrlValue | null;
+    totalAssets: XbrlValue | null;
+    stockholdersEquity: XbrlValue | null;
+    netIncome: XbrlValue | null;
+    goodwill: XbrlValue | null;
+    stockCompensation: XbrlValue | null;
+  };
+  deiFields: {
+    sharesOutstanding: XbrlValue | null;
+    publicFloat: XbrlValue | null;
+  };
+  xbrlDepth: number;
+}
+
 export type IndustryEntry = { label: string; tier: number; codes: string[]; category: string };
 export const SIC_INDUSTRIES: Record<string, IndustryEntry> = {
   software: { label: "Software & IT Services", tier: 1, category: "Technology & Software", codes: ["7371", "7372", "7373", "7374"] },
@@ -555,10 +620,126 @@ export async function findCompaniesBySIC(sicCodes: string[], maxResults: number 
   return results;
 }
 
+export function extractXbrlValue(
+  concept: string,
+  namespace: Record<string, any>,
+  form: string = "10-K",
+): XbrlValue | null {
+  const conceptData = namespace[concept];
+  if (!conceptData) return null;
+  const units = conceptData.units || {};
+  const values = units["USD"] || units["pure"] || units["shares"] || Object.values(units)[0] || [];
+  const filtered = (values as any[])
+    .filter((v: any) => v.form === form)
+    .sort((a: any, b: any) => (b.end || "").localeCompare(a.end || ""));
+  if (filtered.length === 0) return null;
+  return { value: filtered[0].val, period: filtered[0].end };
+}
+
+function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>): CreditXRay {
+  const g = (concept: string) => extractXbrlValue(concept, usGaap);
+  const d = (concept: string) => extractXbrlValue(concept, dei);
+
+  let xbrlDepth = 0;
+  const countNonNull = (obj: Record<string, XbrlValue | null>) => {
+    for (const v of Object.values(obj)) {
+      if (v !== null) xbrlDepth++;
+    }
+    return obj;
+  };
+
+  const activeCredits = {
+    researchCredit: g("IncomeTaxReconciliationTaxCreditsResearch"),
+    foreignTaxCredit: g("IncomeTaxReconciliationTaxCreditsForeign"),
+    investmentCredit: g("IncomeTaxReconciliationTaxCreditsInvestment"),
+    generalCredits: g("IncomeTaxReconciliationTaxCredits"),
+  };
+  countNonNull(activeCredits);
+
+  const creditCarryforwards = {
+    researchCarryforward: g("DeferredTaxAssetsTaxCreditCarryforwardsResearch"),
+    foreignCarryforward: g("DeferredTaxAssetsTaxCreditCarryforwardsForeign"),
+    otherCarryforward: g("DeferredTaxAssetsTaxCreditCarryforwardsOther"),
+    totalCarryforwards: g("DeferredTaxAssetsTaxCreditCarryforwards"),
+  };
+  countNonNull(creditCarryforwards);
+
+  const effectiveRateBreakdown = {
+    effectiveRate: g("EffectiveIncomeTaxRateContinuingOperations"),
+    statutoryRate: g("EffectiveIncomeTaxRateReconciliationAtFederalStatutoryIncomeTaxRate"),
+    researchRateImpact: g("EffectiveIncomeTaxRateReconciliationTaxCreditsResearch"),
+    foreignRateImpact: g("EffectiveIncomeTaxRateReconciliationTaxCreditsForeign"),
+    valuationAllowanceChange: g("EffectiveIncomeTaxRateReconciliationChangeInDeferredTaxAssetsValuationAllowance"),
+  };
+  countNonNull(effectiveRateBreakdown);
+
+  const deferredTaxPosition = {
+    grossDeferredAssets: g("DeferredTaxAssetsGross"),
+    netDeferredAssets: g("DeferredTaxAssetsNet"),
+    valuationAllowance: g("DeferredTaxAssetsValuationAllowance"),
+    nolCarryforwards: g("DeferredTaxAssetsOperatingLossCarryforwards"),
+    nolDomestic: g("DeferredTaxAssetsOperatingLossCarryforwardsDomestic"),
+    deferredIncome: g("DeferredTaxAssetsDeferredIncome"),
+    inventory: g("DeferredTaxAssetsInventory"),
+    otherDeferredAssets: g("DeferredTaxAssetsOther"),
+  };
+  countNonNull(deferredTaxPosition);
+
+  const taxCashFlow = {
+    totalTaxExpense: g("IncomeTaxExpenseBenefit"),
+    currentTaxExpense: g("CurrentIncomeTaxExpenseBenefit"),
+    currentFederalTax: g("CurrentFederalTaxExpenseBenefit"),
+    currentForeignTax: g("CurrentForeignTaxExpenseBenefit"),
+    deferredTaxExpense: g("DeferredIncomeTaxExpenseBenefit"),
+    taxesPaidNet: g("IncomeTaxesPaidNet"),
+    taxesPaid: g("IncomeTaxesPaid"),
+  };
+  countNonNull(taxCashFlow);
+
+  const preTaxIncome = {
+    totalPreTax: g("IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"),
+    domesticPreTax: g("IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic"),
+    foreignPreTax: g("IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign"),
+  };
+  countNonNull(preTaxIncome);
+
+  const rdVal = g("ResearchAndDevelopmentExpense") || g("ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost");
+  const revVal = g("Revenues") || g("RevenueFromContractWithCustomerExcludingAssessedTax") || g("SalesRevenueNet");
+  const supplemental = {
+    rdExpense: rdVal,
+    revenue: revVal,
+    totalAssets: g("Assets"),
+    stockholdersEquity: g("StockholdersEquity"),
+    netIncome: g("NetIncomeLoss"),
+    goodwill: g("Goodwill"),
+    stockCompensation: g("AllocatedShareBasedCompensationExpense"),
+  };
+  countNonNull(supplemental);
+
+  const deiFields = {
+    sharesOutstanding: d("EntityCommonStockSharesOutstanding"),
+    publicFloat: d("EntityPublicFloat"),
+  };
+  countNonNull(deiFields);
+
+  return {
+    activeCredits,
+    creditCarryforwards,
+    effectiveRateBreakdown,
+    deferredTaxPosition,
+    taxCashFlow,
+    preTaxIncome,
+    supplemental,
+    deiFields,
+    xbrlDepth,
+  };
+}
+
 export async function getCompanyDetails(cik: string): Promise<{
   sic?: string; sicDescription?: string; stateOfIncorporation?: string;
   rdExpense?: number; rdPeriod?: string; revenue?: number; creditIndicator?: number;
   entityType?: string; ein?: string; employeeCount?: number; totalAssets?: number;
+  creditXRay?: CreditXRay;
 } | null> {
   try {
     const [subRes, factsRes] = await Promise.all([
@@ -581,40 +762,37 @@ export async function getCompanyDetails(cik: string): Promise<{
     let rdExpense: number | undefined, rdPeriod: string | undefined, revenue: number | undefined;
     let creditIndicator: number | undefined;
     let employeeCount: number | undefined, totalAssets: number | undefined;
+    let creditXRay: CreditXRay | undefined;
 
     if (factsRes.ok) {
       const facts = await factsRes.json() as any;
       const usGaap = facts?.facts?.["us-gaap"] || {};
       const dei = facts?.facts?.["dei"] || {};
 
-      const extractLatest10K = (conceptName: string, namespace?: Record<string, any>): { value: number; period: string } | null => {
-        const source = namespace || usGaap;
-        const concept = source[conceptName];
-        if (!concept) return null;
-        const units = concept.units || {};
-        const values = units["USD"] || units["pure"] || Object.values(units)[0] || [];
-        const tenK = values.filter((v: any) => v.form === "10-K").sort((a: any, b: any) => (b.end || "").localeCompare(a.end || ""));
-        if (tenK.length === 0) return null;
-        return { value: tenK[0].val, period: tenK[0].end };
-      };
+      creditXRay = extractCreditXRay(usGaap, dei);
 
-      const rd = extractLatest10K("ResearchAndDevelopmentExpense") || extractLatest10K("ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost");
-      if (rd) { rdExpense = rd.value; rdPeriod = rd.period; }
+      if (creditXRay.supplemental.rdExpense) {
+        rdExpense = creditXRay.supplemental.rdExpense.value;
+        rdPeriod = creditXRay.supplemental.rdExpense.period;
+      }
 
-      const rev = extractLatest10K("Revenues") || extractLatest10K("RevenueFromContractWithCustomerExcludingAssessedTax") || extractLatest10K("SalesRevenueNet");
-      if (rev) revenue = rev.value;
+      if (creditXRay.supplemental.revenue) {
+        revenue = creditXRay.supplemental.revenue.value;
+      }
 
-      const tax = extractLatest10K("IncomeTaxExpenseBenefit");
-      if (tax) creditIndicator = tax.value;
+      if (creditXRay.taxCashFlow.totalTaxExpense) {
+        creditIndicator = creditXRay.taxCashFlow.totalTaxExpense.value;
+      }
 
-      const emp = extractLatest10K("EntityNumberOfEmployees", dei);
+      const emp = extractXbrlValue("EntityNumberOfEmployees", dei);
       if (emp) employeeCount = emp.value;
 
-      const assets = extractLatest10K("Assets");
-      if (assets) totalAssets = assets.value;
+      if (creditXRay.supplemental.totalAssets) {
+        totalAssets = creditXRay.supplemental.totalAssets.value;
+      }
     }
 
-    return { sic, sicDescription, stateOfIncorporation, rdExpense, rdPeriod, revenue, creditIndicator, entityType, ein, employeeCount, totalAssets };
+    return { sic, sicDescription, stateOfIncorporation, rdExpense, rdPeriod, revenue, creditIndicator, entityType, ein, employeeCount, totalAssets, creditXRay };
   } catch (e: any) {
     console.warn(`[BLOOM] getCompanyDetails error for CIK ${cik}:`, e.message || e);
     return null;

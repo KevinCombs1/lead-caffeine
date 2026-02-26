@@ -1,3 +1,7 @@
+import type { CreditXRay, XbrlValue } from "./gradient-sweep";
+
+export type { CreditXRay };
+
 export interface TaxCredit {
   id: string;
   name: string;
@@ -576,4 +580,376 @@ export function matchLeadCredits(sicDescription?: string | null, category?: stri
     }
     return false;
   });
+}
+
+function v(xbrl: XbrlValue | null | undefined): number | null {
+  return xbrl?.value ?? null;
+}
+
+export type CreditStatus = "active" | "unclaimed" | "likely_unclaimed" | "partial" | "maxed_out" | "unknown";
+export type CreditConfidence = "xbrl_verified" | "inferred" | "estimated";
+
+export interface CreditAnalysisItem {
+  creditId: string;
+  creditName: string;
+  section: string;
+  status: CreditStatus;
+  evidence: string;
+  claimedAmount: number | null;
+  potentialAmount: number | null;
+  confidence: CreditConfidence;
+}
+
+export interface TaxPositionSummary {
+  effectiveRate: number | null;
+  statutoryRate: number | null;
+  rateGap: number | null;
+  taxesPaid: number | null;
+  preTaxIncome: number | null;
+  cashTaxRate: number | null;
+  valuationAllowanceRatio: number | null;
+  nolCarryforward: number | null;
+  hasRdExpense: boolean;
+  rdExpenseAmount: number | null;
+  rdIntensity: number | null;
+  creditDensity: number | null;
+}
+
+export interface CreditPositionAnalysis {
+  creditAnalysis: CreditAnalysisItem[];
+  creditHealthScore: number;
+  creditHealthLabel: string;
+  estimatedUnclaimedValue: number;
+  taxPositionSummary: TaxPositionSummary;
+  xbrlDepth: number;
+}
+
+function formatDollars(amount: number): string {
+  if (Math.abs(amount) >= 1e9) return `$${(amount / 1e9).toFixed(2)}B`;
+  if (Math.abs(amount) >= 1e6) return `$${(amount / 1e6).toFixed(1)}M`;
+  if (Math.abs(amount) >= 1e3) return `$${(amount / 1e3).toFixed(0)}K`;
+  return `$${amount.toFixed(0)}`;
+}
+
+function getCreditHealthLabel(score: number): string {
+  if (score <= 20) return "Credit Desert";
+  if (score <= 40) return "Underexplored";
+  if (score <= 60) return "Partial Coverage";
+  if (score <= 80) return "Well Managed";
+  return "Fully Optimized";
+}
+
+function analyzeRdCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
+  const reconciliation = v(xray.activeCredits.researchCredit);
+  const carryforward = v(xray.creditCarryforwards.researchCarryforward);
+  const rateImpact = v(xray.effectiveRateBreakdown.researchRateImpact);
+  const rdExpense = v(xray.supplemental.rdExpense);
+
+  let status: CreditStatus = "unknown";
+  let evidence = "";
+  let claimedAmount: number | null = null;
+  let potentialAmount: number | null = null;
+  let confidence: CreditConfidence = "estimated";
+
+  if (reconciliation !== null && reconciliation > 0) {
+    status = "active";
+    claimedAmount = reconciliation;
+    evidence = `${formatDollars(reconciliation)} R&D credit claimed in latest 10-K`;
+    confidence = "xbrl_verified";
+    if (carryforward !== null && carryforward > 0) {
+      evidence += `. ${formatDollars(carryforward)} in R&D credit carryforwards`;
+    }
+  } else if (carryforward !== null && carryforward > 0) {
+    status = "partial";
+    claimedAmount = null;
+    evidence = `${formatDollars(carryforward)} R&D credit carryforward exists but no active reconciliation credit found — may have lapsed or been fully utilized`;
+    confidence = "xbrl_verified";
+  } else if (rateImpact !== null && rateImpact !== 0) {
+    status = "active";
+    evidence = `R&D credit rate impact of ${(Math.abs(rateImpact) * 100).toFixed(2)}% visible in effective rate reconciliation`;
+    confidence = "xbrl_verified";
+  } else if (reconciliation === null && carryforward === null) {
+    if (rdExpense !== null && rdExpense > 0) {
+      status = "unclaimed";
+      potentialAmount = Math.round(rdExpense * 0.065);
+      evidence = `${formatDollars(rdExpense)} in R&D spending but no R&D credit activity found in any filing — estimated ${formatDollars(potentialAmount)} potential credit`;
+      confidence = "inferred";
+    } else {
+      status = "likely_unclaimed";
+      evidence = "No R&D credit activity found in any filing";
+      confidence = "estimated";
+    }
+  }
+
+  return { creditId: credit.id, creditName: credit.name, section: credit.section, status, evidence, claimedAmount, potentialAmount, confidence };
+}
+
+function analyzeInvestmentEnergyCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
+  const investmentCredit = v(xray.activeCredits.investmentCredit);
+  const totalAssets = v(xray.supplemental.totalAssets);
+
+  let status: CreditStatus = "unknown";
+  let evidence = "";
+  let claimedAmount: number | null = null;
+  let potentialAmount: number | null = null;
+  let confidence: CreditConfidence = "estimated";
+
+  if (investmentCredit !== null && investmentCredit > 0) {
+    status = "active";
+    claimedAmount = investmentCredit;
+    evidence = `${formatDollars(investmentCredit)} investment/energy credit claimed in latest 10-K`;
+    confidence = "xbrl_verified";
+  } else if (investmentCredit !== null && investmentCredit === 0) {
+    status = "unclaimed";
+    evidence = "Investment tax credit reported as $0 — energy property investments may qualify";
+    confidence = "xbrl_verified";
+  } else {
+    status = "likely_unclaimed";
+    evidence = "No investment/energy credit activity found in filings";
+    if (totalAssets !== null && totalAssets > 1e8) {
+      evidence += " — significant asset base suggests potential for energy property investments";
+    }
+    confidence = "estimated";
+  }
+
+  return { creditId: credit.id, creditName: credit.name, section: credit.section, status, evidence, claimedAmount, potentialAmount, confidence };
+}
+
+function analyzeForeignCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
+  const foreignCredit = v(xray.activeCredits.foreignTaxCredit);
+  const foreignCarryforward = v(xray.creditCarryforwards.foreignCarryforward);
+  const foreignIncome = v(xray.preTaxIncome.foreignPreTax);
+
+  let status: CreditStatus = "unknown";
+  let evidence = "";
+  let claimedAmount: number | null = null;
+  let confidence: CreditConfidence = "estimated";
+
+  if (foreignCredit !== null && foreignCredit > 0) {
+    status = "active";
+    claimedAmount = foreignCredit;
+    evidence = `${formatDollars(foreignCredit)} foreign tax credit claimed`;
+    confidence = "xbrl_verified";
+    if (foreignCarryforward !== null && foreignCarryforward > 0) {
+      evidence += `. ${formatDollars(foreignCarryforward)} in foreign credit carryforwards`;
+    }
+  } else if (foreignCarryforward !== null && foreignCarryforward > 0) {
+    status = "partial";
+    evidence = `${formatDollars(foreignCarryforward)} foreign credit carryforward but no active credit in current period`;
+    confidence = "xbrl_verified";
+  } else if (foreignIncome !== null && foreignIncome > 0) {
+    status = "likely_unclaimed";
+    evidence = `Foreign income of ${formatDollars(foreignIncome)} present but no foreign tax credits claimed`;
+    confidence = "inferred";
+  } else {
+    status = "unknown";
+    evidence = "No foreign credit data available";
+    confidence = "estimated";
+  }
+
+  return { creditId: "foreign_credit", creditName: "Foreign Tax Credit", section: "IRC §904", status, evidence, claimedAmount, potentialAmount: null, confidence };
+}
+
+function analyzeDepreciationCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
+  const ppeLiability: number | null = null;
+  const totalAssets = v(xray.supplemental.totalAssets);
+
+  let status: CreditStatus = "unknown";
+  let evidence = "";
+  let confidence: CreditConfidence = "estimated";
+
+  if (ppeLiability !== null && ppeLiability > 0) {
+    status = "active";
+    evidence = `${formatDollars(ppeLiability)} deferred tax liability on PP&E indicates active depreciation deductions`;
+    confidence = "xbrl_verified";
+  } else if (ppeLiability === null && totalAssets !== null && totalAssets > 5e6) {
+    status = "likely_unclaimed";
+    evidence = `No PP&E deferred tax liability found despite ${formatDollars(totalAssets)} in total assets — §179/bonus depreciation opportunity may exist`;
+    confidence = "inferred";
+  } else {
+    status = "unknown";
+    evidence = "Insufficient data to assess depreciation credit utilization";
+    confidence = "estimated";
+  }
+
+  return { creditId: credit.id, creditName: credit.name, section: credit.section, status, evidence, claimedAmount: null, potentialAmount: null, confidence };
+}
+
+function analyzeGenericCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
+  const totalGeneralCredits = v(xray.activeCredits.generalCredits);
+  const otherCarryforward = v(xray.creditCarryforwards.otherCarryforward);
+  const totalCarryforwards = v(xray.creditCarryforwards.totalCarryforwards);
+
+  let status: CreditStatus = "unknown";
+  let evidence = "";
+  let confidence: CreditConfidence = "estimated";
+
+  if (otherCarryforward !== null && otherCarryforward === 0 && totalGeneralCredits !== null && totalGeneralCredits === 0) {
+    status = "likely_unclaimed";
+    evidence = `No general credits or carryforwards found — ${credit.name} likely not being utilized`;
+    confidence = "inferred";
+  } else if (totalGeneralCredits !== null && totalGeneralCredits > 0) {
+    status = "unknown";
+    evidence = `${formatDollars(totalGeneralCredits)} in general credits claimed but no specific breakdown available for ${credit.name}`;
+    confidence = "inferred";
+  } else if (totalCarryforwards !== null && totalCarryforwards > 0) {
+    status = "unknown";
+    evidence = `${formatDollars(totalCarryforwards)} in total credit carryforwards exist — ${credit.name} status unclear`;
+    confidence = "inferred";
+  } else {
+    status = "likely_unclaimed";
+    evidence = `No credit activity found that would indicate ${credit.name} utilization`;
+    confidence = "estimated";
+  }
+
+  return { creditId: credit.id, creditName: credit.name, section: credit.section, status, evidence, claimedAmount: null, potentialAmount: null, confidence };
+}
+
+function analyzeSingleCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
+  if (credit.id === "rd_41" || credit.id === "rd_payroll_offset") {
+    return analyzeRdCredit(xray, credit);
+  }
+  if (credit.id === "itc" || credit.id === "adv_energy_48c") {
+    return analyzeInvestmentEnergyCredit(xray, credit);
+  }
+  if (credit.id === "sec179_expensing" || credit.id === "bonus_depreciation_168k" || credit.id === "cost_segregation") {
+    return analyzeDepreciationCredit(xray, credit);
+  }
+  return analyzeGenericCredit(xray, credit);
+}
+
+function computeTaxPositionSummary(xray: CreditXRay): TaxPositionSummary {
+  const effectiveRate = v(xray.effectiveRateBreakdown.effectiveRate);
+  const statutoryRate = v(xray.effectiveRateBreakdown.statutoryRate) ?? 0.21;
+  const rateGap = effectiveRate !== null ? statutoryRate - effectiveRate : null;
+
+  const taxesPaid = v(xray.taxCashFlow.taxesPaidNet) ?? v(xray.taxCashFlow.taxesPaid);
+  const preTaxIncome = v(xray.preTaxIncome.totalPreTax);
+  const cashTaxRate = (taxesPaid !== null && preTaxIncome !== null && preTaxIncome !== 0)
+    ? taxesPaid / preTaxIncome
+    : null;
+
+  const grossDeferred = v(xray.deferredTaxPosition.grossDeferredAssets);
+  const valAllowance = v(xray.deferredTaxPosition.valuationAllowance);
+  const valuationAllowanceRatio = (valAllowance !== null && grossDeferred !== null && grossDeferred !== 0)
+    ? valAllowance / grossDeferred
+    : null;
+
+  const rdExpense = v(xray.supplemental.rdExpense);
+  const revenue = v(xray.supplemental.revenue);
+  const rdIntensity = (rdExpense !== null && revenue !== null && revenue !== 0)
+    ? rdExpense / revenue
+    : null;
+
+  const totalCredits = (v(xray.activeCredits.researchCredit) ?? 0) +
+    (v(xray.activeCredits.foreignTaxCredit) ?? 0) +
+    (v(xray.activeCredits.investmentCredit) ?? 0) +
+    (v(xray.activeCredits.generalCredits) ?? 0);
+  const creditDensity = (totalCredits > 0 && preTaxIncome !== null && preTaxIncome !== 0)
+    ? totalCredits / Math.abs(preTaxIncome)
+    : null;
+
+  return {
+    effectiveRate,
+    statutoryRate,
+    rateGap,
+    taxesPaid,
+    preTaxIncome,
+    cashTaxRate,
+    valuationAllowanceRatio,
+    nolCarryforward: v(xray.deferredTaxPosition.nolCarryforwards),
+    hasRdExpense: rdExpense !== null && rdExpense > 0,
+    rdExpenseAmount: rdExpense,
+    rdIntensity,
+    creditDensity,
+  };
+}
+
+function computeCreditHealthScore(analyses: CreditAnalysisItem[], xray: CreditXRay): number {
+  if (analyses.length === 0) return 50;
+
+  let activeCount = 0;
+  let unclaimedCount = 0;
+  let likelyUnclaimedCount = 0;
+  let partialCount = 0;
+  let unknownCount = 0;
+
+  for (const a of analyses) {
+    switch (a.status) {
+      case "active": case "maxed_out": activeCount++; break;
+      case "unclaimed": unclaimedCount++; break;
+      case "likely_unclaimed": likelyUnclaimedCount++; break;
+      case "partial": partialCount++; break;
+      case "unknown": unknownCount++; break;
+    }
+  }
+
+  const total = analyses.length;
+  const activeRatio = activeCount / total;
+  const partialRatio = partialCount / total;
+  const unclaimedRatio = (unclaimedCount + likelyUnclaimedCount) / total;
+
+  let score = activeRatio * 100 + partialRatio * 50 - unclaimedRatio * 30;
+
+  const valAllowance = v(xray.deferredTaxPosition.valuationAllowance);
+  const grossDeferred = v(xray.deferredTaxPosition.grossDeferredAssets);
+  if (valAllowance !== null && grossDeferred !== null && grossDeferred > 0) {
+    const vaRatio = valAllowance / grossDeferred;
+    if (vaRatio > 0.5) score -= 10;
+  }
+
+  if (xray.xbrlDepth < 5) {
+    score = Math.min(score, 50);
+  }
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+export function analyzeCompanyCreditPosition(
+  creditXRay: CreditXRay,
+  applicableCredits: TaxCredit[]
+): CreditPositionAnalysis {
+  const creditAnalysis: CreditAnalysisItem[] = [];
+
+  const hasForeignActivity = creditXRay.activeCredits.foreignTaxCredit !== null ||
+    creditXRay.creditCarryforwards.foreignCarryforward !== null ||
+    (creditXRay.preTaxIncome.foreignPreTax !== null && v(creditXRay.preTaxIncome.foreignPreTax) !== null && v(creditXRay.preTaxIncome.foreignPreTax)! > 0);
+
+  for (const credit of applicableCredits) {
+    creditAnalysis.push(analyzeSingleCredit(creditXRay, credit));
+  }
+
+  if (hasForeignActivity && !applicableCredits.some(c => c.id === "foreign_credit")) {
+    const foreignTc: TaxCredit = {
+      id: "foreign_credit",
+      name: "Foreign Tax Credit",
+      section: "IRC §904",
+      description: "Credit for taxes paid to foreign governments",
+      maxValue: "Varies",
+      applicableCategories: [],
+      neglectLevel: "low",
+    };
+    creditAnalysis.push(analyzeForeignCredit(creditXRay, foreignTc));
+  }
+
+  const creditHealthScore = computeCreditHealthScore(creditAnalysis, creditXRay);
+  const creditHealthLabel = getCreditHealthLabel(creditHealthScore);
+
+  let estimatedUnclaimedValue = 0;
+  for (const a of creditAnalysis) {
+    if ((a.status === "unclaimed" || a.status === "likely_unclaimed") && a.potentialAmount !== null) {
+      estimatedUnclaimedValue += a.potentialAmount;
+    }
+  }
+
+  const taxPositionSummary = computeTaxPositionSummary(creditXRay);
+
+  return {
+    creditAnalysis,
+    creditHealthScore,
+    creditHealthLabel,
+    estimatedUnclaimedValue,
+    taxPositionSummary,
+    xbrlDepth: creditXRay.xbrlDepth,
+  };
 }
