@@ -4,11 +4,13 @@ import session from "express-session";
 import { storage } from "./storage";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
-import { scrapedResults, domainSecurityProfiles } from "@shared/schema";
+import { scrapedResults, scrapeJobs, domainSecurityProfiles } from "@shared/schema";
 import { TAX_CREDIT_UNIVERSE, matchLeadCredits, analyzeCompanyCreditPosition } from "./credit-universe";
 import { SIC_INDUSTRIES, findCompaniesBySIC, getCompanyDetails, loadAllCompanies } from "./gradient-sweep";
 import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-blocklist";
 import { submitSingleForm, runBatchSubmission, isActionableForm, type SenderProfile, type FormTarget, type BatchItem } from "./form-submitter";
+import * as cheerio from "cheerio";
+import { smartGet } from "./smart-retry";
 
 function getOwnerPassword() {
   return process.env.SCANNER_PASSWORD || "passwardo";
@@ -954,6 +956,169 @@ export async function registerRoutes(
       send("fatal", { error: err.message });
       res.end();
     }
+  });
+
+  app.post("/api/light/discover-forms", requireAuth, async (req, res) => {
+    const { leadIds, all } = req.body as { leadIds?: string[]; all?: boolean };
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    const send = (type: string, data: any) => {
+      res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+    };
+
+    try {
+      const allLeads = await storage.getFiscalLeads({}, 10000, 0);
+      const existingForms = await db.select().from(scrapedResults).where(sql`${scrapedResults.extractorType} = 'forms'`);
+      const domainsWithForms = new Set(existingForms.map(r => r.domain));
+
+      let targets = allLeads.filter(l => l.domain && !domainsWithForms.has(l.domain));
+      if (leadIds && !all) {
+        const idSet = new Set(leadIds);
+        targets = allLeads.filter(l => l.domain && idSet.has(String(l.id)));
+      }
+
+      const uniqueDomains = new Map<string, typeof targets[0]>();
+      for (const t of targets) {
+        if (t.domain && !uniqueDomains.has(t.domain)) uniqueDomains.set(t.domain, t);
+      }
+
+      const domainList = Array.from(uniqueDomains.entries());
+      send("phase", { message: `Scanning ${domainList.length} domains for contact forms...` });
+
+      let found = 0, failed = 0, skipped = 0;
+
+      for (let i = 0; i < domainList.length; i++) {
+        const [domain, lead] = domainList[i];
+        send("progress", { current: i + 1, total: domainList.length, domain, company: lead.company });
+
+        if (isInfrastructureDomain(domain)) {
+          skipped++;
+          send("skip", { domain, reason: "infrastructure domain" });
+          continue;
+        }
+
+        try {
+          const contactPaths = ["/contact", "/contact-us", "/get-in-touch", "/reach-us"];
+          const urls = [`https://${domain}`, ...contactPaths.map(p => `https://${domain}${p}`)];
+
+          const [jobRow] = await db.insert(scrapeJobs).values({
+            targetUrl: `https://${domain}`,
+            domain,
+            status: "completed",
+            extractors: { forms: true, hidden_fields: true },
+            stealthMode: "incognito",
+          }).returning();
+
+          let domainForms: any[] = [];
+          let domainHiddenFields: any[] = [];
+
+          for (const url of urls) {
+            try {
+              const resp = await smartGet(url, {
+                maxRetries: 1,
+                timeout: 15000,
+                stealthMode: "incognito",
+              });
+
+              if (!resp.data || typeof resp.data !== "string") continue;
+
+              const $ = cheerio.load(resp.data);
+              $("form").each((_, el) => {
+                const action = $(el).attr("action") || "";
+                const method = ($(el).attr("method") || "POST").toUpperCase();
+                const fields: any[] = [];
+                const hiddenFields: any[] = [];
+
+                $(el).find("input, textarea, select").each((_, inp) => {
+                  const tag = $(inp).prop("tagName")?.toLowerCase() || "input";
+                  const type = $(inp).attr("type") || (tag === "textarea" ? "textarea" : tag === "select" ? "select" : "text");
+                  const name = $(inp).attr("name") || "";
+                  const placeholder = $(inp).attr("placeholder") || "";
+                  const id = $(inp).attr("id") || "";
+                  const required = $(inp).attr("required") !== undefined;
+
+                  if (type.toLowerCase() === "hidden") {
+                    hiddenFields.push({ name, value: $(inp).attr("value") || "", form: action });
+                    domainHiddenFields.push({ name, value: $(inp).attr("value") || "", form: action });
+                  } else if (type !== "submit" && type !== "button" && name) {
+                    fields.push({ tag, type, name, placeholder, id, required });
+                  }
+                });
+
+                if (fields.length > 0 || hiddenFields.length > 0) {
+                  let resolvedAction = action;
+                  if (action && !action.startsWith("http")) {
+                    resolvedAction = action.startsWith("/") ? `https://${domain}${action}` : `https://${domain}/${action}`;
+                  }
+                  if (!resolvedAction) resolvedAction = url;
+
+                  const existing = domainForms.find(f => f.action === resolvedAction);
+                  if (!existing) {
+                    domainForms.push({
+                      action: resolvedAction,
+                      method,
+                      fields,
+                      hiddenFields,
+                      source: url,
+                    });
+                  }
+                }
+              });
+            } catch {
+            }
+
+            await new Promise(r => setTimeout(r, 300 + Math.random() * 700));
+          }
+
+          if (domainForms.length > 0) {
+            await storage.createScrapedResult({
+              jobId: jobRow.id,
+              domain,
+              url: `https://${domain}`,
+              extractorType: "forms",
+              category: "contact",
+              title: `Forms discovered on ${domain}`,
+              data: { forms: domainForms },
+            });
+
+            if (domainHiddenFields.length > 0) {
+              await storage.createScrapedResult({
+                jobId: jobRow.id,
+                domain,
+                url: `https://${domain}`,
+                extractorType: "hidden_fields",
+                category: "security",
+                title: `Hidden fields on ${domain}`,
+                data: { hiddenFields: domainHiddenFields },
+              });
+            }
+
+            found++;
+            send("found", { domain, company: lead.company, formCount: domainForms.length, fieldCount: domainForms.reduce((s, f) => s + f.fields.length, 0) });
+          } else {
+            failed++;
+            send("empty", { domain, company: lead.company });
+          }
+        } catch (err: any) {
+          failed++;
+          send("error", { domain, company: lead.company, error: err.message });
+        }
+      }
+
+      send("complete", { found, failed, skipped, total: domainList.length });
+      console.log(`[FORM-DISCOVERY] Complete: found=${found} failed=${failed} skipped=${skipped} total=${domainList.length}`);
+    } catch (err: any) {
+      console.error("[FORM-DISCOVERY] Fatal error:", err);
+      send("fatal", { error: err.message });
+    }
+
+    res.end();
   });
 
   app.post("/api/light/discover", requireAuth, async (req, res) => {

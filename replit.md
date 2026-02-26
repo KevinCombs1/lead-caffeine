@@ -52,9 +52,10 @@ client/src/hooks/use-auth.ts → Auth state hook
 - `POST /api/light/submit-single` — Single form submit
 - `POST /api/light/outreach` — Save composition
 - `PATCH /api/light/outreach` — Advance Light Cycle stage
-- `GET /api/light/credits` — 38 tax credits
+- `GET /api/light/credits` — 38 tax credits with neglect levels, applicable categories, IRC sections
 - `GET /api/light/industries` — SIC industry tree (401 industries, 93 Tier-1 across 40 categories)
 - `POST /api/light/re-xray` — SSE retroactive credit x-ray scan for existing leads (supports `force: true` to rescan confirmed dead leads; tracks scan attempts with xrayAttempted/xrayResult markers to skip dead leads on subsequent scans)
+- `POST /api/light/discover-forms` — SSE form discovery pipeline: scrapes lead domains for contact forms using Cheerio, extracts field types + hidden fields, stores in scrapedResults
 - `GET /api/light/security/:domain` — Domain security profile
 
 ## Theme
@@ -62,6 +63,15 @@ Dark mode default (cyan command center aesthetic). Primary accent: `hsl(192, 90%
 
 ## SEO
 Title: "Light Engine — Tax Credit Intelligence | D.A.T.A. Cloudware". Open Graph tags for social sharing. Meta description for search engines.
+
+## Quantum Intelligence Dashboard
+The dashboard is a tabbed interactive interface with 4 views:
+- **Overview**: Summary stats (Revenue Pool, R&D Spend, Employees, NOL Pool), computed insight sentences, and clickable distribution panels (Credit Health, Tax Rate, Revenue Tiers, Employee Size, Filing Recency, Entity Types). Every bar/badge is a filter — clicking drills down to matching leads.
+- **Opportunity Clusters**: 5 pre-computed clusters (High R&D No Credit, Above Statutory Rate, NOL Shield, Revenue-Generating Credit Deserts, High-Value Unclaimed) with counts and values. Click to filter leads.
+- **Legislative Map**: 38 credits grouped by legislation (IRA, TCJA, IRC, CHIPS Act). Shows per-credit neglect level, description, max value, and utilization bar (active/partial/unclaimed) across all leads.
+- **Cross-Reference**: Industry × Credit matrix showing unclaimed/total ratios with heatmap coloring. Industry breakdown with health scores. Enables cross-dimensional analysis.
+
+Interactive filtering: `intelFilter` state supports healthTier, rateTier, revenueTier, empTier, state, credit, cluster, entityType. Active filters shown as removable badges with match count.
 
 ## Polish Notes
 - Compose dialog auto-fills sender profile fields (email, name, first/last, phone, company, title) from saved sender profile

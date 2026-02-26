@@ -290,6 +290,17 @@ export default function LightEngine() {
   const [sortBy, setSortBy] = useState<"forms" | "company" | "ads" | "credits" | "creditHealth" | "unclaimed">("forms");
   const [hideDead, setHideDead] = useState(false);
   const [showIntel, setShowIntel] = useState(false);
+  const [intelFilter, setIntelFilter] = useState<{
+    healthTier?: string;
+    rateTier?: string;
+    revenueTier?: string;
+    empTier?: string;
+    state?: string;
+    credit?: string;
+    cluster?: string;
+    entityType?: string;
+  }>({});
+  const [intelTab, setIntelTab] = useState<"overview" | "crossref" | "legislation" | "clusters">("overview");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -323,6 +334,66 @@ export default function LightEngine() {
   const [xrayForceMode, setXrayForceMode] = useState(false);
   const [xrayProgress, setXrayProgress] = useState<{ scanned: number; updated: number; failed: number; total: number; skippedDead?: number }>({ scanned: 0, updated: 0, failed: 0, total: 0 });
   const [xrayLog, setXrayLog] = useState<string[]>([]);
+  const [formDiscoveryRunning, setFormDiscoveryRunning] = useState(false);
+  const [formDiscoveryProgress, setFormDiscoveryProgress] = useState<{ found: number; failed: number; total: number; current?: string }>({ found: 0, failed: 0, total: 0 });
+  const [formDiscoveryLog, setFormDiscoveryLog] = useState<string[]>([]);
+
+  const startFormDiscovery = useCallback(async () => {
+    if (formDiscoveryRunning) return;
+    setFormDiscoveryRunning(true);
+    setFormDiscoveryProgress({ found: 0, failed: 0, total: 0 });
+    setFormDiscoveryLog([]);
+
+    try {
+      const resp = await fetch("/api/light/discover-forms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+
+      const reader = resp.body?.getReader();
+      if (!reader) throw new Error("No stream");
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === "phase") setFormDiscoveryLog(prev => [...prev, evt.message]);
+            else if (evt.type === "progress") {
+              setFormDiscoveryProgress(p => ({ ...p, total: evt.total, current: evt.company }));
+            } else if (evt.type === "found") {
+              setFormDiscoveryProgress(p => ({ ...p, found: p.found + 1 }));
+              setFormDiscoveryLog(prev => [...prev, `Found ${evt.formCount} forms on ${evt.domain} (${evt.company})`]);
+            } else if (evt.type === "empty") {
+              setFormDiscoveryProgress(p => ({ ...p, failed: p.failed + 1 }));
+            } else if (evt.type === "error") {
+              setFormDiscoveryProgress(p => ({ ...p, failed: p.failed + 1 }));
+              setFormDiscoveryLog(prev => [...prev, `Error: ${evt.domain} — ${evt.error}`]);
+            } else if (evt.type === "skip") {
+              setFormDiscoveryLog(prev => [...prev, `Skipped ${evt.domain}: ${evt.reason}`]);
+            } else if (evt.type === "complete") {
+              setFormDiscoveryLog(prev => [...prev, `Complete: ${evt.found} found, ${evt.failed} empty, ${evt.skipped} skipped`]);
+              toast({ title: "Form Discovery Complete", description: `Found forms on ${evt.found} of ${evt.total} domains` });
+              queryClient.invalidateQueries({ queryKey: ["/api/light/delta"] });
+            }
+          } catch {}
+        }
+      }
+    } catch (err: any) {
+      toast({ title: "Form Discovery Error", description: err.message, variant: "destructive" });
+    }
+
+    setFormDiscoveryRunning(false);
+  }, [formDiscoveryRunning, queryClient, toast]);
 
   const startReXray = useCallback(async (force?: boolean) => {
     if (xrayRunning) return;
@@ -578,6 +649,7 @@ export default function LightEngine() {
 
   const deltaQuery = useQuery<DeltaMap>({ queryKey: ["/api/light/delta"] });
   const industryQuery = useQuery<IndustryTree>({ queryKey: ["/api/light/industries"] });
+  const creditsQuery = useQuery<{ credits: Array<{ id: string; name: string; section: string; description: string; maxValue: string; applicableCategories: string[]; neglectLevel: string }> }>({ queryKey: ["/api/light/credits"] });
 
   const securityQuery = useQuery<SecurityProfile>({
     queryKey: ["/api/light/security", securityDomain],
@@ -640,6 +712,68 @@ export default function LightEngine() {
     if (hideDead) {
       list = list.filter(l => l.xbrlDepth > 0);
     }
+    if (intelFilter.healthTier) {
+      list = list.filter(l => {
+        const s = l.creditHealthScore || 0;
+        if (intelFilter.healthTier === "creditDesert") return s >= 0 && s <= 20;
+        if (intelFilter.healthTier === "underexplored") return s > 20 && s <= 40;
+        if (intelFilter.healthTier === "partialCoverage") return s > 40 && s <= 60;
+        if (intelFilter.healthTier === "wellManaged") return s > 60 && s <= 80;
+        if (intelFilter.healthTier === "fullyOptimized") return s > 80;
+        return true;
+      });
+    }
+    if (intelFilter.rateTier) {
+      list = list.filter(l => {
+        const r = l.effectiveRate;
+        if (intelFilter.rateTier === "belowStatutory") return r !== null && r !== undefined && r >= 0 && r < 0.19;
+        if (intelFilter.rateTier === "atStatutory") return r !== null && r !== undefined && r >= 0.19 && r <= 0.23;
+        if (intelFilter.rateTier === "aboveStatutory") return r !== null && r !== undefined && r > 0.23;
+        if (intelFilter.rateTier === "negative") return r !== null && r !== undefined && r < 0;
+        return true;
+      });
+    }
+    if (intelFilter.revenueTier) {
+      list = list.filter(l => {
+        const rev = l.revenue || 0;
+        if (intelFilter.revenueTier === "micro") return rev > 0 && rev < 1000000;
+        if (intelFilter.revenueTier === "small") return rev >= 1000000 && rev < 10000000;
+        if (intelFilter.revenueTier === "mid") return rev >= 10000000 && rev < 100000000;
+        if (intelFilter.revenueTier === "large") return rev >= 100000000 && rev < 1000000000;
+        if (intelFilter.revenueTier === "enterprise") return rev >= 1000000000;
+        return true;
+      });
+    }
+    if (intelFilter.empTier) {
+      list = list.filter(l => {
+        const emp = l.employeeCount || 0;
+        if (intelFilter.empTier === "tiny") return emp > 0 && emp < 50;
+        if (intelFilter.empTier === "small") return emp >= 50 && emp < 250;
+        if (intelFilter.empTier === "medium") return emp >= 250 && emp < 1000;
+        if (intelFilter.empTier === "large") return emp >= 1000 && emp < 10000;
+        if (intelFilter.empTier === "enterprise") return emp >= 10000;
+        return true;
+      });
+    }
+    if (intelFilter.state) {
+      list = list.filter(l => l.state === intelFilter.state);
+    }
+    if (intelFilter.credit) {
+      list = list.filter(l => l.creditAnalysis?.some(c => c.creditId === intelFilter.credit && (c.status === "unclaimed" || c.status === "likely_unclaimed")));
+    }
+    if (intelFilter.entityType) {
+      list = list.filter(l => l.entityType === intelFilter.entityType);
+    }
+    if (intelFilter.cluster) {
+      list = list.filter(l => {
+        if (intelFilter.cluster === "high_rd_no_credit") return (l.rdExpense || 0) > 0 && l.creditHealthScore <= 20;
+        if (intelFilter.cluster === "above_rate_opportunity") return (l.effectiveRate || 0) > 0.23;
+        if (intelFilter.cluster === "nol_shield") return (l.nolCarryforward || 0) > 0;
+        if (intelFilter.cluster === "credit_desert_with_revenue") return l.creditHealthScore <= 20 && (l.revenue || 0) > 0;
+        if (intelFilter.cluster === "large_unclaimed") return (l.estimatedUnclaimedValue || 0) > 100000;
+        return true;
+      });
+    }
     list.sort((a, b) => {
       if (sortBy === "forms") return b.formCount - a.formCount;
       if (sortBy === "ads") return b.adNetworkCount - a.adNetworkCount;
@@ -649,7 +783,7 @@ export default function LightEngine() {
       return a.company.localeCompare(b.company);
     });
     return list;
-  }, [deltaQuery.data, sortBy, searchTerm, selectedCategory, selectedSubIndustry, minCredit, minRdScore, hideDead]);
+  }, [deltaQuery.data, sortBy, searchTerm, selectedCategory, selectedSubIndustry, minCredit, minRdScore, hideDead, intelFilter]);
 
   const openCompose = useCallback((lead: LeadDelta, form: DiscoveredForm) => {
     setComposeForm({ lead, form });
@@ -809,11 +943,25 @@ export default function LightEngine() {
 
       {showIntel && hasLeads && agg && agg.leadsWithXray > 0 && (
         <div className="rounded-xl border border-amber-400/10 bg-gradient-to-br from-amber-950/8 to-zinc-950/5 p-4 space-y-4" data-testid="section-quantum-intel">
+          {Object.keys(intelFilter).some(k => (intelFilter as any)[k]) && (
+            <div className="flex items-center gap-2 flex-wrap" data-testid="intel-active-filters">
+              <span className="text-[10px] text-amber-400/25">Active filters:</span>
+              {Object.entries(intelFilter).filter(([, v]) => v).map(([k, v]) => (
+                <button key={k} onClick={() => setIntelFilter(prev => { const n = { ...prev }; delete (n as any)[k]; return n; })}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-amber-500/10 border border-amber-500/15 text-amber-300/50 hover:bg-amber-500/20 transition-colors" data-testid={`filter-badge-${k}`}>
+                  {k}: {v} <XCircle className="w-2.5 h-2.5" />
+                </button>
+              ))}
+              <button onClick={() => setIntelFilter({})} className="text-[10px] text-amber-400/20 hover:text-amber-400/40 underline" data-testid="button-clear-filters">Clear all</button>
+              <span className="text-[10px] text-amber-400/15 ml-auto">{leads.length} leads match</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-lg border border-amber-500/8 bg-amber-950/5 p-3 space-y-1" data-testid="stat-total-revenue">
               <div className="flex items-center gap-1.5 text-[10px] text-amber-400/30 uppercase tracking-wider"><DollarSign className="w-3 h-3" /> Revenue Pool</div>
               <div className="text-lg font-semibold text-amber-200/70 tabular-nums">{formatCurrency(agg.totalRevenue)}</div>
-              <div className="text-[10px] text-amber-400/20">{Object.values(agg.revenueTiers).reduce((s, v) => s + v, 0)} companies reporting</div>
+              <div className="text-[10px] text-amber-400/20">{Object.values(agg.revenueTiers).reduce((s, v) => s + v, 0)} reporting</div>
             </div>
             <div className="rounded-lg border border-cyan-500/8 bg-cyan-950/5 p-3 space-y-1" data-testid="stat-total-rd">
               <div className="flex items-center gap-1.5 text-[10px] text-cyan-400/30 uppercase tracking-wider"><Sparkles className="w-3 h-3" /> R&D Spend</div>
@@ -823,202 +971,376 @@ export default function LightEngine() {
             <div className="rounded-lg border border-emerald-500/8 bg-emerald-950/5 p-3 space-y-1" data-testid="stat-total-employees">
               <div className="flex items-center gap-1.5 text-[10px] text-emerald-400/30 uppercase tracking-wider"><Users className="w-3 h-3" /> Employees</div>
               <div className="text-lg font-semibold text-emerald-200/70 tabular-nums">{agg.totalEmployees.toLocaleString()}</div>
-              <div className="text-[10px] text-emerald-400/20">{Object.values(agg.employeeRanges).reduce((s, v) => s + v, 0)} companies reporting</div>
+              <div className="text-[10px] text-emerald-400/20">{Object.values(agg.employeeRanges).reduce((s, v) => s + v, 0)} reporting</div>
             </div>
             <div className="rounded-lg border border-amber-500/8 bg-amber-950/5 p-3 space-y-1" data-testid="stat-total-nol">
               <div className="flex items-center gap-1.5 text-[10px] text-amber-400/30 uppercase tracking-wider"><TrendingUp className="w-3 h-3" /> NOL Pool</div>
               <div className="text-lg font-semibold text-amber-200/70 tabular-nums">{formatCurrency(agg.totalNol)}</div>
-              <div className="text-[10px] text-amber-400/20">carryforward losses</div>
+              <div className="text-[10px] text-amber-400/20">{formatCurrency(agg.totalUnclaimedValue)} unclaimed</div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
-              <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Activity className="w-3 h-3" /> Credit Health Distribution</div>
-              {[
-                { label: "Credit Desert (0–20)", count: agg.healthTiers.creditDesert, color: "bg-red-400/40" },
-                { label: "Underexplored (20–40)", count: agg.healthTiers.underexplored, color: "bg-amber-400/40" },
-                { label: "Partial (40–60)", count: agg.healthTiers.partialCoverage, color: "bg-yellow-400/40" },
-                { label: "Well Managed (60–80)", count: agg.healthTiers.wellManaged, color: "bg-emerald-400/40" },
-                { label: "Optimized (80–100)", count: agg.healthTiers.fullyOptimized, color: "bg-green-400/40" },
-              ].map(t => (
-                <div key={t.label} className="flex items-center gap-2 text-[11px]">
-                  <div className="w-24 text-amber-400/30 truncate">{t.label}</div>
-                  <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
-                    <div className={`h-full ${t.color} rounded-full transition-all`} style={{ width: `${agg.leadsWithXray > 0 ? (t.count / agg.leadsWithXray) * 100 : 0}%` }} />
-                  </div>
-                  <span className="w-6 text-right text-amber-400/25 tabular-nums">{t.count}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
-              <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Landmark className="w-3 h-3" /> Effective Tax Rate</div>
-              {[
-                { label: "Below 19%", count: agg.rateDistribution.belowStatutory, color: "bg-emerald-400/40", hint: "optimizing" },
-                { label: "19–23% (statutory)", count: agg.rateDistribution.atStatutory, color: "bg-yellow-400/40", hint: "standard" },
-                { label: "Above 23%", count: agg.rateDistribution.aboveStatutory, color: "bg-red-400/40", hint: "opportunity" },
-                { label: "Negative rate", count: agg.rateDistribution.negative, color: "bg-cyan-400/40", hint: "loss position" },
-                { label: "Unknown", count: agg.rateDistribution.unknown, color: "bg-zinc-400/20", hint: "" },
-              ].map(t => (
-                <div key={t.label} className="flex items-center gap-2 text-[11px]">
-                  <div className="w-28 text-amber-400/30 truncate" title={t.hint}>{t.label}</div>
-                  <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
-                    <div className={`h-full ${t.color} rounded-full transition-all`} style={{ width: `${agg.leadsWithXray > 0 ? (t.count / agg.leadsWithXray) * 100 : 0}%` }} />
-                  </div>
-                  <span className="w-6 text-right text-amber-400/25 tabular-nums">{t.count}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
-              <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><DollarSign className="w-3 h-3" /> Revenue Size Tiers</div>
-              {[
-                { label: "<$1M", count: agg.revenueTiers.micro, color: "bg-zinc-400/30" },
-                { label: "$1M–$10M", count: agg.revenueTiers.small, color: "bg-amber-400/30" },
-                { label: "$10M–$100M", count: agg.revenueTiers.mid, color: "bg-amber-400/50" },
-                { label: "$100M–$1B", count: agg.revenueTiers.large, color: "bg-amber-400/60" },
-                { label: "$1B+", count: agg.revenueTiers.enterprise, color: "bg-amber-300/70" },
-              ].map(t => (
-                <div key={t.label} className="flex items-center gap-2 text-[11px]">
-                  <div className="w-20 text-amber-400/30">{t.label}</div>
-                  <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
-                    <div className={`h-full ${t.color} rounded-full transition-all`} style={{ width: `${agg.leadsWithXray > 0 ? (t.count / agg.leadsWithXray) * 100 : 0}%` }} />
-                  </div>
-                  <span className="w-6 text-right text-amber-400/25 tabular-nums">{t.count}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
-              <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Users className="w-3 h-3" /> Employee Size</div>
-              {[
-                { label: "<50", count: agg.employeeRanges.tiny, color: "bg-zinc-400/30" },
-                { label: "50–250", count: agg.employeeRanges.small, color: "bg-emerald-400/30" },
-                { label: "250–1K", count: agg.employeeRanges.medium, color: "bg-emerald-400/50" },
-                { label: "1K–10K", count: agg.employeeRanges.large, color: "bg-emerald-400/60" },
-                { label: "10K+", count: agg.employeeRanges.enterprise, color: "bg-emerald-300/70" },
-              ].map(t => (
-                <div key={t.label} className="flex items-center gap-2 text-[11px]">
-                  <div className="w-16 text-amber-400/30">{t.label}</div>
-                  <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
-                    <div className={`h-full ${t.color} rounded-full transition-all`} style={{ width: `${Object.values(agg.employeeRanges).reduce((s, v) => s + v, 0) > 0 ? (t.count / Object.values(agg.employeeRanges).reduce((s, v) => s + v, 0)) * 100 : 0}%` }} />
-                  </div>
-                  <span className="w-6 text-right text-amber-400/25 tabular-nums">{t.count}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
-              <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><FileText className="w-3 h-3" /> Filing Recency</div>
-              {[
-                { label: "Current (≤1yr)", count: agg.filingRecency.current, color: "bg-emerald-400/50" },
-                { label: "Recent (1–2yr)", count: agg.filingRecency.recent, color: "bg-yellow-400/40" },
-                { label: "Aging (2–4yr)", count: agg.filingRecency.aging, color: "bg-amber-400/40" },
-                { label: "Stale (4yr+)", count: agg.filingRecency.stale, color: "bg-red-400/30" },
-                { label: "Unknown", count: agg.filingRecency.unknown, color: "bg-zinc-400/20" },
-              ].map(t => (
-                <div key={t.label} className="flex items-center gap-2 text-[11px]">
-                  <div className="w-24 text-amber-400/30 truncate">{t.label}</div>
-                  <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
-                    <div className={`h-full ${t.color} rounded-full transition-all`} style={{ width: `${agg.leadsWithXray > 0 ? (t.count / agg.leadsWithXray) * 100 : 0}%` }} />
-                  </div>
-                  <span className="w-6 text-right text-amber-400/25 tabular-nums">{t.count}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
-              <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Zap className="w-3 h-3" /> Opportunity Level</div>
-              {[
-                { label: "High", count: agg.opportunityCounts.high, color: "bg-emerald-400/50" },
-                { label: "Moderate", count: agg.opportunityCounts.moderate, color: "bg-yellow-400/40" },
-                { label: "Low", count: agg.opportunityCounts.low, color: "bg-zinc-400/30" },
-                { label: "Unknown", count: agg.opportunityCounts.unknown, color: "bg-zinc-400/15" },
-              ].map(t => (
-                <div key={t.label} className="flex items-center gap-2 text-[11px]">
-                  <div className="w-16 text-amber-400/30">{t.label}</div>
-                  <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
-                    <div className={`h-full ${t.color} rounded-full transition-all`} style={{ width: `${agg.totalLeads > 0 ? (t.count / agg.totalLeads) * 100 : 0}%` }} />
-                  </div>
-                  <span className="w-6 text-right text-amber-400/25 tabular-nums">{t.count}</span>
-                </div>
-              ))}
-            </div>
+          <div className="flex items-center gap-1 border-b border-amber-500/8 pb-1">
+            {([
+              { key: "overview", label: "Overview", icon: Activity },
+              { key: "clusters", label: "Opportunity Clusters", icon: Zap },
+              { key: "legislation", label: "Legislative Map", icon: Landmark },
+              { key: "crossref", label: "Cross-Reference", icon: BarChart3 },
+            ] as const).map(tab => (
+              <button key={tab.key} onClick={() => setIntelTab(tab.key)} data-testid={`tab-intel-${tab.key}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] rounded-t transition-colors ${intelTab === tab.key ? "bg-amber-500/10 text-amber-300/60 border border-b-0 border-amber-500/15" : "text-amber-400/25 hover:text-amber-400/40"}`}>
+                <tab.icon className="w-3 h-3" /> {tab.label}
+              </button>
+            ))}
           </div>
 
-          {Object.keys(agg.stateCounts).length > 1 && (
-            <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
-              <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><MapPin className="w-3 h-3" /> Geographic Distribution</div>
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(agg.stateCounts)
-                  .sort((a, b) => b[1].count - a[1].count)
-                  .slice(0, 20)
-                  .map(([st, data]) => (
-                    <span key={st} className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] bg-amber-500/5 border border-amber-500/8 text-amber-400/40" data-testid={`badge-state-${st}`}>
-                      <span className="font-medium text-amber-300/50">{st}</span>
-                      <span className="tabular-nums">{data.count}</span>
-                      {data.unclaimed > 0 && <span className="text-amber-400/25">· {formatCurrency(data.unclaimed)}</span>}
-                    </span>
-                  ))}
+          {intelTab === "overview" && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-amber-400/6 bg-amber-950/3 p-2.5 space-y-1.5" data-testid="panel-insights">
+                {(() => {
+                  const insights: string[] = [];
+                  const aboveRate = agg.rateDistribution.aboveStatutory;
+                  const xrayed = agg.leadsWithXray;
+                  if (aboveRate > 0 && xrayed > 0) insights.push(`${Math.round((aboveRate / xrayed) * 100)}% of x-rayed leads pay above statutory rate — tax optimization opportunity`);
+                  const deserts = agg.healthTiers.creditDesert;
+                  if (deserts > 0) insights.push(`${deserts} ${deserts === 1 ? "company" : "companies"} in Credit Desert — ${formatCurrency(agg.totalUnclaimedValue)} total unclaimed`);
+                  const topState = Object.entries(agg.stateCounts).sort((a, b) => b[1].count - a[1].count)[0];
+                  if (topState) insights.push(`Top state: ${topState[0]} with ${topState[1].count} companies${topState[1].unclaimed > 0 ? `, ${formatCurrency(topState[1].unclaimed)} unclaimed` : ""}`);
+                  if (agg.totalNol > 0) insights.push(`${formatCurrency(agg.totalNol)} in NOL carryforwards — potential future tax shield`);
+                  const topCredit = Object.entries(agg.creditStatusCounts).sort((a, b) => (b[1].unclaimed + b[1].likely_unclaimed) - (a[1].unclaimed + a[1].likely_unclaimed))[0];
+                  if (topCredit) insights.push(`Most neglected credit: ${topCredit[0].replace(/_/g, " ")} — ${topCredit[1].unclaimed + topCredit[1].likely_unclaimed} leads not claiming`);
+                  return insights.slice(0, 5).map((text, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[10px] text-amber-400/30">
+                      <Sparkles className="w-3 h-3 mt-0.5 shrink-0 text-amber-400/20" />
+                      <span>{text}</span>
+                    </div>
+                  ));
+                })()}
               </div>
-            </div>
-          )}
 
-          {Object.keys(agg.industryCounts).length > 1 && (
-            <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
-              <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Factory className="w-3 h-3" /> Industry Breakdown</div>
-              <div className="space-y-1">
-                {Object.entries(agg.industryCounts)
-                  .sort((a, b) => b[1].totalUnclaimed - a[1].totalUnclaimed)
-                  .slice(0, 10)
-                  .map(([cat, data]) => (
-                    <div key={cat} className="flex items-center gap-2 text-[11px]">
-                      <div className="w-36 text-amber-400/30 truncate">{cat}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Activity className="w-3 h-3" /> Credit Health</div>
+                  {[
+                    { key: "creditDesert", label: "Desert (0–20)", count: agg.healthTiers.creditDesert, color: "bg-red-400/40" },
+                    { key: "underexplored", label: "Underexplored", count: agg.healthTiers.underexplored, color: "bg-amber-400/40" },
+                    { key: "partialCoverage", label: "Partial", count: agg.healthTiers.partialCoverage, color: "bg-yellow-400/40" },
+                    { key: "wellManaged", label: "Well Managed", count: agg.healthTiers.wellManaged, color: "bg-emerald-400/40" },
+                    { key: "fullyOptimized", label: "Optimized", count: agg.healthTiers.fullyOptimized, color: "bg-green-400/40" },
+                  ].map(t => (
+                    <button key={t.key} onClick={() => setIntelFilter(prev => prev.healthTier === t.key ? { ...prev, healthTier: undefined } : { ...prev, healthTier: t.key })}
+                      className={`flex items-center gap-2 text-[11px] w-full text-left rounded px-1 -mx-1 transition-colors ${intelFilter.healthTier === t.key ? "bg-amber-500/10" : "hover:bg-amber-500/5"}`} data-testid={`filter-health-${t.key}`}>
+                      <div className="w-24 text-amber-400/30 truncate">{t.label}</div>
                       <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
-                        <div className="h-full bg-amber-400/30 rounded-full transition-all" style={{ width: `${agg.totalLeads > 0 ? (data.count / agg.totalLeads) * 100 : 0}%` }} />
+                        <div className={`h-full ${t.color} rounded-full transition-all`} style={{ width: `${agg.leadsWithXray > 0 ? (t.count / agg.leadsWithXray) * 100 : 0}%` }} />
                       </div>
-                      <span className="w-6 text-right text-amber-400/25 tabular-nums">{data.count}</span>
-                      {data.totalUnclaimed > 0 && <span className="w-20 text-right text-amber-400/20 text-[10px] tabular-nums">{formatCurrency(data.totalUnclaimed)}</span>}
-                      {data.avgHealth > 0 && <span className="w-8 text-right text-amber-400/15 text-[10px] tabular-nums">h{data.avgHealth}</span>}
+                      <span className="w-6 text-right text-amber-400/25 tabular-nums">{t.count}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Landmark className="w-3 h-3" /> Effective Tax Rate</div>
+                  {[
+                    { key: "belowStatutory", label: "Below 19%", count: agg.rateDistribution.belowStatutory, color: "bg-emerald-400/40" },
+                    { key: "atStatutory", label: "19–23%", count: agg.rateDistribution.atStatutory, color: "bg-yellow-400/40" },
+                    { key: "aboveStatutory", label: "Above 23%", count: agg.rateDistribution.aboveStatutory, color: "bg-red-400/40" },
+                    { key: "negative", label: "Negative", count: agg.rateDistribution.negative, color: "bg-cyan-400/40" },
+                  ].map(t => (
+                    <button key={t.key} onClick={() => setIntelFilter(prev => prev.rateTier === t.key ? { ...prev, rateTier: undefined } : { ...prev, rateTier: t.key })}
+                      className={`flex items-center gap-2 text-[11px] w-full text-left rounded px-1 -mx-1 transition-colors ${intelFilter.rateTier === t.key ? "bg-amber-500/10" : "hover:bg-amber-500/5"}`} data-testid={`filter-rate-${t.key}`}>
+                      <div className="w-20 text-amber-400/30">{t.label}</div>
+                      <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
+                        <div className={`h-full ${t.color} rounded-full transition-all`} style={{ width: `${agg.leadsWithXray > 0 ? (t.count / agg.leadsWithXray) * 100 : 0}%` }} />
+                      </div>
+                      <span className="w-6 text-right text-amber-400/25 tabular-nums">{t.count}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><DollarSign className="w-3 h-3" /> Revenue Tiers</div>
+                  {[
+                    { key: "micro", label: "<$1M", count: agg.revenueTiers.micro, color: "bg-zinc-400/30" },
+                    { key: "small", label: "$1M–$10M", count: agg.revenueTiers.small, color: "bg-amber-400/30" },
+                    { key: "mid", label: "$10M–$100M", count: agg.revenueTiers.mid, color: "bg-amber-400/50" },
+                    { key: "large", label: "$100M–$1B", count: agg.revenueTiers.large, color: "bg-amber-400/60" },
+                    { key: "enterprise", label: "$1B+", count: agg.revenueTiers.enterprise, color: "bg-amber-300/70" },
+                  ].map(t => (
+                    <button key={t.key} onClick={() => setIntelFilter(prev => prev.revenueTier === t.key ? { ...prev, revenueTier: undefined } : { ...prev, revenueTier: t.key })}
+                      className={`flex items-center gap-2 text-[11px] w-full text-left rounded px-1 -mx-1 transition-colors ${intelFilter.revenueTier === t.key ? "bg-amber-500/10" : "hover:bg-amber-500/5"}`} data-testid={`filter-rev-${t.key}`}>
+                      <div className="w-20 text-amber-400/30">{t.label}</div>
+                      <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
+                        <div className={`h-full ${t.color} rounded-full transition-all`} style={{ width: `${agg.leadsWithXray > 0 ? (t.count / agg.leadsWithXray) * 100 : 0}%` }} />
+                      </div>
+                      <span className="w-6 text-right text-amber-400/25 tabular-nums">{t.count}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Users className="w-3 h-3" /> Employee Size</div>
+                  {[
+                    { key: "tiny", label: "<50", count: agg.employeeRanges.tiny, color: "bg-zinc-400/30" },
+                    { key: "small", label: "50–250", count: agg.employeeRanges.small, color: "bg-emerald-400/30" },
+                    { key: "medium", label: "250–1K", count: agg.employeeRanges.medium, color: "bg-emerald-400/50" },
+                    { key: "large", label: "1K–10K", count: agg.employeeRanges.large, color: "bg-emerald-400/60" },
+                    { key: "enterprise", label: "10K+", count: agg.employeeRanges.enterprise, color: "bg-emerald-300/70" },
+                  ].map(t => (
+                    <button key={t.key} onClick={() => setIntelFilter(prev => prev.empTier === t.key ? { ...prev, empTier: undefined } : { ...prev, empTier: t.key })}
+                      className={`flex items-center gap-2 text-[11px] w-full text-left rounded px-1 -mx-1 transition-colors ${intelFilter.empTier === t.key ? "bg-amber-500/10" : "hover:bg-amber-500/5"}`} data-testid={`filter-emp-${t.key}`}>
+                      <div className="w-16 text-amber-400/30">{t.label}</div>
+                      <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
+                        <div className={`h-full ${t.color} rounded-full transition-all`} style={{ width: `${(Object.values(agg.employeeRanges).reduce((s, v) => s + v, 0) || 1) > 0 ? (t.count / (Object.values(agg.employeeRanges).reduce((s, v) => s + v, 0) || 1)) * 100 : 0}%` }} />
+                      </div>
+                      <span className="w-6 text-right text-amber-400/25 tabular-nums">{t.count}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><FileText className="w-3 h-3" /> Filing Recency</div>
+                  {[
+                    { label: "Current (≤1yr)", count: agg.filingRecency.current, color: "bg-emerald-400/50" },
+                    { label: "Recent (1–2yr)", count: agg.filingRecency.recent, color: "bg-yellow-400/40" },
+                    { label: "Aging (2–4yr)", count: agg.filingRecency.aging, color: "bg-amber-400/40" },
+                    { label: "Stale (4yr+)", count: agg.filingRecency.stale, color: "bg-red-400/30" },
+                  ].map(t => (
+                    <div key={t.label} className="flex items-center gap-2 text-[11px]">
+                      <div className="w-24 text-amber-400/30 truncate">{t.label}</div>
+                      <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
+                        <div className={`h-full ${t.color} rounded-full transition-all`} style={{ width: `${agg.leadsWithXray > 0 ? (t.count / agg.leadsWithXray) * 100 : 0}%` }} />
+                      </div>
+                      <span className="w-6 text-right text-amber-400/25 tabular-nums">{t.count}</span>
                     </div>
                   ))}
+                </div>
+
+                {Object.keys(agg.entityTypeCounts).length > 0 && (
+                  <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2" data-testid="panel-entity-types">
+                    <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Briefcase className="w-3 h-3" /> Entity Types</div>
+                    {Object.entries(agg.entityTypeCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([type, count]) => {
+                      const total = Object.values(agg.entityTypeCounts).reduce((s, v) => s + v, 0);
+                      return (
+                        <button key={type} onClick={() => setIntelFilter(prev => prev.entityType === type ? { ...prev, entityType: undefined } : { ...prev, entityType: type })}
+                          className={`flex items-center gap-2 text-[11px] w-full text-left rounded px-1 -mx-1 transition-colors ${intelFilter.entityType === type ? "bg-amber-500/10" : "hover:bg-amber-500/5"}`} data-testid={`filter-entity-${type}`}>
+                          <div className="w-24 text-amber-400/30 truncate">{type}</div>
+                          <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
+                            <div className="h-full bg-violet-400/40 rounded-full transition-all" style={{ width: `${total > 0 ? (count / total) * 100 : 0}%` }} />
+                          </div>
+                          <span className="w-6 text-right text-amber-400/25 tabular-nums">{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
+
+              {Object.keys(agg.stateCounts).length > 1 && (
+                <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><MapPin className="w-3 h-3" /> Geography</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(agg.stateCounts).sort((a, b) => b[1].count - a[1].count).slice(0, 25).map(([st, data]) => (
+                      <button key={st} onClick={() => setIntelFilter(prev => prev.state === st ? { ...prev, state: undefined } : { ...prev, state: st })}
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] border transition-colors cursor-pointer ${intelFilter.state === st ? "bg-amber-500/15 border-amber-400/25 text-amber-300/60" : "bg-amber-500/5 border-amber-500/8 text-amber-400/40 hover:bg-amber-500/10"}`} data-testid={`filter-state-${st}`}>
+                        <span className="font-medium">{st}</span>
+                        <span className="tabular-nums">{data.count}</span>
+                        {data.unclaimed > 0 && <span className="text-amber-400/25">· {formatCurrency(data.unclaimed)}</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {Object.keys(agg.creditStatusCounts).length > 0 && (
-            <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
-              <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Coins className="w-3 h-3" /> Credit Utilization Across All Leads</div>
-              <div className="space-y-1.5">
-                {Object.entries(agg.creditStatusCounts)
+          {intelTab === "clusters" && (
+            <div className="space-y-3">
+              <p className="text-[10px] text-amber-400/25">Click a cluster to filter the lead list to matching companies</p>
+              {(() => {
+                const leads = deltaQuery.data?.leads || [];
+                const xrayLeads = leads.filter(l => l.xbrlDepth > 0);
+                const clusters = [
+                  { key: "high_rd_no_credit", label: "High R&D, Zero Credit Utilization", desc: "Companies spending on R&D but claiming no credits — IRC §41 opportunity", color: "border-red-500/15 bg-red-950/5",
+                    count: xrayLeads.filter(l => (l.rdExpense || 0) > 0 && l.creditHealthScore <= 20).length,
+                    value: xrayLeads.filter(l => (l.rdExpense || 0) > 0 && l.creditHealthScore <= 20).reduce((s, l) => s + (l.estimatedUnclaimedValue || 0), 0),
+                    icon: Sparkles },
+                  { key: "above_rate_opportunity", label: "Above Statutory Rate", desc: "Paying >23% effective rate — tax optimization and credit recovery opportunity", color: "border-amber-500/15 bg-amber-950/5",
+                    count: xrayLeads.filter(l => (l.effectiveRate || 0) > 0.23).length,
+                    value: xrayLeads.filter(l => (l.effectiveRate || 0) > 0.23).reduce((s, l) => s + (l.estimatedUnclaimedValue || 0), 0),
+                    icon: TrendingUp },
+                  { key: "nol_shield", label: "NOL Carryforward Holders", desc: "Companies with net operating losses — future tax shield + strategic planning", color: "border-cyan-500/15 bg-cyan-950/5",
+                    count: xrayLeads.filter(l => (l.nolCarryforward || 0) > 0).length,
+                    value: xrayLeads.filter(l => (l.nolCarryforward || 0) > 0).reduce((s, l) => s + (l.nolCarryforward || 0), 0),
+                    icon: Shield },
+                  { key: "credit_desert_with_revenue", label: "Revenue-Generating Credit Deserts", desc: "Companies with revenue but zero credit health — biggest outreach targets", color: "border-emerald-500/15 bg-emerald-950/5",
+                    count: xrayLeads.filter(l => l.creditHealthScore <= 20 && (l.revenue || 0) > 0).length,
+                    value: xrayLeads.filter(l => l.creditHealthScore <= 20 && (l.revenue || 0) > 0).reduce((s, l) => s + (l.revenue || 0), 0),
+                    icon: DollarSign },
+                  { key: "large_unclaimed", label: "High-Value Unclaimed", desc: "Individual leads with >$100K estimated unclaimed credit value", color: "border-yellow-500/15 bg-yellow-950/5",
+                    count: xrayLeads.filter(l => (l.estimatedUnclaimedValue || 0) > 100000).length,
+                    value: xrayLeads.filter(l => (l.estimatedUnclaimedValue || 0) > 100000).reduce((s, l) => s + (l.estimatedUnclaimedValue || 0), 0),
+                    icon: Coins },
+                ];
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {clusters.map(c => (
+                      <button key={c.key} onClick={() => setIntelFilter(prev => prev.cluster === c.key ? { ...prev, cluster: undefined } : { cluster: c.key })}
+                        className={`rounded-lg border p-3 text-left transition-all ${intelFilter.cluster === c.key ? "ring-1 ring-amber-400/20 " + c.color : c.color + " hover:border-amber-400/20"}`} data-testid={`cluster-${c.key}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <c.icon className="w-4 h-4 text-amber-300/40" />
+                          <span className="text-xs font-medium text-amber-200/60">{c.label}</span>
+                          <span className="ml-auto text-sm font-semibold text-amber-200/70 tabular-nums">{c.count}</span>
+                        </div>
+                        <p className="text-[10px] text-amber-400/25 mb-2">{c.desc}</p>
+                        <div className="text-[10px] text-amber-400/30 tabular-nums">{c.key === "nol_shield" || c.key === "credit_desert_with_revenue" ? formatCurrency(c.value) + (c.key === "nol_shield" ? " in losses" : " combined revenue") : formatCurrency(c.value) + " unclaimed value"}</div>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {intelTab === "legislation" && (
+            <div className="space-y-3">
+              <p className="text-[10px] text-amber-400/25">38 federal/state tax credits mapped to your leads — click any credit to filter leads with unclaimed opportunity</p>
+              {(() => {
+                const credits = creditsQuery.data?.credits || [];
+                const legislationGroups: Record<string, typeof credits> = {};
+                for (const c of credits) {
+                  const act = c.section.includes("CHIPS") ? "CHIPS & Science Act" :
+                    ["§48", "§45", "§45Q", "§45V", "§45U", "§45X", "§48C", "§45W", "§30D", "§40B", "§30C", "§45L", "§179D"].some(s => c.section.includes(s)) ? "Inflation Reduction Act" :
+                    c.section.includes("§1400Z") ? "Tax Cuts & Jobs Act" :
+                    c.section.includes("§199A") ? "Tax Cuts & Jobs Act" :
+                    c.section.includes("§168(k)") ? "Tax Cuts & Jobs Act" :
+                    "Internal Revenue Code";
+                  if (!legislationGroups[act]) legislationGroups[act] = [];
+                  legislationGroups[act].push(c);
+                }
+                return Object.entries(legislationGroups).sort((a, b) => b[1].length - a[1].length).map(([act, creds]) => (
+                  <div key={act} className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Landmark className="w-3 h-3" /> {act}</div>
+                      <span className="text-[9px] text-amber-400/15">{creds.length} provisions</span>
+                    </div>
+                    <div className="space-y-1">
+                      {creds.map(credit => {
+                        const status = agg.creditStatusCounts[credit.id];
+                        const unclaimed = status ? status.unclaimed + status.likely_unclaimed : 0;
+                        const total = status ? status.unclaimed + status.likely_unclaimed + status.active + status.partial + status.unknown : 0;
+                        return (
+                          <button key={credit.id} onClick={() => setIntelFilter(prev => prev.credit === credit.id ? { ...prev, credit: undefined } : { ...prev, credit: credit.id })}
+                            className={`w-full text-left rounded p-2 border transition-colors ${intelFilter.credit === credit.id ? "bg-amber-500/10 border-amber-500/20" : "border-transparent hover:bg-amber-500/5"}`} data-testid={`filter-credit-${credit.id}`}>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-medium text-amber-300/50">{credit.section}</span>
+                              <span className="text-[11px] text-amber-200/50">{credit.name}</span>
+                              <span className={`ml-auto text-[9px] px-1.5 py-0.5 rounded ${credit.neglectLevel === "high" ? "bg-red-500/10 text-red-300/50" : credit.neglectLevel === "medium" ? "bg-amber-500/10 text-amber-300/50" : "bg-emerald-500/10 text-emerald-300/50"}`}>
+                                {credit.neglectLevel} neglect
+                              </span>
+                            </div>
+                            <p className="text-[9px] text-amber-400/20 mt-0.5 line-clamp-1">{credit.description}</p>
+                            <div className="flex items-center gap-3 mt-1">
+                              <span className="text-[9px] text-amber-400/20">{credit.maxValue}</span>
+                              {total > 0 && (
+                                <div className="flex items-center gap-1 ml-auto">
+                                  <div className="flex h-1.5 w-16 rounded-full overflow-hidden bg-zinc-800/20">
+                                    {status.active > 0 && <div className="h-full bg-emerald-400/50" style={{ width: `${(status.active / total) * 100}%` }} />}
+                                    {status.partial > 0 && <div className="h-full bg-yellow-400/40" style={{ width: `${(status.partial / total) * 100}%` }} />}
+                                    {(status.likely_unclaimed + status.unclaimed) > 0 && <div className="h-full bg-red-400/40" style={{ width: `${((status.likely_unclaimed + status.unclaimed) / total) * 100}%` }} />}
+                                  </div>
+                                  <span className="text-[9px] text-red-300/40 tabular-nums">{unclaimed}/{total}</span>
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          )}
+
+          {intelTab === "crossref" && (
+            <div className="space-y-3">
+              <p className="text-[10px] text-amber-400/25">Credit utilization matrix — industry vs. credit type. Cell values show unclaimed/total. Click to filter.</p>
+              {(() => {
+                const leads = deltaQuery.data?.leads || [];
+                const xrayLeads = leads.filter(l => l.xbrlDepth > 0);
+                const industries = [...new Set(xrayLeads.map(l => l.industryCategory).filter(Boolean))].sort();
+                const topCredits = Object.entries(agg.creditStatusCounts)
                   .sort((a, b) => (b[1].unclaimed + b[1].likely_unclaimed) - (a[1].unclaimed + a[1].likely_unclaimed))
-                  .slice(0, 12)
-                  .map(([creditId, counts]) => {
-                    const total = counts.unclaimed + counts.likely_unclaimed + counts.active + counts.partial + counts.unknown;
-                    return (
-                      <div key={creditId} className="space-y-0.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-amber-400/30 truncate">{creditId.replace(/_/g, " ")}</span>
-                          <span className="text-[9px] text-amber-400/20 tabular-nums">{counts.unclaimed + counts.likely_unclaimed} unclaimed / {total}</span>
+                  .slice(0, 8)
+                  .map(([id]) => id);
+                const creditNames = creditsQuery.data?.credits || [];
+
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[10px]">
+                      <thead>
+                        <tr>
+                          <th className="text-left text-amber-400/25 p-1.5 font-normal">Industry</th>
+                          {topCredits.map(cId => {
+                            const cn = creditNames.find(c => c.id === cId);
+                            return <th key={cId} className="text-center text-amber-400/20 p-1.5 font-normal w-16 truncate" title={cn?.name || cId}>{cn?.section || cId}</th>;
+                          })}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {industries.map(ind => {
+                          const indLeads = xrayLeads.filter(l => l.industryCategory === ind);
+                          return (
+                            <tr key={ind} className="border-t border-amber-500/5">
+                              <td className="text-amber-400/30 p-1.5 truncate max-w-[140px]">{ind}</td>
+                              {topCredits.map(cId => {
+                                const withCredit = indLeads.filter(l => l.creditAnalysis?.some(c => c.creditId === cId));
+                                const unclaimed = withCredit.filter(l => l.creditAnalysis?.some(c => c.creditId === cId && (c.status === "unclaimed" || c.status === "likely_unclaimed")));
+                                if (withCredit.length === 0) return <td key={cId} className="text-center p-1.5 text-zinc-600/30">—</td>;
+                                const ratio = unclaimed.length / withCredit.length;
+                                return (
+                                  <td key={cId} className="text-center p-1.5">
+                                    <button onClick={() => setIntelFilter(prev => prev.credit === cId ? { ...prev, credit: undefined } : { ...prev, credit: cId })}
+                                      data-testid={`crossref-${ind}-${cId}`}
+                                      className={`px-1.5 py-0.5 rounded text-[9px] tabular-nums transition-colors ${intelFilter.credit === cId ? "ring-1 ring-amber-400/30 " : ""}${ratio > 0.7 ? "bg-red-500/10 text-red-300/40" : ratio > 0.3 ? "bg-amber-500/10 text-amber-300/40" : "bg-emerald-500/10 text-emerald-300/40"} hover:ring-1 hover:ring-amber-400/20`}>
+                                      {unclaimed.length}/{withCredit.length}
+                                    </button>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+
+              {Object.keys(agg.industryCounts).length > 1 && (
+                <div className="rounded-lg border border-amber-500/6 bg-amber-950/3 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] text-amber-400/25 uppercase tracking-wider"><Factory className="w-3 h-3" /> Industry Breakdown</div>
+                  <div className="space-y-1">
+                    {Object.entries(agg.industryCounts).sort((a, b) => b[1].totalUnclaimed - a[1].totalUnclaimed).slice(0, 10).map(([cat, data]) => (
+                      <div key={cat} className="flex items-center gap-2 text-[11px]">
+                        <div className="w-36 text-amber-400/30 truncate">{cat}</div>
+                        <div className="flex-1 h-2 bg-zinc-800/30 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-400/30 rounded-full transition-all" style={{ width: `${agg.totalLeads > 0 ? (data.count / agg.totalLeads) * 100 : 0}%` }} />
                         </div>
-                        <div className="flex h-1.5 rounded-full overflow-hidden bg-zinc-800/20">
-                          {counts.active > 0 && <div className="h-full bg-emerald-400/50" style={{ width: `${(counts.active / total) * 100}%` }} title={`${counts.active} active`} />}
-                          {counts.partial > 0 && <div className="h-full bg-yellow-400/40" style={{ width: `${(counts.partial / total) * 100}%` }} title={`${counts.partial} partial`} />}
-                          {counts.unknown > 0 && <div className="h-full bg-zinc-400/20" style={{ width: `${(counts.unknown / total) * 100}%` }} title={`${counts.unknown} unknown`} />}
-                          {counts.likely_unclaimed > 0 && <div className="h-full bg-amber-400/40" style={{ width: `${(counts.likely_unclaimed / total) * 100}%` }} title={`${counts.likely_unclaimed} likely unclaimed`} />}
-                          {counts.unclaimed > 0 && <div className="h-full bg-red-400/40" style={{ width: `${(counts.unclaimed / total) * 100}%` }} title={`${counts.unclaimed} unclaimed`} />}
-                        </div>
+                        <span className="w-6 text-right text-amber-400/25 tabular-nums">{data.count}</span>
+                        {data.totalUnclaimed > 0 && <span className="w-20 text-right text-amber-400/20 text-[10px] tabular-nums">{formatCurrency(data.totalUnclaimed)}</span>}
+                        {data.avgHealth > 0 && <span className="w-8 text-right text-amber-400/15 text-[10px] tabular-nums">h{data.avgHealth}</span>}
                       </div>
-                    );
-                  })}
-                <div className="flex items-center gap-3 text-[9px] text-amber-400/20 pt-1">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400/50" /> Active</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400/40" /> Partial</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400/40" /> Likely Unclaimed</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400/40" /> Unclaimed</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-zinc-400/20" /> Unknown</span>
+                    ))}
+                  </div>
                 </div>
+              )}
+
+              <div className="flex items-center gap-3 text-[9px] text-amber-400/20">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-red-500/10 border border-red-500/20" /> {">"} 70% unclaimed</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-amber-500/10 border border-amber-500/20" /> 30–70% unclaimed</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-emerald-500/10 border border-emerald-500/20" /> {"<"} 30% unclaimed</span>
               </div>
             </div>
           )}
