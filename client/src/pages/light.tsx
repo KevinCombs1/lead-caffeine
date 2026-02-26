@@ -286,6 +286,69 @@ export default function LightEngine() {
   const [showSubmitPanel, setShowSubmitPanel] = useState(false);
   const [submitAbort, setSubmitAbort] = useState<AbortController | null>(null);
   const [submittedLeads, setSubmittedLeads] = useState<Map<string, "success" | "blocked" | "failed" | "skipped" | "graceful">>(new Map());
+  const [xrayRunning, setXrayRunning] = useState(false);
+  const [xrayProgress, setXrayProgress] = useState<{ scanned: number; updated: number; failed: number; total: number }>({ scanned: 0, updated: 0, failed: 0, total: 0 });
+  const [xrayLog, setXrayLog] = useState<string[]>([]);
+
+  const startReXray = useCallback(async () => {
+    if (xrayRunning) return;
+    setXrayRunning(true);
+    setXrayProgress({ scanned: 0, updated: 0, failed: 0, total: 0 });
+    setXrayLog([]);
+
+    try {
+      const res = await fetch("/api/light/re-xray", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+
+          for (const part of parts) {
+            const eventMatch = part.match(/^event: (\w+)\ndata: (.+)$/s);
+            if (!eventMatch) continue;
+            const [, event, dataStr] = eventMatch;
+            try {
+              const data = JSON.parse(dataStr);
+              if (event === "phase") {
+                setXrayLog(prev => [...prev, `${data.phase}: ${data.detail}`]);
+              } else if (event === "xray") {
+                setXrayProgress({ scanned: data.scanned, updated: data.updated, failed: 0, total: data.total });
+                const label = data.healthLabel || "Unknown";
+                const unclaimed = data.estimatedUnclaimedValue > 0 ? ` · ${formatCurrency(data.estimatedUnclaimedValue)} unclaimed` : "";
+                setXrayLog(prev => [...prev, `${data.company}: ${label} (${data.healthScore}/100, ${data.xbrlDepth} concepts${unclaimed})`]);
+              } else if (event === "skip") {
+                setXrayLog(prev => [...prev, `${data.company}: ${data.reason}`]);
+              } else if (event === "error") {
+                setXrayLog(prev => [...prev, `${data.company}: ERROR — ${data.error}`]);
+              } else if (event === "progress") {
+                setXrayProgress({ scanned: data.scanned, updated: data.updated, failed: data.failed, total: data.total });
+              } else if (event === "complete") {
+                setXrayProgress({ scanned: data.scanned, updated: data.updated, failed: data.failed || 0, total: data.total });
+                setXrayLog(prev => [...prev, `Complete: ${data.updated} leads x-rayed, ${data.scanned} scanned${data.message ? ` — ${data.message}` : ""}`]);
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (err: any) {
+      setXrayLog(prev => [...prev, `Re-X-Ray error: ${err.message}`]);
+    } finally {
+      setXrayRunning(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/light/delta"] });
+    }
+  }, [xrayRunning, queryClient]);
 
   const startBloom = useCallback(async () => {
     if (!bloomIndustry || bloomRunning) return;
@@ -548,13 +611,39 @@ export default function LightEngine() {
       const type = (f.type || "").toLowerCase();
       const isTextarea = f.tag?.toUpperCase() === "TEXTAREA" || type === "textarea";
       if (isTextarea || name.includes("message") || name.includes("comment") || name.includes("description")) {
-        const credits = lead.applicableCredits.length > 0
-          ? ` I've identified ${lead.applicableCredits.length} potential tax credit opportunities including ${lead.applicableCredits.slice(0, 3).map(c => c.name).join(", ")}.`
-          : "";
-        const credit = lead.estimatedCreditLow > 0 || lead.estimatedCreditHigh > 0
-          ? ` (estimated credit value: ${formatCurrency(lead.estimatedCreditLow)}–${formatCurrency(lead.estimatedCreditHigh)})`
-          : "";
-        prefill[f.name || ""] = `I identified ${lead.company} as a strong candidate for significant tax credit opportunities${credit}.${credits} I'd welcome the opportunity to discuss how we can help maximize your eligible credits.`;
+        let messageBody = "";
+        const hasCreditAnalysis = lead.creditAnalysis?.length > 0 && lead.xbrlDepth > 0;
+
+        if (hasCreditAnalysis) {
+          const unclaimed = lead.creditAnalysis.filter(ca => ca.status === "unclaimed" || ca.status === "likely_unclaimed");
+          const active = lead.creditAnalysis.filter(ca => ca.status === "active");
+          const parts: string[] = [];
+          parts.push(`Based on ${lead.company}'s SEC filings (${lead.xbrlDepth} financial data points analyzed), I've identified specific tax credit opportunities.`);
+          if (unclaimed.length > 0) {
+            const topUnclaimed = unclaimed.slice(0, 3).map(u => u.creditName).join(", ");
+            parts.push(`Notably, ${unclaimed.length} credit${unclaimed.length > 1 ? "s appear" : " appears"} untouched: ${topUnclaimed}.`);
+          }
+          if (lead.estimatedUnclaimedValue > 0) {
+            parts.push(`Estimated unclaimed value: ${formatCurrency(lead.estimatedUnclaimedValue)}.`);
+          }
+          if (active.length > 0) {
+            parts.push(`I can see ${lead.company} is already utilizing ${active.length} credit${active.length > 1 ? "s" : ""}, which shows strong tax planning — there may be additional optimization available.`);
+          }
+          if (lead.taxPositionSummary?.rdIntensity && lead.taxPositionSummary.rdIntensity > 0.03) {
+            parts.push(`With R&D intensity at ${(lead.taxPositionSummary.rdIntensity * 100).toFixed(1)}% of revenue, there's significant credit-eligible activity.`);
+          }
+          parts.push("I'd welcome the opportunity to discuss how we can help maximize your eligible credits.");
+          messageBody = parts.join(" ");
+        } else {
+          const credits = lead.applicableCredits.length > 0
+            ? ` I've identified ${lead.applicableCredits.length} potential tax credit opportunities including ${lead.applicableCredits.slice(0, 3).map(c => c.name).join(", ")}.`
+            : "";
+          const credit = lead.estimatedCreditLow > 0 || lead.estimatedCreditHigh > 0
+            ? ` (estimated credit value: ${formatCurrency(lead.estimatedCreditLow)}–${formatCurrency(lead.estimatedCreditHigh)})`
+            : "";
+          messageBody = `I identified ${lead.company} as a strong candidate for significant tax credit opportunities${credit}.${credits} I'd welcome the opportunity to discuss how we can help maximize your eligible credits.`;
+        }
+        prefill[f.name || ""] = messageBody;
       } else if (name.includes("subject") || name.includes("topic")) {
         prefill[f.name || ""] = `Tax Credit Opportunities — ${lead.company}`;
       } else if (name.includes("email") || type === "email") {
@@ -780,6 +869,44 @@ export default function LightEngine() {
               size="sm" className="h-7 px-3 text-[11px] border border-amber-400/12 bg-amber-500/10 text-amber-200/60">
               {bloomRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Flower2 className="w-3 h-3" />}
             </Button>
+            <Separator orientation="vertical" className="h-5 bg-amber-500/8" />
+            <Button onClick={startReXray} disabled={xrayRunning || bloomRunning} data-testid="button-re-xray"
+              size="sm" className="h-7 px-3 text-[11px] border border-cyan-400/15 bg-cyan-500/10 text-cyan-200/60">
+              {xrayRunning ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Radar className="w-3 h-3 mr-1" />}
+              {xrayRunning ? "X-Raying..." : "Re-X-Ray"}
+            </Button>
+          </div>
+        )}
+
+        {(xrayRunning || xrayLog.length > 0) && (
+          <div className="rounded-lg border border-cyan-500/10 bg-cyan-950/5 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Radar className={`w-3.5 h-3.5 text-cyan-400/50 ${xrayRunning ? "animate-pulse" : ""}`} />
+                <span className="text-xs font-medium text-cyan-300/60">Credit X-Ray Scanner</span>
+              </div>
+              {xrayProgress.total > 0 && (
+                <span className="text-[11px] text-cyan-400/40 tabular-nums">
+                  {xrayProgress.scanned}/{xrayProgress.total} scanned · {xrayProgress.updated} enriched
+                  {xrayProgress.failed > 0 && <span className="text-red-400/40"> · {xrayProgress.failed} failed</span>}
+                </span>
+              )}
+            </div>
+            {xrayProgress.total > 0 && (
+              <div className="w-full h-1 bg-cyan-950/10 rounded-full overflow-hidden">
+                <div className="h-full bg-cyan-400/30 rounded-full transition-all" style={{ width: `${Math.round((xrayProgress.scanned / xrayProgress.total) * 100)}%` }} />
+              </div>
+            )}
+            <div className="max-h-32 overflow-y-auto space-y-0.5 scrollbar-thin">
+              {xrayLog.map((line, i) => (
+                <p key={i} className="text-[11px] text-cyan-400/30 font-mono leading-relaxed">{line}</p>
+              ))}
+            </div>
+            {!xrayRunning && xrayLog.length > 0 && (
+              <button onClick={() => setXrayLog([])} className="text-[10px] text-cyan-400/20 hover:text-cyan-400/40 transition-colors" data-testid="button-clear-xray-log">
+                Clear log
+              </button>
+            )}
           </div>
         )}
 

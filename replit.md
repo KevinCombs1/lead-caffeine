@@ -54,6 +54,7 @@ client/src/hooks/use-auth.ts → Auth state hook
 - `PATCH /api/light/outreach` — Advance Light Cycle stage
 - `GET /api/light/credits` — 38 tax credits
 - `GET /api/light/industries` — SIC industry tree (401 industries, 93 Tier-1 across 40 categories)
+- `POST /api/light/re-xray` — SSE retroactive credit x-ray scan for existing leads
 - `GET /api/light/security/:domain` — Domain security profile
 
 ## Theme

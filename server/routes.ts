@@ -688,6 +688,115 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/light/re-xray", requireAuth, async (req, res) => {
+    res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+    const send = (event: string, data: any) => { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
+
+    try {
+      const allLeads = await storage.getFiscalLeads({}, 1000, 0);
+      const needsXray = allLeads.filter(l => {
+        const enrichment = l.enrichmentData as any;
+        return enrichment?.cik && (!enrichment?.creditXRay || !enrichment?.creditPosition);
+      });
+
+      send("phase", { phase: "Scanning", detail: `${needsXray.length} leads need x-ray (${allLeads.length - needsXray.length} already scanned)` });
+
+      if (needsXray.length === 0) {
+        send("complete", { scanned: 0, updated: 0, total: allLeads.length, message: "All leads already have credit x-ray data" });
+        res.end();
+        return;
+      }
+
+      let scanned = 0, updated = 0, failed = 0;
+      const batchSize = 2;
+
+      for (let i = 0; i < needsXray.length; i += batchSize) {
+        const batch = needsXray.slice(i, i + batchSize);
+        await Promise.all(batch.map(async (lead) => {
+          const enrichment = (lead.enrichmentData as any) || {};
+          const cik = enrichment.cik;
+          if (!cik) return;
+
+          try {
+            const details = await getCompanyDetails(cik);
+            if (!details?.creditXRay) {
+              scanned++;
+              send("skip", { company: lead.company, reason: "No XBRL data available" });
+              return;
+            }
+
+            const sicDesc = lead.sicDescription || "";
+            let industryCategory = "";
+            if (lead.sic) {
+              for (const entry of Object.values(SIC_INDUSTRIES)) {
+                if (entry.codes.includes(lead.sic)) { industryCategory = entry.category; break; }
+              }
+            }
+            const applicableCredits = matchLeadCredits(sicDesc, industryCategory);
+            let creditPosition: any = null;
+            try {
+              creditPosition = analyzeCompanyCreditPosition(details.creditXRay, applicableCredits);
+            } catch {}
+
+            const newEnrichment = {
+              ...enrichment,
+              creditXRay: details.creditXRay,
+              creditPosition: creditPosition,
+              revenue: details.revenue || enrichment.revenue || 0,
+              rdExpense: details.rdExpense || enrichment.rdExpense || 0,
+              rdPeriod: details.rdPeriod || enrichment.rdPeriod || "unknown",
+              totalAssets: details.totalAssets || enrichment.totalAssets || 0,
+            };
+
+            let opportunityLevel = lead.opportunityLevel;
+            if (creditPosition && creditPosition.estimatedUnclaimedValue > 0) {
+              const unclaimed = creditPosition.estimatedUnclaimedValue;
+              if (unclaimed > 500_000) opportunityLevel = "high";
+              else if (unclaimed > 50_000) opportunityLevel = "moderate";
+            }
+
+            await storage.updateFiscalLead(lead.id, {
+              enrichmentData: newEnrichment,
+              opportunityLevel,
+            });
+
+            scanned++;
+            updated++;
+            const healthScore = creditPosition?.creditHealthScore || 0;
+            const healthLabel = creditPosition?.creditHealthLabel || "Unknown";
+            const xbrlDepth = creditPosition?.xbrlDepth || details.creditXRay.xbrlDepth || 0;
+            const unclaimed = creditPosition?.estimatedUnclaimedValue || 0;
+            send("xray", {
+              company: lead.company,
+              healthScore,
+              healthLabel,
+              xbrlDepth,
+              estimatedUnclaimedValue: unclaimed,
+              scanned,
+              updated,
+              total: needsXray.length,
+            });
+          } catch (err: any) {
+            scanned++;
+            failed++;
+            console.warn(`[RE-XRAY] Failed for ${lead.company}:`, err.message);
+            send("error", { company: lead.company, error: err.message });
+          }
+        }));
+
+        send("progress", { scanned, updated, failed, total: needsXray.length });
+      }
+
+      console.log(`[RE-XRAY] Complete: scanned=${scanned}, updated=${updated}, failed=${failed}`);
+      send("complete", { scanned, updated, failed, total: needsXray.length });
+      res.end();
+    } catch (err: any) {
+      console.error("[RE-XRAY] Error:", err);
+      send("fatal", { error: err.message });
+      res.end();
+    }
+  });
+
   app.post("/api/light/discover", requireAuth, async (req, res) => {
     const { industry, state, count = 10 } = req.body;
     if (!industry || !SIC_INDUSTRIES[industry]) {
