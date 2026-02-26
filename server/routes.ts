@@ -343,6 +343,14 @@ export async function registerRoutes(
           } catch {}
         }
 
+        const revenue = enrichment?.revenue || taxPositionSummary?.rdExpenseAmount ? (enrichment?.revenue || 0) : 0;
+        const rdExpense = enrichment?.rdExpense || taxPositionSummary?.rdExpenseAmount || 0;
+        const employeeCount = enrichment?.employeeCount || taxPositionSummary?.employeeCount || 0;
+        const entityType = enrichment?.entityType || "";
+        const last10KDate = enrichment?.last10KDate || "";
+        const effectiveRate = taxPositionSummary?.effectiveRate ?? null;
+        const nolCarryforward = taxPositionSummary?.nolCarryforward ?? null;
+
         return {
           leadId: lead.id,
           company: lead.company,
@@ -350,6 +358,7 @@ export async function registerRoutes(
           sic: lead.sic,
           sicDescription: sicDesc,
           industryCategory,
+          state: lead.state || "",
           opportunityLevel: lead.opportunityLevel,
           estimatedCreditLow: parseFloat(lead.estimatedCreditLow || "0"),
           estimatedCreditHigh: parseFloat(lead.estimatedCreditHigh || "0"),
@@ -365,6 +374,13 @@ export async function registerRoutes(
           taxPositionSummary,
           estimatedUnclaimedValue,
           xbrlDepth,
+          revenue,
+          rdExpense,
+          employeeCount,
+          entityType,
+          last10KDate,
+          effectiveRate,
+          nolCarryforward,
           ads: { adNetworks, trackingPixels, adsExchanges, adActivity: hasAds ? "active" : "none" },
           adNetworkCount: adNetworks.length,
           pixelCount: trackingPixels.length,
@@ -381,6 +397,108 @@ export async function registerRoutes(
         : 0;
       const totalUnclaimedValue = leadDeltas.reduce((s, l) => s + l.estimatedUnclaimedValue, 0);
 
+      const revenueLeads = leadsWithXray.filter(l => l.revenue > 0);
+      const revenueTiers = { micro: 0, small: 0, mid: 0, large: 0, enterprise: 0 };
+      for (const l of revenueLeads) {
+        if (l.revenue < 1_000_000) revenueTiers.micro++;
+        else if (l.revenue < 10_000_000) revenueTiers.small++;
+        else if (l.revenue < 100_000_000) revenueTiers.mid++;
+        else if (l.revenue < 1_000_000_000) revenueTiers.large++;
+        else revenueTiers.enterprise++;
+      }
+
+      const rdLeads = leadsWithXray.filter(l => l.rdExpense > 0);
+      const avgRdIntensity = rdLeads.length > 0 && revenueLeads.length > 0
+        ? Math.round(rdLeads.reduce((s, l) => s + (l.revenue > 0 ? (l.rdExpense / l.revenue) * 100 : 0), 0) / rdLeads.length * 100) / 100
+        : 0;
+      const totalNol = leadsWithXray.reduce((s, l) => s + (l.nolCarryforward && l.nolCarryforward > 0 ? l.nolCarryforward : 0), 0);
+
+      const rateDistribution = { belowStatutory: 0, atStatutory: 0, aboveStatutory: 0, negative: 0, unknown: 0 };
+      for (const l of leadsWithXray) {
+        if (l.effectiveRate === null || l.effectiveRate === undefined) rateDistribution.unknown++;
+        else if (l.effectiveRate < 0) rateDistribution.negative++;
+        else if (l.effectiveRate < 0.19) rateDistribution.belowStatutory++;
+        else if (l.effectiveRate <= 0.23) rateDistribution.atStatutory++;
+        else rateDistribution.aboveStatutory++;
+      }
+
+      const healthTiers = { creditDesert: 0, underexplored: 0, partialCoverage: 0, wellManaged: 0, fullyOptimized: 0 };
+      for (const l of leadsWithXray) {
+        if (l.creditHealthScore <= 20) healthTiers.creditDesert++;
+        else if (l.creditHealthScore <= 40) healthTiers.underexplored++;
+        else if (l.creditHealthScore <= 60) healthTiers.partialCoverage++;
+        else if (l.creditHealthScore <= 80) healthTiers.wellManaged++;
+        else healthTiers.fullyOptimized++;
+      }
+
+      const creditStatusCounts: Record<string, { unclaimed: number; likely_unclaimed: number; active: number; partial: number; unknown: number }> = {};
+      for (const l of leadsWithXray) {
+        for (const ca of l.creditAnalysis) {
+          if (!creditStatusCounts[ca.creditId]) creditStatusCounts[ca.creditId] = { unclaimed: 0, likely_unclaimed: 0, active: 0, partial: 0, unknown: 0 };
+          const bucket = ca.status === "unclaimed" ? "unclaimed" : ca.status === "likely_unclaimed" ? "likely_unclaimed" : ca.status === "active" ? "active" : ca.status === "partial" ? "partial" : "unknown";
+          creditStatusCounts[ca.creditId][bucket]++;
+        }
+      }
+
+      const stateCounts: Record<string, { count: number; unclaimed: number }> = {};
+      for (const l of leadDeltas) {
+        const st = l.state || "Unknown";
+        if (!stateCounts[st]) stateCounts[st] = { count: 0, unclaimed: 0 };
+        stateCounts[st].count++;
+        stateCounts[st].unclaimed += l.estimatedUnclaimedValue;
+      }
+
+      const industryCounts: Record<string, { count: number; avgHealth: number; totalUnclaimed: number; healthSum: number; xrayCount: number }> = {};
+      for (const l of leadDeltas) {
+        const cat = l.industryCategory || "Unknown";
+        if (!industryCounts[cat]) industryCounts[cat] = { count: 0, avgHealth: 0, totalUnclaimed: 0, healthSum: 0, xrayCount: 0 };
+        industryCounts[cat].count++;
+        industryCounts[cat].totalUnclaimed += l.estimatedUnclaimedValue;
+        if (l.xbrlDepth > 0) {
+          industryCounts[cat].healthSum += l.creditHealthScore;
+          industryCounts[cat].xrayCount++;
+        }
+      }
+      for (const cat of Object.keys(industryCounts)) {
+        const ic = industryCounts[cat];
+        ic.avgHealth = ic.xrayCount > 0 ? Math.round(ic.healthSum / ic.xrayCount) : 0;
+      }
+
+      const opportunityCounts = { high: 0, moderate: 0, low: 0, unknown: 0 };
+      for (const l of leadDeltas) {
+        const opp = l.opportunityLevel as keyof typeof opportunityCounts;
+        if (opportunityCounts[opp] !== undefined) opportunityCounts[opp]++;
+        else opportunityCounts.unknown++;
+      }
+
+      const entityTypeCounts: Record<string, number> = {};
+      for (const l of leadsWithXray) {
+        const et = l.entityType || "unknown";
+        entityTypeCounts[et] = (entityTypeCounts[et] || 0) + 1;
+      }
+
+      const filingRecency = { current: 0, recent: 0, aging: 0, stale: 0, unknown: 0 };
+      const now = new Date();
+      for (const l of leadsWithXray) {
+        if (!l.last10KDate) { filingRecency.unknown++; continue; }
+        const filed = new Date(l.last10KDate);
+        const yearsAgo = (now.getTime() - filed.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+        if (yearsAgo <= 1) filingRecency.current++;
+        else if (yearsAgo <= 2) filingRecency.recent++;
+        else if (yearsAgo <= 4) filingRecency.aging++;
+        else filingRecency.stale++;
+      }
+
+      const employeeLeads = leadsWithXray.filter(l => l.employeeCount > 0);
+      const employeeRanges = { tiny: 0, small: 0, medium: 0, large: 0, enterprise: 0 };
+      for (const l of employeeLeads) {
+        if (l.employeeCount < 50) employeeRanges.tiny++;
+        else if (l.employeeCount < 250) employeeRanges.small++;
+        else if (l.employeeCount < 1000) employeeRanges.medium++;
+        else if (l.employeeCount < 10000) employeeRanges.large++;
+        else employeeRanges.enterprise++;
+      }
+
       res.json({
         leads: leadDeltas,
         aggregate: {
@@ -389,6 +507,21 @@ export async function registerRoutes(
           totalWithAds, totalAdNetworks: Object.keys(adNetworkCounts).length, adNetworkCounts,
           avgCreditHealth, totalUnclaimedValue, leadsWithXray: leadsWithXray.length,
           leadsWithoutXbrl: leadsWithoutXbrl.length,
+          revenueTiers,
+          avgRdIntensity,
+          totalNol,
+          rateDistribution,
+          healthTiers,
+          creditStatusCounts,
+          stateCounts,
+          industryCounts,
+          opportunityCounts,
+          entityTypeCounts,
+          filingRecency,
+          employeeRanges,
+          totalRevenue: revenueLeads.reduce((s, l) => s + l.revenue, 0),
+          totalRdExpense: rdLeads.reduce((s, l) => s + l.rdExpense, 0),
+          totalEmployees: employeeLeads.reduce((s, l) => s + l.employeeCount, 0),
         },
       });
     } catch (err: any) {
