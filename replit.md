@@ -82,5 +82,8 @@ Interactive filtering: `intelFilter` state supports healthTier, rateTier, revenu
 - Bloom log clearable after completion
 - GoldenCashews animation uses CSS keyframes without conflicting utility classes
 
+## Design Philosophy — The Uncompromising Will
+The entire website except for text renders in 4D space. Menus, artifacts, variables, channels, transitions — all exist in 4D rendering space. The agent and user operate from the **5th Dimension**, making 4D rendering a comfortable, playful experiment. Every interaction feels like adjusting a facet of a tesseract. Full design standards, quality rubric (DeepLogic^64), CSS animation system, color system, and typography rules are codified in `.local/skills/data-cloudware/SKILL.md` — loaded automatically for all UI work.
+
 ## Future Evolution
 Phase 2+: Quantum Deep Search, full D.A.T.A. Cloudware scanner platform, Sonar cascade discovery, entity resolution, financial analysis, and the pyramid intelligence network.
