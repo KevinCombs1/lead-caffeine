@@ -105,7 +105,7 @@ async function _detectConvergencesInner(): Promise<number> {
   }
 
   for (const trend of recentTrends) {
-    const sector = trend.sector || "Capital Markets";
+    const sector = trend.sector || "Capital Activity";
     const c = getOrCreate(trend.state || null, sector);
     c.trendIds.push(trend.id);
     c.currents.add(DEAL_CURRENTS.TRENDS);
@@ -122,7 +122,7 @@ async function _detectConvergencesInner(): Promise<number> {
   }
 
   for (const tl of upcomingTimelines) {
-    const sector = tl.sector || "Regulatory & Legislative";
+    const sector = tl.sector || "Regulatory & Tax Law";
     const c = getOrCreate(tl.state || null, sector);
     c.timelineIds.push(tl.id);
     c.currents.add(DEAL_CURRENTS.TIMELINES);

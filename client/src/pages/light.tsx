@@ -1001,7 +1001,7 @@ export default function LightEngine() {
             </div>
             <div>
               <h1 className="text-lg font-semibold text-amber-100/90" data-testid="text-light-engine-title">Light Engine</h1>
-              <p className="text-xs text-amber-400/30">{hasLeads ? "Forms, flowers, and credits across all leads" : "Tax credit intelligence — start by discovering leads"}</p>
+              <p className="text-xs text-amber-400/30">{hasLeads ? "Lead forms, ad networks, and credit health across all leads" : "Tax credit intelligence — start by discovering leads"}</p>
             </div>
           </div>
           {hasLeads && (
@@ -1043,7 +1043,7 @@ export default function LightEngine() {
               ? "bg-amber-500/10 border-amber-400/20 text-amber-200/70 shadow-sm shadow-amber-500/5"
               : "bg-amber-500/5 border-amber-500/10 text-amber-400/35 hover:bg-amber-500/8 hover:border-amber-400/15 hover:text-amber-400/50"}`}>
             <BarChart3 className="w-4 h-4" />
-            <span className="font-medium">{showIntel ? "Hide" : "Show"} Quantum Intelligence</span>
+            <span className="font-medium">{showIntel ? "Hide" : "Show"} Credit Intelligence Dashboard</span>
             <span className="text-[10px] text-amber-400/25 ml-1">{agg.leadsWithXray} x-rayed</span>
             {showIntel ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           </button>

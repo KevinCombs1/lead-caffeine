@@ -19,30 +19,30 @@ import {
 import { DEAL_TAB_CATEGORIES } from "@shared/schema";
 
 const TAB_ICONS: Record<string, any> = {
-  "Capital Markets": BarChart3,
-  "Mergers & Acquisitions": Layers,
-  "Private Capital": Banknote,
-  "Government Contracts": Landmark,
-  "Real Estate & Infrastructure": Building2,
-  "Regulatory & Legislative": Shield,
-  "Intellectual Property": Cpu,
+  "Capital Activity": BarChart3,
+  "M&A Signals": Layers,
+  "Private Funding": Banknote,
+  "Gov. Contracts": Landmark,
+  "Real Estate & Energy": Building2,
+  "Regulatory & Tax Law": Shield,
+  "IP & Patents": Cpu,
   "Credit & Debt": DollarSign,
-  "Energy & Resources": Zap,
-  "Labor & Human Capital": Users,
+  "Clean Energy": Zap,
+  "Workforce Signals": Users,
   "Credit Intelligence": Scan,
 };
 
 const TAB_SHAPES: Record<string, "orthoplex" | "tesseract" | "duoprism" | "hypercone"> = {
-  "Capital Markets": "tesseract",
-  "Mergers & Acquisitions": "duoprism",
-  "Private Capital": "hypercone",
-  "Government Contracts": "orthoplex",
-  "Real Estate & Infrastructure": "tesseract",
-  "Regulatory & Legislative": "orthoplex",
-  "Intellectual Property": "duoprism",
+  "Capital Activity": "tesseract",
+  "M&A Signals": "duoprism",
+  "Private Funding": "hypercone",
+  "Gov. Contracts": "orthoplex",
+  "Real Estate & Energy": "tesseract",
+  "Regulatory & Tax Law": "orthoplex",
+  "IP & Patents": "duoprism",
   "Credit & Debt": "hypercone",
-  "Energy & Resources": "tesseract",
-  "Labor & Human Capital": "duoprism",
+  "Clean Energy": "tesseract",
+  "Workforce Signals": "duoprism",
   "Credit Intelligence": "orthoplex",
 };
 
@@ -151,7 +151,7 @@ function HeatMap({ stateData, selectedState, onSelectState }: {
 
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-amber-200/80">Capital Convergence Map</h3>
+          <h3 className="text-sm font-semibold text-amber-200/80">Credit Opportunity Heatmap</h3>
           {selectedState && (
             <button
               onClick={() => onSelectState(null)}
@@ -292,7 +292,7 @@ function EntityPanel({ entityId, onClose }: { entityId: string; onClose: () => v
 
             {data.sourceNames && data.sourceNames.length > 0 && (
               <div className="qi-panel p-2 rounded-lg">
-                <div className="text-[10px] text-muted-foreground/40 mb-1">Cross-Source Corroboration</div>
+                <div className="text-[10px] text-muted-foreground/40 mb-1">Verified Across Sources</div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-violet-400/80">{data.sourceNames.length} sources</span>
                   <span className="text-[10px] text-muted-foreground/40">|</span>
@@ -725,19 +725,19 @@ function IntelligencePipelineContent() {
         <div className="space-y-2">
           <div className="flex items-center gap-2 mb-1">
             <Radio className="w-3.5 h-3.5 text-cyan-400/50" />
-            <h4 className="text-[11px] font-semibold text-cyan-300/60">SOURCE NETWORK ({sources.length} sources)</h4>
+            <h4 className="text-[11px] font-semibold text-cyan-300/60">INTELLIGENCE SOURCES ({sources.length} sources)</h4>
             {(successCount > 0 || noDataCount > 0 || errorCount > 0) && (
               <div className="ml-auto flex items-center gap-2 text-[9px]">
-                <span className="text-emerald-400/70">{successCount} succeeded</span>
+                <span className="text-emerald-400/70">{successCount} found</span>
                 <span className="text-muted-foreground/40">{noDataCount} no data</span>
                 {errorCount > 0 && <span className="text-rose-400/70">{errorCount} failed</span>}
-                {pendingCount > 0 && <span className="text-amber-400/50">{pendingCount} pending</span>}
+                {pendingCount > 0 && <span className="text-amber-400/50">{pendingCount} scanning...</span>}
               </div>
             )}
             {sources.some((s: any) => s.requiresKey && !s.hasKey) && (
               <div className="flex items-center gap-1 text-[9px] text-amber-400/60" data-testid="text-key-needed-indicator">
                 <KeyRound className="w-2.5 h-2.5" />
-                <span>= API key needed</span>
+                <span>Requires API key</span>
               </div>
             )}
           </div>
@@ -1113,10 +1113,10 @@ function GapMatrixContent({ onViewXRay }: { onViewXRay?: (leadId: string) => voi
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Mass Bloom Started", description: "Discovering tax credit opportunities across industries..." });
+      toast({ title: "Industry Sweep Started", description: "Discovering tax credit opportunities across industries..." });
       queryClient.invalidateQueries({ queryKey: ["/api/light/mass-bloom/status"] });
     },
-    onError: (err: any) => toast({ title: "Mass Bloom Error", description: err.message, variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Industry Sweep Error", description: err.message, variant: "destructive" }),
   });
 
   const matrixData = matrixQuery.data;
@@ -1135,7 +1135,7 @@ function GapMatrixContent({ onViewXRay }: { onViewXRay?: (leadId: string) => voi
         <div className="qi-panel p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5" data-testid="mass-bloom-progress">
           <div className="flex items-center gap-2 mb-2">
             <Sprout className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            <span className="text-xs font-medium text-emerald-300/80">Mass Bloom In Progress</span>
+            <span className="text-xs font-medium text-emerald-300/80">Industry Sweep In Progress</span>
             <span className="text-[10px] text-muted-foreground/40 ml-auto">{bloomStatus.sicCodesProcessed}/{bloomStatus.sicCodesTotal} SIC codes</span>
           </div>
           <div className="grid grid-cols-4 gap-2 text-[10px]">
@@ -1184,7 +1184,7 @@ function GapMatrixContent({ onViewXRay }: { onViewXRay?: (leadId: string) => voi
             data-testid="button-mass-bloom"
           >
             {isBloomRunning ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Sprout className="w-3 h-3 mr-1" />}
-            Mass Bloom
+            Sweep Industries
           </Button>
           <Button
             variant="outline"
@@ -1659,7 +1659,7 @@ export default function DealsPage() {
         totalStored += result.stored || 0;
       }
       toast({
-        title: "Data Compilation Complete",
+        title: "All Sources Fetched",
         description: `Fetched ${totalFetched} events, stored ${totalStored} new records across all sources.`,
       });
       queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/deals") });
@@ -1676,7 +1676,7 @@ export default function DealsPage() {
     },
     onSuccess: (data) => {
       toast({
-        title: "Convergence Detection Complete",
+        title: "Convergence Analysis Complete",
         description: `Detected ${data.detected} convergence points.`,
       });
       queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/deals") });
@@ -1717,16 +1717,16 @@ export default function DealsPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-amber-200/90" data-testid="text-page-title" style={{ textShadow: "0 0 30px rgba(245, 158, 11, 0.15)" }}>
-                Deal Paradise
+                Credit Scanner
               </h1>
-              <p className="text-[11px] text-muted-foreground/50 mt-0.5">Tax credit opportunity machine — find unclaimed money</p>
+              <p className="text-[11px] text-muted-foreground/50 mt-0.5">Surface unclaimed tax credits across 38 IRC sections</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/40" />
               <Input
-                placeholder="Search all deals..."
+                placeholder="Search all signals..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-48 h-8 pl-8 text-xs bg-white/3 border-white/8 focus:border-amber-500/30"
@@ -1746,7 +1746,7 @@ export default function DealsPage() {
               ) : (
                 <Target className="w-3.5 h-3.5 mr-1.5" />
               )}
-              Detect
+              Find Convergences
             </Button>
             <Button
               variant="outline"
@@ -1761,7 +1761,7 @@ export default function DealsPage() {
               ) : (
                 <Zap className="w-3.5 h-3.5 mr-1.5" />
               )}
-              Compile All
+              Fetch All Sources
             </Button>
           </div>
         </div>
@@ -1877,7 +1877,7 @@ export default function DealsPage() {
                   }}
                 />
                 <p className="text-sm text-muted-foreground/40">No events compiled yet</p>
-                <p className="text-[11px] text-muted-foreground/30 mt-1">Click "Compile All" to fetch from all sources</p>
+                <p className="text-[11px] text-muted-foreground/30 mt-1">Click "Fetch All Sources" to pull from all sources</p>
               </div>
             ) : (
               <div className="space-y-1" data-testid="events-list">
@@ -1954,8 +1954,8 @@ export default function DealsPage() {
           >
             <div className="flex items-center gap-2">
               <Database className="w-3.5 h-3.5 text-muted-foreground/40" />
-              <span className="text-xs font-semibold text-muted-foreground/50">MARKET INTELLIGENCE</span>
-              <span className="text-[10px] text-muted-foreground/30">Heatmap, Data Sources, Currents</span>
+              <span className="text-xs font-semibold text-muted-foreground/50">MARKET SIGNALS</span>
+              <span className="text-[10px] text-muted-foreground/30">Signal heatmap, source status, event filters</span>
             </div>
             {showMarketData ? <ChevronUp className="w-4 h-4 text-muted-foreground/30" /> : <ChevronDown className="w-4 h-4 text-muted-foreground/30" />}
           </button>
@@ -1971,7 +1971,7 @@ export default function DealsPage() {
                 </div>
                 <div className="space-y-3">
                   <div className="qi-panel p-3 rounded-lg relative overflow-hidden" data-testid="current-filters" style={{ perspective: "800px" }}>
-                    <h4 className="text-[11px] font-semibold text-muted-foreground/60 mb-2 relative z-10">THE THREE CURRENTS</h4>
+                    <h4 className="text-[11px] font-semibold text-muted-foreground/60 mb-2 relative z-10">SIGNAL FILTERS</h4>
                     <div className="flex gap-2 relative z-10">
                       {Object.entries(CURRENT_LABELS).map(([key, label]) => (
                         <button
@@ -1994,7 +1994,7 @@ export default function DealsPage() {
                     </div>
                   </div>
                   <div className="qi-panel p-3 rounded-lg" data-testid="sources-panel">
-                    <h4 className="text-[11px] font-semibold text-muted-foreground/60 mb-2">DATA SOURCES ({sourcesQuery.data?.length || 0})</h4>
+                    <h4 className="text-[11px] font-semibold text-muted-foreground/60 mb-2">SOURCE STATUS ({sourcesQuery.data?.length || 0})</h4>
                     <div className="space-y-1.5 max-h-[320px] overflow-y-auto scrollbar-hide">
                       {sourcesQuery.data?.map((src: any) => (
                         <div key={src.id} className="flex items-center justify-between group/src">
@@ -2012,7 +2012,7 @@ export default function DealsPage() {
                             className="text-[10px] text-amber-400/50 hover:text-amber-400 qi-button transition-all px-1.5 py-0.5 rounded"
                             data-testid={`button-fetch-${src.slug}`}
                           >
-                            Fetch
+                            Pull
                           </button>
                         </div>
                       ))}

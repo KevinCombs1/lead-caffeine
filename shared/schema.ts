@@ -855,16 +855,16 @@ export const DEAL_CURRENTS = {
 
 export const DEAL_TAB_CATEGORIES = {
   CONVERGENCE: { name: "Credit Intelligence", subs: ["Gap Matrix", "Company Discovery", "Intelligence Pipeline", "Results", "Legislative Triggers"] },
-  GOVERNMENT_CONTRACTS: { name: "Government Contracts", subs: ["Federal Procurement", "Grants & Awards", "Defense"] },
-  REGULATORY: { name: "Regulatory & Legislative", subs: ["New Laws", "Rule Changes", "Tax Policy"] },
-  PRIVATE_CAPITAL: { name: "Private Capital", subs: ["PE Rounds", "VC Rounds", "Private Placements"] },
-  ENERGY: { name: "Energy & Resources", subs: ["Energy Deals", "Clean Tech", "Mining & Extraction"] },
-  REAL_ESTATE: { name: "Real Estate & Infrastructure", subs: ["Commercial", "Development", "REITs"] },
-  INTELLECTUAL_PROPERTY: { name: "Intellectual Property", subs: ["Patents", "Licensing", "Technology Transfer"] },
+  GOVERNMENT_CONTRACTS: { name: "Gov. Contracts", subs: ["Federal Procurement", "Grants & Awards", "Defense"] },
+  REGULATORY: { name: "Regulatory & Tax Law", subs: ["New Laws", "Rule Changes", "Tax Policy"] },
+  PRIVATE_CAPITAL: { name: "Private Funding", subs: ["PE Activity", "VC Activity", "Private Placements"] },
+  ENERGY: { name: "Clean Energy", subs: ["Energy Deals", "Clean Tech", "Resource Credits"] },
+  REAL_ESTATE: { name: "Real Estate & Energy", subs: ["Commercial", "Development", "REITs"] },
+  INTELLECTUAL_PROPERTY: { name: "IP & Patents", subs: ["Patents", "Licensing", "R&D Licensing"] },
   CREDIT_DEBT: { name: "Credit & Debt", subs: ["Bond Issuance", "Credit Facilities", "Restructuring"] },
-  LABOR: { name: "Labor & Human Capital", subs: ["Executive Moves", "Mass Hiring", "Layoffs & Restructuring"] },
-  MERGERS_ACQUISITIONS: { name: "Mergers & Acquisitions", subs: ["M&A", "Divestitures", "Joint Ventures"] },
-  CAPITAL_MARKETS: { name: "Capital Markets", subs: ["IPOs", "Secondary Offerings", "SPACs"] },
+  LABOR: { name: "Workforce Signals", subs: ["Hiring & Retention", "Mass Hiring", "Layoffs & Restructuring"] },
+  MERGERS_ACQUISITIONS: { name: "M&A Signals", subs: ["M&A", "Divestitures", "Joint Ventures"] },
+  CAPITAL_MARKETS: { name: "Capital Activity", subs: ["IPOs", "Secondary Offerings", "SPACs & De-SPACs"] },
 } as const;
 
 export const dealSources = pgTable("deal_sources", {

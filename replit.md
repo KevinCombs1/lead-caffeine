@@ -1,11 +1,11 @@
-# D.A.T.A. Cloudware — Light Engine + Deal Paradise
+# D.A.T.A. Cloudware — Light Engine + Credit Scanner
 
 ## Overview
 D.A.T.A. Cloudware is a tax credit intelligence platform operating across two phases:
 
 **Phase 1 — Light Engine**: Tax credit discovery and gentle outreach. Discovers companies through SEC EDGAR sweeps, matches them against 38 tax credit programs via Credit X-Ray (76+ XBRL concepts), identifies website lead forms, and performs non-intrusive outreach.
 
-**Phase 2 — Deal Paradise**: Tax Credit Opportunity Machine. Three layers:
+**Phase 2 — Credit Scanner**: Tax Credit Opportunity Machine. Three layers:
 1. **Gap Matrix** — 38 tax credits showing who qualifies but hasn't claimed (the DEALS — front and center)
 2. **Filing Fingerprints** — Automatic detection rules + custom rules with live preview before saving
 3. **Legislative Triggers** — Law changes mapped to new credit opportunities
@@ -26,13 +26,15 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
 - **Delta Map**: Integrates fiscal leads with scraped forms, advertisements, tracking data, and Credit X-Ray results to create a comprehensive outreach view.
 - **Grace Check**: A security protocol that checks for honeypots, WAF confidence, and bot scripts before form submission, ensuring non-intrusive interaction.
 - **Bumblebee Submission**: Employs human-timed, one-per-domain, grace-checked form delivery for gentle outreach.
-- **Quantum Intelligence Dashboard**: An interactive, tabbed interface providing summary statistics, opportunity clusters, a legislative map of tax credits, and a cross-reference matrix for in-depth analysis and interactive filtering of leads.
+- **Credit Intelligence Dashboard**: An interactive, tabbed interface providing summary statistics, opportunity clusters, a legislative map of tax credits, and a cross-reference matrix for in-depth analysis and interactive filtering of leads.
 
 ### System Design Choices
 - **Database**: PostgreSQL is used via Drizzle ORM. Key tables include `fiscalLeads`, `prospects`, `domainIntel`, and various tables for scan infrastructure, security, and intel aggregation.
 - **Authentication**: Password-based authentication for user access.
 - **API Endpoints**: A comprehensive set of API endpoints manage authentication, lead discovery, form submission, credit analysis, outreach progression, and security insights.
-- **Phase 2 - Deal Paradise**: Universal capital convergence engine tracking Three Currents (Transactions, Trends, Timelines) across 11 deal categories. Goal: Scale to 3,300 data streams across 6 batches, then activate CDA (33 prompts).
+- **Phase 2 - Credit Scanner**: Tax credit signal engine tracking Three Currents (Transactions, Trends, Timelines) across 11 signal categories. Goal: Scale to 3,300 data streams across 6 batches, then activate CDA (33 prompts).
+  - **Tab category renames (text alignment pass)**: Capital Markets→Capital Activity, M&A→M&A Signals, Private Capital→Private Funding, Government Contracts→Gov. Contracts, Real Estate & Infrastructure→Real Estate & Energy, Regulatory & Legislative→Regulatory & Tax Law, Intellectual Property→IP & Patents, Energy & Resources→Clean Energy, Labor & Human Capital→Workforce Signals
+  - **UI text renames**: Deal Paradise→Credit Scanner, Compile All→Fetch All Sources, Detect→Find Convergences, Mass Bloom→Sweep Industries, Fetch→Pull, Capital Convergence Map→Credit Opportunity Heatmap, MARKET INTELLIGENCE→MARKET SIGNALS, THE THREE CURRENTS→SIGNAL FILTERS, DATA SOURCES→SOURCE STATUS, SOURCE NETWORK→INTELLIGENCE SOURCES, Cross-Source Corroboration→Verified Across Sources, Quantum Intelligence→Credit Intelligence Dashboard
   - **Batch 1 complete**: Config-driven framework + 15 zero-auth sources (~45 streams)
   - **Batch 2 complete**: Data quality layer + deepened sources + 2 new sources (~200+ streams)
     - Data quality: MD5 dedup hash, in-memory dedup set (50K cap), source health monitoring, entity cache eviction (5K cap)

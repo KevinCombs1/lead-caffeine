@@ -185,7 +185,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         responseSelector: "data",
         fieldMap: {
           title: (item: any) => `Exchange Rate: ${item.country_currency_desc} = ${item.exchange_rate} (${item.record_date})`,
-          eventType: "exchange_rate", tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS,
+          eventType: "exchange_rate", tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS,
           value: (item: any) => parseFloat(item.exchange_rate || "0"),
           eventDate: (item: any) => item.record_date ? new Date(item.record_date) : undefined,
           geography: (item: any) => item.country_currency_desc?.split("-")[0]?.trim(),
@@ -212,7 +212,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         responseSelector: "data",
         fieldMap: {
           title: (item: any) => `Treasury Statement: ${item.classification_desc || "Item"} — $${((parseFloat(item.current_month_gross_amt || "0")) / 1e9).toFixed(1)}B (${item.record_date})`,
-          eventType: "treasury_statement", tabCategory: "Government Contracts", subCategory: "Federal Procurement", current: DEAL_CURRENTS.TRANSACTIONS,
+          eventType: "treasury_statement", tabCategory: "Gov. Contracts", subCategory: "Federal Procurement", current: DEAL_CURRENTS.TRANSACTIONS,
           value: (item: any) => parseFloat(item.current_month_gross_amt || "0") * 1e6,
           eventDate: (item: any) => item.record_date ? new Date(item.record_date) : undefined,
           geography: () => "United States", sourceUrl: () => "https://fiscaldata.treasury.gov/datasets/monthly-treasury-statement/", probability: 1.0,
@@ -238,7 +238,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         responseSelector: "data",
         fieldMap: {
           title: (item: any) => `Federal Net Cost: ${item.agency_nm || "Agency"} — $${((parseFloat(item.gross_cost_bil_amt || "0"))).toFixed(1)}B (${item.record_date})`,
-          eventType: "federal_net_cost", tabCategory: "Government Contracts", subCategory: "Federal Procurement", current: DEAL_CURRENTS.TRENDS,
+          eventType: "federal_net_cost", tabCategory: "Gov. Contracts", subCategory: "Federal Procurement", current: DEAL_CURRENTS.TRENDS,
           value: (item: any) => parseFloat(item.gross_cost_bil_amt || "0") * 1e9,
           eventDate: (item: any) => item.record_date ? new Date(item.record_date) : undefined,
           entityName: (item: any) => item.agency_nm,
@@ -295,7 +295,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         fieldMap: {
           title: (item: any) => `Bank: ${item.INSTNAME || "Unknown"} — ${item.CITY || ""}, ${item.STALP || ""} — Assets $${((parseFloat(item.ASSET || "0")) / 1e6).toFixed(1)}B`,
           entityName: (item: any) => item.INSTNAME, entityType: "bank",
-          eventType: "bank_institution", tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS,
+          eventType: "bank_institution", tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS,
           value: (item: any) => parseFloat(item.ASSET || "0") * 1000,
           state: (item: any) => item.STALP, geography: (item: any) => `${item.CITY || ""}, ${item.STALP || ""}`,
           sourceUrl: () => "https://banks.data.fdic.gov/", probability: 1.0,
@@ -321,7 +321,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         fieldMap: {
           title: (item: any) => `${item.declarationTitle || "Disaster"} — ${item.state || ""} (${item.incidentType || ""})`,
           entityName: (item: any) => item.designatedArea || item.state, entityType: "government",
-          eventType: "disaster_declaration", tabCategory: "Real Estate & Infrastructure", subCategory: "Development", current: DEAL_CURRENTS.TIMELINES,
+          eventType: "disaster_declaration", tabCategory: "Real Estate & Energy", subCategory: "Development", current: DEAL_CURRENTS.TIMELINES,
           eventDate: (item: any) => item.declarationDate ? new Date(item.declarationDate) : undefined,
           state: (item: any) => item.state, geography: (item: any) => item.designatedArea ? `${item.designatedArea}, ${item.state}` : item.state,
           sourceUrl: () => "https://www.fema.gov/disaster/declarations", probability: 1.0,
@@ -335,7 +335,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         fieldMap: {
           title: (item: any) => `FEMA PA Grant: ${item.applicantName || "Unknown"} — $${((item.federalShareObligated || 0) / 1e6).toFixed(2)}M`,
           entityName: (item: any) => item.applicantName, entityType: "government",
-          eventType: "fema_grant", tabCategory: "Government Contracts", subCategory: "Grants & Awards", current: DEAL_CURRENTS.TRANSACTIONS,
+          eventType: "fema_grant", tabCategory: "Gov. Contracts", subCategory: "Grants & Awards", current: DEAL_CURRENTS.TRANSACTIONS,
           value: (item: any) => parseFloat(item.federalShareObligated || "0"),
           eventDate: (item: any) => item.declarationDate ? new Date(item.declarationDate) : undefined,
           state: (item: any) => item.state, geography: (item: any) => item.county ? `${item.county}, ${item.state}` : item.state,
@@ -350,7 +350,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         fieldMap: {
           title: (item: any) => `Hazard Mitigation Grant: ${item.subgrantee || item.grantee || "Unknown"} — $${((item.federalShareObligated || 0) / 1e6).toFixed(2)}M`,
           entityName: (item: any) => item.subgrantee || item.grantee, entityType: "government",
-          eventType: "mitigation_grant", tabCategory: "Real Estate & Infrastructure", subCategory: "Development", current: DEAL_CURRENTS.TRANSACTIONS,
+          eventType: "mitigation_grant", tabCategory: "Real Estate & Energy", subCategory: "Development", current: DEAL_CURRENTS.TRANSACTIONS,
           value: (item: any) => parseFloat(item.federalShareObligated || "0"),
           eventDate: (item: any) => item.dateApproved ? new Date(item.dateApproved) : undefined,
           state: (item: any) => item.state, geography: (item: any) => item.state,
@@ -364,7 +364,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         responseSelector: "FemaWebDisasterSummaries",
         fieldMap: {
           title: (item: any) => `FEMA Disaster Summary: ${item.title || "Event"} — Total Obligated: $${((item.totalAmountIhpApproved || 0) / 1e6).toFixed(1)}M`,
-          eventType: "disaster_summary", tabCategory: "Real Estate & Infrastructure", subCategory: "Commercial", current: DEAL_CURRENTS.TIMELINES,
+          eventType: "disaster_summary", tabCategory: "Real Estate & Energy", subCategory: "Commercial", current: DEAL_CURRENTS.TIMELINES,
           value: (item: any) => parseFloat(item.totalAmountIhpApproved || "0"),
           eventDate: (item: any) => item.declarationDate ? new Date(item.declarationDate) : undefined,
           geography: () => "United States",
@@ -390,7 +390,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         fieldMap: {
           title: (item: any) => `Drug Recall: ${item.product_description?.substring(0, 80) || "Product"} — Class ${item.classification || "?"}`,
           entityName: (item: any) => item.recalling_firm, entityType: "pharma_company",
-          eventType: "drug_recall", tabCategory: "Regulatory & Legislative", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES,
+          eventType: "drug_recall", tabCategory: "Regulatory & Tax Law", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES,
           eventDate: (item: any) => item.report_date ? new Date(item.report_date.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")) : undefined,
           state: (item: any) => item.state, geography: (item: any) => `${item.city || ""}, ${item.state || ""}`.trim(),
           sourceUrl: () => "https://www.fda.gov/safety/recalls-market-withdrawals-safety-alerts", probability: 1.0,
@@ -403,7 +403,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         fieldMap: {
           title: (item: any) => `510(k) Clearance: ${item.device_name || "Device"} — ${item.applicant || "Unknown"}`,
           entityName: (item: any) => item.applicant, entityType: "medical_device_company",
-          eventType: "device_clearance", tabCategory: "Intellectual Property", subCategory: "Technology Transfer", current: DEAL_CURRENTS.TRANSACTIONS,
+          eventType: "device_clearance", tabCategory: "IP & Patents", subCategory: "R&D Licensing", current: DEAL_CURRENTS.TRANSACTIONS,
           eventDate: (item: any) => item.decision_date ? new Date(item.decision_date) : undefined,
           sourceUrl: (item: any) => `https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfpmn/pmn.cfm?ID=${item.k_number || ""}`, probability: 1.0,
           metadata: (item: any) => ({ kNumber: item.k_number, productCode: item.product_code, reviewPanel: item.review_panel, decision: item.decision_description }),
@@ -415,7 +415,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         fieldMap: {
           title: (item: any) => `PMA Approval: ${item.trade_name || item.generic_name || "Device"} — ${item.applicant || "Unknown"}`,
           entityName: (item: any) => item.applicant, entityType: "medical_device_company",
-          eventType: "device_pma_approval", tabCategory: "Capital Markets", subCategory: "IPOs", current: DEAL_CURRENTS.TRANSACTIONS,
+          eventType: "device_pma_approval", tabCategory: "Capital Activity", subCategory: "IPOs", current: DEAL_CURRENTS.TRANSACTIONS,
           eventDate: (item: any) => item.decision_date ? new Date(item.decision_date) : undefined,
           sourceUrl: () => "https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfpma/pma.cfm", probability: 1.0,
           metadata: (item: any) => ({ pmaNumber: item.pma_number, productCode: item.product_code, advisoryCommittee: item.advisory_committee_description }),
@@ -427,7 +427,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         fieldMap: {
           title: (item: any) => `Food Recall: ${item.product_description?.substring(0, 80) || "Product"} — Class ${item.classification || "?"}`,
           entityName: (item: any) => item.recalling_firm, entityType: "food_company",
-          eventType: "food_recall", tabCategory: "Regulatory & Legislative", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES,
+          eventType: "food_recall", tabCategory: "Regulatory & Tax Law", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES,
           eventDate: (item: any) => item.report_date ? new Date(item.report_date.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")) : undefined,
           state: (item: any) => item.state, geography: (item: any) => `${item.city || ""}, ${item.state || ""}`.trim(),
           sourceUrl: () => "https://www.fda.gov/safety/recalls-market-withdrawals-safety-alerts", probability: 1.0,
@@ -440,7 +440,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         fieldMap: {
           title: (item: any) => `FDA Drug: ${item.products?.[0]?.brand_name || item.openfda?.brand_name?.[0] || "Drug"} — ${item.sponsor_name || "Unknown"}`,
           entityName: (item: any) => item.sponsor_name, entityType: "pharma_company",
-          eventType: "drug_approval", tabCategory: "Capital Markets", subCategory: "IPOs", current: DEAL_CURRENTS.TRANSACTIONS,
+          eventType: "drug_approval", tabCategory: "Capital Activity", subCategory: "IPOs", current: DEAL_CURRENTS.TRANSACTIONS,
           eventDate: (item: any) => item.submissions?.[0]?.submission_status_date ? new Date(item.submissions[0].submission_status_date) : undefined,
           sourceUrl: () => "https://www.fda.gov/drugs", probability: 1.0,
           metadata: (item: any) => ({ applicationNumber: item.application_number, productType: item.products?.[0]?.marketing_status }),
@@ -452,7 +452,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         fieldMap: {
           title: (item: any) => `Device Adverse Event: ${item.device?.[0]?.generic_name || "Device"} — ${item.device?.[0]?.manufacturer_d_name || "Unknown"}`,
           entityName: (item: any) => item.device?.[0]?.manufacturer_d_name, entityType: "medical_device_company",
-          eventType: "device_adverse_event", tabCategory: "Regulatory & Legislative", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES,
+          eventType: "device_adverse_event", tabCategory: "Regulatory & Tax Law", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES,
           eventDate: (item: any) => item.date_received ? new Date(item.date_received) : undefined,
           sourceUrl: () => "https://www.fda.gov/medical-devices/medical-device-reporting-mdr", probability: 0.9,
           metadata: (item: any) => ({ eventType: item.event_type, reportNumber: item.mdr_report_key }),
@@ -464,7 +464,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         fieldMap: {
           title: (item: any) => `Drug Adverse Event: ${item.patient?.drug?.[0]?.medicinalproduct || "Drug"} — ${item.patient?.drug?.[0]?.openfda?.manufacturer_name?.[0] || "Unknown"}`,
           entityName: (item: any) => item.patient?.drug?.[0]?.openfda?.manufacturer_name?.[0], entityType: "pharma_company",
-          eventType: "drug_adverse_event", tabCategory: "Regulatory & Legislative", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES,
+          eventType: "drug_adverse_event", tabCategory: "Regulatory & Tax Law", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES,
           eventDate: (item: any) => item.receivedate ? new Date(item.receivedate.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")) : undefined,
           sourceUrl: () => "https://www.fda.gov/drugs/drug-safety-and-availability", probability: 0.85,
           metadata: (item: any) => ({ serious: item.serious, reportType: item.reporttype }),
@@ -483,15 +483,15 @@ const CONFIG_SOURCES: SourceConfig[] = [
     status: "active",
     endpoints: [
       { path: "/recalls/recallsByVehicle?make=FORD&model=&modelYear=2024", method: "GET", responseSelector: "results",
-        fieldMap: { title: (item: any) => `Vehicle Recall: ${item.Manufacturer || "Ford"} — ${item.Component || "Component"} (${item.NHTSACampaignNumber || ""})`, entityName: (item: any) => item.Manufacturer || "Ford", entityType: "auto_manufacturer", eventType: "vehicle_recall", tabCategory: "Regulatory & Legislative", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES, eventDate: (item: any) => item.ReportReceivedDate ? new Date(item.ReportReceivedDate) : undefined, geography: () => "United States", sourceUrl: () => "https://www.nhtsa.gov/recalls", probability: 1.0, metadata: (item: any) => ({ campaignNumber: item.NHTSACampaignNumber, component: item.Component, summary: item.Summary?.substring(0, 500) }) } },
+        fieldMap: { title: (item: any) => `Vehicle Recall: ${item.Manufacturer || "Ford"} — ${item.Component || "Component"} (${item.NHTSACampaignNumber || ""})`, entityName: (item: any) => item.Manufacturer || "Ford", entityType: "auto_manufacturer", eventType: "vehicle_recall", tabCategory: "Regulatory & Tax Law", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES, eventDate: (item: any) => item.ReportReceivedDate ? new Date(item.ReportReceivedDate) : undefined, geography: () => "United States", sourceUrl: () => "https://www.nhtsa.gov/recalls", probability: 1.0, metadata: (item: any) => ({ campaignNumber: item.NHTSACampaignNumber, component: item.Component, summary: item.Summary?.substring(0, 500) }) } },
       { path: "/recalls/recallsByVehicle?make=TESLA&model=&modelYear=2024", method: "GET", responseSelector: "results",
-        fieldMap: { title: (item: any) => `Vehicle Recall: ${item.Manufacturer || "Tesla"} — ${item.Component || "Component"} (${item.NHTSACampaignNumber || ""})`, entityName: (item: any) => item.Manufacturer || "Tesla", entityType: "auto_manufacturer", eventType: "vehicle_recall", tabCategory: "Regulatory & Legislative", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES, eventDate: (item: any) => item.ReportReceivedDate ? new Date(item.ReportReceivedDate) : undefined, geography: () => "United States", sourceUrl: () => "https://www.nhtsa.gov/recalls", probability: 1.0, metadata: (item: any) => ({ campaignNumber: item.NHTSACampaignNumber, component: item.Component, summary: item.Summary?.substring(0, 500) }) } },
+        fieldMap: { title: (item: any) => `Vehicle Recall: ${item.Manufacturer || "Tesla"} — ${item.Component || "Component"} (${item.NHTSACampaignNumber || ""})`, entityName: (item: any) => item.Manufacturer || "Tesla", entityType: "auto_manufacturer", eventType: "vehicle_recall", tabCategory: "Regulatory & Tax Law", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES, eventDate: (item: any) => item.ReportReceivedDate ? new Date(item.ReportReceivedDate) : undefined, geography: () => "United States", sourceUrl: () => "https://www.nhtsa.gov/recalls", probability: 1.0, metadata: (item: any) => ({ campaignNumber: item.NHTSACampaignNumber, component: item.Component, summary: item.Summary?.substring(0, 500) }) } },
       { path: "/recalls/recallsByVehicle?make=TOYOTA&model=&modelYear=2024", method: "GET", responseSelector: "results",
-        fieldMap: { title: (item: any) => `Vehicle Recall: ${item.Manufacturer || "Toyota"} — ${item.Component || "Component"} (${item.NHTSACampaignNumber || ""})`, entityName: (item: any) => item.Manufacturer || "Toyota", entityType: "auto_manufacturer", eventType: "vehicle_recall", tabCategory: "Regulatory & Legislative", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES, eventDate: (item: any) => item.ReportReceivedDate ? new Date(item.ReportReceivedDate) : undefined, geography: () => "United States", sourceUrl: () => "https://www.nhtsa.gov/recalls", probability: 1.0, metadata: (item: any) => ({ campaignNumber: item.NHTSACampaignNumber, component: item.Component, summary: item.Summary?.substring(0, 500) }) } },
+        fieldMap: { title: (item: any) => `Vehicle Recall: ${item.Manufacturer || "Toyota"} — ${item.Component || "Component"} (${item.NHTSACampaignNumber || ""})`, entityName: (item: any) => item.Manufacturer || "Toyota", entityType: "auto_manufacturer", eventType: "vehicle_recall", tabCategory: "Regulatory & Tax Law", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES, eventDate: (item: any) => item.ReportReceivedDate ? new Date(item.ReportReceivedDate) : undefined, geography: () => "United States", sourceUrl: () => "https://www.nhtsa.gov/recalls", probability: 1.0, metadata: (item: any) => ({ campaignNumber: item.NHTSACampaignNumber, component: item.Component, summary: item.Summary?.substring(0, 500) }) } },
       { path: "/recalls/recallsByVehicle?make=CHEVROLET&model=&modelYear=2024", method: "GET", responseSelector: "results",
-        fieldMap: { title: (item: any) => `Vehicle Recall: ${item.Manufacturer || "Chevrolet"} — ${item.Component || "Component"} (${item.NHTSACampaignNumber || ""})`, entityName: (item: any) => item.Manufacturer || "General Motors", entityType: "auto_manufacturer", eventType: "vehicle_recall", tabCategory: "Regulatory & Legislative", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES, eventDate: (item: any) => item.ReportReceivedDate ? new Date(item.ReportReceivedDate) : undefined, geography: () => "United States", sourceUrl: () => "https://www.nhtsa.gov/recalls", probability: 1.0, metadata: (item: any) => ({ campaignNumber: item.NHTSACampaignNumber, component: item.Component, summary: item.Summary?.substring(0, 500) }) } },
+        fieldMap: { title: (item: any) => `Vehicle Recall: ${item.Manufacturer || "Chevrolet"} — ${item.Component || "Component"} (${item.NHTSACampaignNumber || ""})`, entityName: (item: any) => item.Manufacturer || "General Motors", entityType: "auto_manufacturer", eventType: "vehicle_recall", tabCategory: "Regulatory & Tax Law", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES, eventDate: (item: any) => item.ReportReceivedDate ? new Date(item.ReportReceivedDate) : undefined, geography: () => "United States", sourceUrl: () => "https://www.nhtsa.gov/recalls", probability: 1.0, metadata: (item: any) => ({ campaignNumber: item.NHTSACampaignNumber, component: item.Component, summary: item.Summary?.substring(0, 500) }) } },
       { path: "/recalls/recallsByVehicle?make=HONDA&model=&modelYear=2024", method: "GET", responseSelector: "results",
-        fieldMap: { title: (item: any) => `Vehicle Recall: ${item.Manufacturer || "Honda"} — ${item.Component || "Component"} (${item.NHTSACampaignNumber || ""})`, entityName: (item: any) => item.Manufacturer || "Honda", entityType: "auto_manufacturer", eventType: "vehicle_recall", tabCategory: "Regulatory & Legislative", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES, eventDate: (item: any) => item.ReportReceivedDate ? new Date(item.ReportReceivedDate) : undefined, geography: () => "United States", sourceUrl: () => "https://www.nhtsa.gov/recalls", probability: 1.0, metadata: (item: any) => ({ campaignNumber: item.NHTSACampaignNumber, component: item.Component, summary: item.Summary?.substring(0, 500) }) } },
+        fieldMap: { title: (item: any) => `Vehicle Recall: ${item.Manufacturer || "Honda"} — ${item.Component || "Component"} (${item.NHTSACampaignNumber || ""})`, entityName: (item: any) => item.Manufacturer || "Honda", entityType: "auto_manufacturer", eventType: "vehicle_recall", tabCategory: "Regulatory & Tax Law", subCategory: "Rule Changes", current: DEAL_CURRENTS.TIMELINES, eventDate: (item: any) => item.ReportReceivedDate ? new Date(item.ReportReceivedDate) : undefined, geography: () => "United States", sourceUrl: () => "https://www.nhtsa.gov/recalls", probability: 1.0, metadata: (item: any) => ({ campaignNumber: item.NHTSACampaignNumber, component: item.Component, summary: item.Summary?.substring(0, 500) }) } },
     ],
   },
   {
@@ -505,25 +505,25 @@ const CONFIG_SOURCES: SourceConfig[] = [
     status: "active",
     endpoints: [
       { path: "/country/USA;CHN;JPN;DEU;GBR;IND;FRA;BRA;CAN;KOR/indicator/NY.GDP.MKTP.CD?format=json&per_page=20&date=2018:2024&source=2", method: "GET", responseSelector: "1",
-        fieldMap: { title: (item: any) => `GDP: ${item.country?.value || "?"} — $${((item.value || 0) / 1e12).toFixed(2)}T (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "gdp_indicator", tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/NY.GDP.MKTP.CD", probability: 1.0, metadata: (item: any) => ({ indicatorId: "NY.GDP.MKTP.CD", countryCode: item.countryiso3code }) } },
+        fieldMap: { title: (item: any) => `GDP: ${item.country?.value || "?"} — $${((item.value || 0) / 1e12).toFixed(2)}T (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "gdp_indicator", tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/NY.GDP.MKTP.CD", probability: 1.0, metadata: (item: any) => ({ indicatorId: "NY.GDP.MKTP.CD", countryCode: item.countryiso3code }) } },
       { path: "/country/USA;CHN;JPN;DEU;GBR;IND;FRA;BRA;CAN;KOR/indicator/FP.CPI.TOTL.ZG?format=json&per_page=20&date=2018:2024&source=2", method: "GET", responseSelector: "1",
         fieldMap: { title: (item: any) => `Inflation: ${item.country?.value || "?"} — ${(item.value || 0).toFixed(1)}% (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "inflation_indicator", tabCategory: "Credit & Debt", subCategory: "Bond Issuance", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG", probability: 1.0, metadata: (item: any) => ({ indicatorId: "FP.CPI.TOTL.ZG", countryCode: item.countryiso3code }) } },
       { path: "/country/USA;CHN;JPN;DEU;GBR;IND;FRA;BRA;CAN;KOR/indicator/SL.UEM.TOTL.ZS?format=json&per_page=20&date=2018:2024&source=2", method: "GET", responseSelector: "1",
-        fieldMap: { title: (item: any) => `Unemployment: ${item.country?.value || "?"} — ${(item.value || 0).toFixed(1)}% (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "unemployment_indicator", tabCategory: "Labor & Human Capital", subCategory: "Layoffs & Restructuring", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/SL.UEM.TOTL.ZS", probability: 1.0, metadata: (item: any) => ({ indicatorId: "SL.UEM.TOTL.ZS", countryCode: item.countryiso3code }) } },
+        fieldMap: { title: (item: any) => `Unemployment: ${item.country?.value || "?"} — ${(item.value || 0).toFixed(1)}% (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "unemployment_indicator", tabCategory: "Workforce Signals", subCategory: "Layoffs & Restructuring", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/SL.UEM.TOTL.ZS", probability: 1.0, metadata: (item: any) => ({ indicatorId: "SL.UEM.TOTL.ZS", countryCode: item.countryiso3code }) } },
       { path: "/country/USA;CHN;JPN;DEU;GBR;IND;FRA;BRA;CAN;KOR/indicator/BX.KLT.DINV.CD.WD?format=json&per_page=20&date=2016:2024&source=2", method: "GET", responseSelector: "1",
-        fieldMap: { title: (item: any) => `FDI Inflows: ${item.country?.value || "?"} — $${((item.value || 0) / 1e9).toFixed(1)}B (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "fdi_indicator", tabCategory: "Capital Markets", subCategory: "IPOs", current: DEAL_CURRENTS.TRANSACTIONS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/BX.KLT.DINV.CD.WD", probability: 1.0, metadata: (item: any) => ({ indicatorId: "BX.KLT.DINV.CD.WD", countryCode: item.countryiso3code }) } },
+        fieldMap: { title: (item: any) => `FDI Inflows: ${item.country?.value || "?"} — $${((item.value || 0) / 1e9).toFixed(1)}B (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "fdi_indicator", tabCategory: "Capital Activity", subCategory: "IPOs", current: DEAL_CURRENTS.TRANSACTIONS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/BX.KLT.DINV.CD.WD", probability: 1.0, metadata: (item: any) => ({ indicatorId: "BX.KLT.DINV.CD.WD", countryCode: item.countryiso3code }) } },
       { path: "/country/USA;CHN;JPN;DEU;GBR;IND;FRA;BRA;CAN;KOR/indicator/NE.TRD.GNFS.ZS?format=json&per_page=20&date=2018:2024&source=2", method: "GET", responseSelector: "1",
-        fieldMap: { title: (item: any) => `Trade (% of GDP): ${item.country?.value || "?"} — ${(item.value || 0).toFixed(1)}% (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "trade_gdp", tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/NE.TRD.GNFS.ZS", probability: 1.0, metadata: (item: any) => ({ indicatorId: "NE.TRD.GNFS.ZS", countryCode: item.countryiso3code }) } },
+        fieldMap: { title: (item: any) => `Trade (% of GDP): ${item.country?.value || "?"} — ${(item.value || 0).toFixed(1)}% (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "trade_gdp", tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/NE.TRD.GNFS.ZS", probability: 1.0, metadata: (item: any) => ({ indicatorId: "NE.TRD.GNFS.ZS", countryCode: item.countryiso3code }) } },
       { path: "/country/USA;CHN;JPN;DEU;GBR;IND;FRA;BRA;CAN;KOR/indicator/GC.DOD.TOTL.GD.ZS?format=json&per_page=20&date=2018:2024&source=2", method: "GET", responseSelector: "1",
         fieldMap: { title: (item: any) => `Central Govt Debt (% GDP): ${item.country?.value || "?"} — ${(item.value || 0).toFixed(1)}% (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "govt_debt_gdp", tabCategory: "Credit & Debt", subCategory: "Bond Issuance", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/GC.DOD.TOTL.GD.ZS", probability: 1.0, metadata: (item: any) => ({ indicatorId: "GC.DOD.TOTL.GD.ZS", countryCode: item.countryiso3code }) } },
       { path: "/country/USA;CHN;JPN;DEU;GBR;IND;FRA;BRA;CAN;KOR/indicator/CM.MKT.LCAP.CD?format=json&per_page=20&date=2018:2024&source=2", method: "GET", responseSelector: "1",
-        fieldMap: { title: (item: any) => `Market Cap: ${item.country?.value || "?"} — $${((item.value || 0) / 1e12).toFixed(2)}T (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "market_cap", tabCategory: "Capital Markets", subCategory: "IPOs", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/CM.MKT.LCAP.CD", probability: 1.0, metadata: (item: any) => ({ indicatorId: "CM.MKT.LCAP.CD", countryCode: item.countryiso3code }) } },
+        fieldMap: { title: (item: any) => `Market Cap: ${item.country?.value || "?"} — $${((item.value || 0) / 1e12).toFixed(2)}T (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "market_cap", tabCategory: "Capital Activity", subCategory: "IPOs", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/CM.MKT.LCAP.CD", probability: 1.0, metadata: (item: any) => ({ indicatorId: "CM.MKT.LCAP.CD", countryCode: item.countryiso3code }) } },
       { path: "/country/USA;CHN;JPN;DEU;GBR;IND;FRA;BRA;CAN;KOR/indicator/FR.INR.LEND?format=json&per_page=20&date=2018:2024&source=2", method: "GET", responseSelector: "1",
         fieldMap: { title: (item: any) => `Lending Interest Rate: ${item.country?.value || "?"} — ${(item.value || 0).toFixed(2)}% (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "lending_rate", tabCategory: "Credit & Debt", subCategory: "Credit Facilities", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/FR.INR.LEND", probability: 1.0, metadata: (item: any) => ({ indicatorId: "FR.INR.LEND", countryCode: item.countryiso3code }) } },
       { path: "/country/USA;CHN;JPN;DEU;GBR;IND;FRA;BRA;CAN;KOR/indicator/IC.BUS.EASE.XQ?format=json&per_page=20&date=2018:2024&source=2", method: "GET", responseSelector: "1",
-        fieldMap: { title: (item: any) => `Ease of Doing Business: ${item.country?.value || "?"} — Rank ${item.value || "N/A"} (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "ease_of_business", tabCategory: "Private Capital", subCategory: "PE Rounds", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/IC.BUS.EASE.XQ", probability: 1.0, metadata: (item: any) => ({ indicatorId: "IC.BUS.EASE.XQ", countryCode: item.countryiso3code }) } },
+        fieldMap: { title: (item: any) => `Ease of Doing Business: ${item.country?.value || "?"} — Rank ${item.value || "N/A"} (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "ease_of_business", tabCategory: "Private Funding", subCategory: "PE Activity", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/IC.BUS.EASE.XQ", probability: 1.0, metadata: (item: any) => ({ indicatorId: "IC.BUS.EASE.XQ", countryCode: item.countryiso3code }) } },
       { path: "/country/USA;CHN;JPN;DEU;GBR;IND;FRA;BRA;CAN;KOR/indicator/PA.NUS.FCRF?format=json&per_page=20&date=2018:2024&source=2", method: "GET", responseSelector: "1",
-        fieldMap: { title: (item: any) => `Official Exchange Rate: ${item.country?.value || "?"} — ${(item.value || 0).toFixed(4)} LCU per USD (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "official_fx_rate", tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/PA.NUS.FCRF", probability: 1.0, metadata: (item: any) => ({ indicatorId: "PA.NUS.FCRF", countryCode: item.countryiso3code }) } },
+        fieldMap: { title: (item: any) => `Official Exchange Rate: ${item.country?.value || "?"} — ${(item.value || 0).toFixed(4)} LCU per USD (${item.date})`, entityName: (item: any) => item.country?.value, entityType: "country", eventType: "official_fx_rate", tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS, value: (item: any) => item.value, eventDate: (item: any) => item.date ? new Date(`${item.date}-01-01`) : undefined, geography: (item: any) => item.country?.value, sourceUrl: () => "https://data.worldbank.org/indicator/PA.NUS.FCRF", probability: 1.0, metadata: (item: any) => ({ indicatorId: "PA.NUS.FCRF", countryCode: item.countryiso3code }) } },
     ],
   },
   {
@@ -541,7 +541,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         method: "GET", responseSelector: "features",
         fieldMap: {
           title: (item: any) => `Earthquake M${(item.properties?.mag || 0).toFixed(1)}: ${item.properties?.place || "Unknown"} (${new Date(item.properties?.time).toISOString().split("T")[0]})`,
-          eventType: "earthquake", tabCategory: "Real Estate & Infrastructure", subCategory: "Development", current: DEAL_CURRENTS.TIMELINES,
+          eventType: "earthquake", tabCategory: "Real Estate & Energy", subCategory: "Development", current: DEAL_CURRENTS.TIMELINES,
           value: (item: any) => item.properties?.mag,
           eventDate: (item: any) => item.properties?.time ? new Date(item.properties.time) : undefined,
           geography: (item: any) => item.properties?.place,
@@ -554,7 +554,7 @@ const CONFIG_SOURCES: SourceConfig[] = [
         method: "GET", responseSelector: "features",
         fieldMap: {
           title: (item: any) => `US Earthquake M${(item.properties?.mag || 0).toFixed(1)}: ${item.properties?.place || "Unknown"}`,
-          eventType: "us_earthquake", tabCategory: "Real Estate & Infrastructure", subCategory: "Commercial", current: DEAL_CURRENTS.TIMELINES,
+          eventType: "us_earthquake", tabCategory: "Real Estate & Energy", subCategory: "Commercial", current: DEAL_CURRENTS.TIMELINES,
           value: (item: any) => item.properties?.mag,
           eventDate: (item: any) => item.properties?.time ? new Date(item.properties.time) : undefined,
           geography: (item: any) => item.properties?.place,
@@ -757,22 +757,22 @@ async function fetchBLS(): Promise<{ fetched: number; stored: number }> {
     "PCUOMFG--OMFG--", "JTU00000000QUL", "JTU00000000HIL", "PCU3361203361201",
   ];
   const seriesNames: Record<string, { name: string; tab: string; sub: string }> = {
-    "LNS14000000": { name: "Unemployment Rate", tab: "Labor & Human Capital", sub: "Layoffs & Restructuring" },
+    "LNS14000000": { name: "Unemployment Rate", tab: "Workforce Signals", sub: "Layoffs & Restructuring" },
     "CUUR0000SA0": { name: "Consumer Price Index (CPI)", tab: "Credit & Debt", sub: "Bond Issuance" },
-    "CEU0500000008": { name: "Average Hourly Earnings", tab: "Labor & Human Capital", sub: "Mass Hiring" },
-    "JTU000000000000000JOL": { name: "JOLTS Job Openings", tab: "Labor & Human Capital", sub: "Executive Moves" },
-    "WPUFD49104": { name: "Producer Price Index (PPI)", tab: "Capital Markets", sub: "Secondary Offerings" },
-    "EIUIR": { name: "Import Price Index", tab: "Capital Markets", sub: "Secondary Offerings" },
-    "CIUIR0000000000I": { name: "Employment Cost Index", tab: "Labor & Human Capital", sub: "Mass Hiring" },
-    "CES0500000003": { name: "Average Weekly Hours", tab: "Labor & Human Capital", sub: "Mass Hiring" },
-    "LNS12000000": { name: "Total Employment Level", tab: "Labor & Human Capital", sub: "Mass Hiring" },
-    "CES0000000001": { name: "Total Nonfarm Payrolls", tab: "Labor & Human Capital", sub: "Mass Hiring" },
-    "LNS11300000": { name: "Labor Force Participation Rate", tab: "Labor & Human Capital", sub: "Executive Moves" },
-    "CES0500000011": { name: "Real Average Hourly Earnings", tab: "Labor & Human Capital", sub: "Mass Hiring" },
-    "PCUOMFG--OMFG--": { name: "PPI Manufacturing", tab: "Capital Markets", sub: "Secondary Offerings" },
-    "JTU00000000QUL": { name: "JOLTS Quits Rate", tab: "Labor & Human Capital", sub: "Layoffs & Restructuring" },
-    "JTU00000000HIL": { name: "JOLTS Hires Rate", tab: "Labor & Human Capital", sub: "Mass Hiring" },
-    "PCU3361203361201": { name: "PPI Motor Vehicle Parts", tab: "Capital Markets", sub: "Secondary Offerings" },
+    "CEU0500000008": { name: "Average Hourly Earnings", tab: "Workforce Signals", sub: "Mass Hiring" },
+    "JTU000000000000000JOL": { name: "JOLTS Job Openings", tab: "Workforce Signals", sub: "Hiring & Retention" },
+    "WPUFD49104": { name: "Producer Price Index (PPI)", tab: "Capital Activity", sub: "Secondary Offerings" },
+    "EIUIR": { name: "Import Price Index", tab: "Capital Activity", sub: "Secondary Offerings" },
+    "CIUIR0000000000I": { name: "Employment Cost Index", tab: "Workforce Signals", sub: "Mass Hiring" },
+    "CES0500000003": { name: "Average Weekly Hours", tab: "Workforce Signals", sub: "Mass Hiring" },
+    "LNS12000000": { name: "Total Employment Level", tab: "Workforce Signals", sub: "Mass Hiring" },
+    "CES0000000001": { name: "Total Nonfarm Payrolls", tab: "Workforce Signals", sub: "Mass Hiring" },
+    "LNS11300000": { name: "Labor Force Participation Rate", tab: "Workforce Signals", sub: "Hiring & Retention" },
+    "CES0500000011": { name: "Real Average Hourly Earnings", tab: "Workforce Signals", sub: "Mass Hiring" },
+    "PCUOMFG--OMFG--": { name: "PPI Manufacturing", tab: "Capital Activity", sub: "Secondary Offerings" },
+    "JTU00000000QUL": { name: "JOLTS Quits Rate", tab: "Workforce Signals", sub: "Layoffs & Restructuring" },
+    "JTU00000000HIL": { name: "JOLTS Hires Rate", tab: "Workforce Signals", sub: "Mass Hiring" },
+    "PCU3361203361201": { name: "PPI Motor Vehicle Parts", tab: "Capital Activity", sub: "Secondary Offerings" },
   };
 
   try {
@@ -850,7 +850,7 @@ async function fetchCensus(): Promise<{ fetched: number; stored: number }> {
         const employment = parseInt(row[empIdx]) || 0; const payroll = parseInt(row[payIdx]) || 0;
         events.push({
           sourceSlug: "census-bureau", entityName: stateName, entityType: "state",
-          eventType: "business_patterns", tabCategory: "Labor & Human Capital", subCategory: "Mass Hiring", current: DEAL_CURRENTS.TRENDS,
+          eventType: "business_patterns", tabCategory: "Workforce Signals", subCategory: "Mass Hiring", current: DEAL_CURRENTS.TRENDS,
           title: `${stateName} — ${establishments.toLocaleString()} estab, ${employment.toLocaleString()} emp, $${(payroll / 1e6).toFixed(0)}M payroll`,
           value: payroll * 1000, geography: stateName, probability: 1.0,
           sourceUrl: "https://www.census.gov/programs-surveys/cbp.html",
@@ -870,7 +870,7 @@ async function fetchCensus(): Promise<{ fetched: number; stored: number }> {
         if (value > 0) {
           events.push({
             sourceSlug: "census-bureau", eventType: "us_exports",
-            tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRANSACTIONS,
+            tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRANSACTIONS,
             title: `US Exports: ${desc} — $${(value / 1e6).toFixed(1)}M (Jun 2024)`,
             value, geography: "United States", probability: 1.0,
             sourceUrl: "https://www.census.gov/foreign-trade/data/index.html",
@@ -891,7 +891,7 @@ async function fetchCensus(): Promise<{ fetched: number; stored: number }> {
         if (value > 0) {
           events.push({
             sourceSlug: "census-bureau", eventType: "us_imports",
-            tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRANSACTIONS,
+            tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRANSACTIONS,
             title: `US Imports: ${desc} — $${(value / 1e6).toFixed(1)}M (Jun 2024)`,
             value, geography: "United States", probability: 1.0,
             sourceUrl: "https://www.census.gov/foreign-trade/data/index.html",
@@ -920,7 +920,7 @@ async function fetchExchangeRates(): Promise<{ fetched: number; stored: number }
       if (rates[c]) {
         events.push({
           sourceSlug: "exchange-rates", eventType: "exchange_rate",
-          tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS,
+          tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS,
           title: `USD/${c}: ${rates[c]}`, value: rates[c], eventDate: new Date(), geography: c, probability: 1.0,
           sourceUrl: "https://www.exchangerate-api.com/",
           metadata: { baseCurrency: "USD", targetCurrency: c, rate: rates[c] },
@@ -953,7 +953,7 @@ async function fetchCoinGecko(): Promise<{ fetched: number; stored: number }> {
         const direction = change24h > 0 ? "▲" : change24h < 0 ? "▼" : "—";
         events.push({
           sourceSlug: "coingecko", entityName: coin.name, entityType: "cryptocurrency",
-          eventType: "crypto_price", tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS,
+          eventType: "crypto_price", tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRENDS,
           title: `${coin.name} (${coin.symbol?.toUpperCase()}): $${coin.current_price?.toLocaleString()} ${direction} ${Math.abs(change24h).toFixed(1)}%`,
           value: coin.market_cap, eventDate: new Date(), geography: "Global", probability: 1.0,
           sourceUrl: `https://www.coingecko.com/en/coins/${coin.id}`,
@@ -994,7 +994,7 @@ export async function fetchSecEdgar(): Promise<{ fetched: number; stored: number
     for (const hit of (data?.hits?.hits || [])) {
       const s = hit._source || {};
       const cn = s.display_names?.[0] || s.entity_name || "Unknown";
-      events.push({ sourceSlug: "sec-edgar", entityName: cn, entityType: "public_company", eventType: "8-K_filing", tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRANSACTIONS, title: `${cn} — Material Event Filing (8-K)`, eventDate: s.file_date ? new Date(s.file_date) : undefined, sourceUrl: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(cn)}&type=8-K`, probability: 0.85, metadata: { form: "8-K", description: s.display_description } });
+      events.push({ sourceSlug: "sec-edgar", entityName: cn, entityType: "public_company", eventType: "8-K_filing", tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRANSACTIONS, title: `${cn} — Material Event Filing (8-K)`, eventDate: s.file_date ? new Date(s.file_date) : undefined, sourceUrl: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(cn)}&type=8-K`, probability: 0.85, metadata: { form: "8-K", description: s.display_description } });
     }
   } catch (err: any) { console.error(`[SEC-EDGAR] 8-K error:`, err.message); }
 
@@ -1004,7 +1004,7 @@ export async function fetchSecEdgar(): Promise<{ fetched: number; stored: number
     for (const hit of (data?.hits?.hits || [])) {
       const s = hit._source || {};
       const cn = s.display_names?.[0] || s.entity_name || "Unknown";
-      events.push({ sourceSlug: "sec-edgar", entityName: cn, entityType: "public_company", eventType: "S-1_filing", tabCategory: "Capital Markets", subCategory: "IPOs", current: DEAL_CURRENTS.TRANSACTIONS, title: `${cn} — IPO Registration (S-1)`, eventDate: s.file_date ? new Date(s.file_date) : undefined, sourceUrl: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(cn)}&type=S-1`, probability: 0.9, metadata: { form: "S-1" } });
+      events.push({ sourceSlug: "sec-edgar", entityName: cn, entityType: "public_company", eventType: "S-1_filing", tabCategory: "Capital Activity", subCategory: "IPOs", current: DEAL_CURRENTS.TRANSACTIONS, title: `${cn} — IPO Registration (S-1)`, eventDate: s.file_date ? new Date(s.file_date) : undefined, sourceUrl: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(cn)}&type=S-1`, probability: 0.9, metadata: { form: "S-1" } });
     }
   } catch (err: any) { console.error(`[SEC-EDGAR] S-1 error:`, err.message); }
 
@@ -1014,7 +1014,7 @@ export async function fetchSecEdgar(): Promise<{ fetched: number; stored: number
     for (const hit of (data?.hits?.hits || [])) {
       const s = hit._source || {};
       const cn = s.display_names?.[0] || s.entity_name || "Unknown";
-      events.push({ sourceSlug: "sec-edgar", entityName: cn, entityType: "private_company", eventType: "form_d", tabCategory: "Private Capital", subCategory: "Private Placements", current: DEAL_CURRENTS.TRANSACTIONS, title: `${cn} — Private Placement (Form D)`, eventDate: s.file_date ? new Date(s.file_date) : undefined, probability: 0.8, metadata: { form: "D" } });
+      events.push({ sourceSlug: "sec-edgar", entityName: cn, entityType: "private_company", eventType: "form_d", tabCategory: "Private Funding", subCategory: "Private Placements", current: DEAL_CURRENTS.TRANSACTIONS, title: `${cn} — Private Placement (Form D)`, eventDate: s.file_date ? new Date(s.file_date) : undefined, probability: 0.8, metadata: { form: "D" } });
     }
   } catch (err: any) { console.error(`[SEC-EDGAR] Form D error:`, err.message); }
 
@@ -1024,7 +1024,7 @@ export async function fetchSecEdgar(): Promise<{ fetched: number; stored: number
     for (const hit of (data?.hits?.hits || [])) {
       const s = hit._source || {};
       const cn = s.display_names?.[0] || s.entity_name || "Unknown";
-      events.push({ sourceSlug: "sec-edgar", entityName: cn, entityType: "institutional_investor", eventType: "13F_filing", tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRANSACTIONS, title: `${cn} — Institutional Holdings (13F)`, eventDate: s.file_date ? new Date(s.file_date) : undefined, probability: 0.85, metadata: { form: "13F-HR" } });
+      events.push({ sourceSlug: "sec-edgar", entityName: cn, entityType: "institutional_investor", eventType: "13F_filing", tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRANSACTIONS, title: `${cn} — Institutional Holdings (13F)`, eventDate: s.file_date ? new Date(s.file_date) : undefined, probability: 0.85, metadata: { form: "13F-HR" } });
     }
   } catch (err: any) { console.error(`[SEC-EDGAR] 13F error:`, err.message); }
 
@@ -1034,7 +1034,7 @@ export async function fetchSecEdgar(): Promise<{ fetched: number; stored: number
     for (const hit of (data?.hits?.hits || [])) {
       const s = hit._source || {};
       const cn = s.display_names?.[0] || s.entity_name || "Unknown";
-      events.push({ sourceSlug: "sec-edgar", entityName: cn, entityType: "insider", eventType: "form_4", tabCategory: "Capital Markets", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRANSACTIONS, title: `${cn} — Insider Transaction (Form 4)`, eventDate: s.file_date ? new Date(s.file_date) : undefined, probability: 0.9, metadata: { form: "4" } });
+      events.push({ sourceSlug: "sec-edgar", entityName: cn, entityType: "insider", eventType: "form_4", tabCategory: "Capital Activity", subCategory: "Secondary Offerings", current: DEAL_CURRENTS.TRANSACTIONS, title: `${cn} — Insider Transaction (Form 4)`, eventDate: s.file_date ? new Date(s.file_date) : undefined, probability: 0.9, metadata: { form: "4" } });
     }
   } catch (err: any) { console.error(`[SEC-EDGAR] Form 4 error:`, err.message); }
 
@@ -1056,7 +1056,7 @@ export async function fetchUsaSpending(): Promise<{ fetched: number; stored: num
     for (const a of (data?.results || [])) {
       const st = a["Place of Performance State Code"] || undefined;
       const amt = parseFloat(a["Award Amount"]) || 0;
-      events.push({ sourceSlug: "usa-spending", entityName: a["Recipient Name"] || "Unknown", entityType: "contractor", eventType: "federal_contract", tabCategory: "Government Contracts", subCategory: "Federal Procurement", current: DEAL_CURRENTS.TRANSACTIONS, title: `${a["Recipient Name"] || "Unknown"} — Federal Contract ($${(amt/1e6).toFixed(1)}M)`, value: amt, eventDate: a["Start Date"] ? new Date(a["Start Date"]) : undefined, state: st, geography: st, probability: 1.0, sourceUrl: `https://www.usaspending.gov/award/${a["Award ID"]}`, metadata: { agency: a["Awarding Agency"], awardId: a["Award ID"] } });
+      events.push({ sourceSlug: "usa-spending", entityName: a["Recipient Name"] || "Unknown", entityType: "contractor", eventType: "federal_contract", tabCategory: "Gov. Contracts", subCategory: "Federal Procurement", current: DEAL_CURRENTS.TRANSACTIONS, title: `${a["Recipient Name"] || "Unknown"} — Federal Contract ($${(amt/1e6).toFixed(1)}M)`, value: amt, eventDate: a["Start Date"] ? new Date(a["Start Date"]) : undefined, state: st, geography: st, probability: 1.0, sourceUrl: `https://www.usaspending.gov/award/${a["Award ID"]}`, metadata: { agency: a["Awarding Agency"], awardId: a["Award ID"] } });
     }
   } catch (err: any) { console.error(`[USA-SPENDING] error:`, err.message); }
   const stored = await storeNormalizedEvents(events);
@@ -1073,7 +1073,7 @@ export async function fetchFederalRegister(): Promise<{ fetched: number; stored:
     const data = await res.json();
     for (const doc of (data?.results || [])) {
       const isP = doc.type === "Proposed Rule";
-      events.push({ sourceSlug: "federal-register", entityName: doc.agencies?.[0]?.name || "Federal Agency", entityType: "government_agency", eventType: isP ? "proposed_rule" : "final_rule", tabCategory: "Regulatory & Legislative", subCategory: isP ? "Rule Changes" : "New Laws", current: DEAL_CURRENTS.TRENDS, title: doc.title || "Regulatory Action", eventDate: doc.publication_date ? new Date(doc.publication_date) : undefined, sourceUrl: doc.html_url, probability: isP ? 0.6 : 0.95, metadata: { documentNumber: doc.document_number, agencies: doc.agencies?.map((a: any) => a.name), abstract: doc.abstract?.substring(0, 500), type: doc.type } });
+      events.push({ sourceSlug: "federal-register", entityName: doc.agencies?.[0]?.name || "Federal Agency", entityType: "government_agency", eventType: isP ? "proposed_rule" : "final_rule", tabCategory: "Regulatory & Tax Law", subCategory: isP ? "Rule Changes" : "New Laws", current: DEAL_CURRENTS.TRENDS, title: doc.title || "Regulatory Action", eventDate: doc.publication_date ? new Date(doc.publication_date) : undefined, sourceUrl: doc.html_url, probability: isP ? 0.6 : 0.95, metadata: { documentNumber: doc.document_number, agencies: doc.agencies?.map((a: any) => a.name), abstract: doc.abstract?.substring(0, 500), type: doc.type } });
     }
   } catch (err: any) { console.error(`[FEDERAL-REGISTER] error:`, err.message); }
   const stored = await storeNormalizedEvents(events);
@@ -1091,7 +1091,7 @@ export async function fetchUspto(): Promise<{ fetched: number; stored: number }>
     for (const p of (data?.patents || [])) {
       const a = p.assignees?.[0]?.assignee_organization || "Individual Inventor";
       const st = p.assignees?.[0]?.assignee_state || undefined;
-      events.push({ sourceSlug: "uspto-patents", entityName: a, entityType: "patent_holder", eventType: "patent_grant", tabCategory: "Intellectual Property", subCategory: "Patents", current: DEAL_CURRENTS.TRANSACTIONS, title: `${a} — Patent: ${p.patent_title || "Untitled"}`, eventDate: p.patent_date ? new Date(p.patent_date) : undefined, state: st, geography: st, sourceUrl: `https://patents.google.com/patent/US${p.patent_number}`, probability: 1.0, metadata: { patentNumber: p.patent_number, abstract: p.patent_abstract?.substring(0, 500), cpcSection: p.cpcs?.[0]?.cpc_section_id } });
+      events.push({ sourceSlug: "uspto-patents", entityName: a, entityType: "patent_holder", eventType: "patent_grant", tabCategory: "IP & Patents", subCategory: "Patents", current: DEAL_CURRENTS.TRANSACTIONS, title: `${a} — Patent: ${p.patent_title || "Untitled"}`, eventDate: p.patent_date ? new Date(p.patent_date) : undefined, state: st, geography: st, sourceUrl: `https://patents.google.com/patent/US${p.patent_number}`, probability: 1.0, metadata: { patentNumber: p.patent_number, abstract: p.patent_abstract?.substring(0, 500), cpcSection: p.cpcs?.[0]?.cpc_section_id } });
     }
   } catch (err: any) { console.error(`[USPTO] error:`, err.message); }
   const stored = await storeNormalizedEvents(events);
@@ -1152,7 +1152,7 @@ export async function fetchCongressGov(): Promise<{ fetched: number; stored: num
     const data = await res.json();
     for (const b of (data?.bills || [])) {
       const isFin = /tax|credit|invest|capital|fund|appropriat|budget|financ|economic/i.test(b.title || "");
-      events.push({ sourceSlug: "congress-gov", entityName: "U.S. Congress", entityType: "government", eventType: "bill", tabCategory: "Regulatory & Legislative", subCategory: b.type === "HR" ? "New Laws" : "Tax Policy", current: DEAL_CURRENTS.TIMELINES, title: `${b.type||"Bill"} ${b.number||""} — ${b.title||"Untitled"}`, eventDate: b.updateDate ? new Date(b.updateDate) : undefined, sourceUrl: b.url, probability: isFin ? 0.7 : 0.4, metadata: { billType: b.type, billNumber: b.number, congress: b.congress, latestAction: b.latestAction, isFinanciallyRelevant: isFin } });
+      events.push({ sourceSlug: "congress-gov", entityName: "U.S. Congress", entityType: "government", eventType: "bill", tabCategory: "Regulatory & Tax Law", subCategory: b.type === "HR" ? "New Laws" : "Tax Policy", current: DEAL_CURRENTS.TIMELINES, title: `${b.type||"Bill"} ${b.number||""} — ${b.title||"Untitled"}`, eventDate: b.updateDate ? new Date(b.updateDate) : undefined, sourceUrl: b.url, probability: isFin ? 0.7 : 0.4, metadata: { billType: b.type, billNumber: b.number, congress: b.congress, latestAction: b.latestAction, isFinanciallyRelevant: isFin } });
       if (b.latestAction?.actionDate) {
         const cg = await getSourceBySlug("congress-gov");
         if (cg) { try { await db.insert(dealTimelines).values({ sourceId: cg.id, eventType: "legislative_action", title: `${b.type} ${b.number}: ${b.latestAction.text||"Action"}`, expectedDate: new Date(b.latestAction.actionDate), legislativeRef: `${b.type} ${b.number}`, confidence: 0.8, metadata: { billTitle: b.title } }); } catch (e) {} }
