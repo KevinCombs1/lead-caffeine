@@ -1655,5 +1655,86 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/discovery/industries", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getAvailableIndustries } = await import("./company-discovery");
+      res.json(getAvailableIndustries());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/discovery/batches", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { discoverCompanies } = await import("./company-discovery");
+      const { industry, revenueMin, revenueMax, count } = req.body;
+      if (!industry || !revenueMin || !revenueMax || !count) {
+        return res.status(400).json({ error: "Missing required fields: industry, revenueMin, revenueMax, count" });
+      }
+      const batchId = await discoverCompanies(industry, revenueMin, revenueMax, count);
+      res.json({ batchId, started: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/discovery/batches", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { listBatches } = await import("./company-discovery");
+      res.json(await listBatches());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/discovery/batches/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { getBatchWithCompanies } = await import("./company-discovery");
+      const result = await getBatchWithCompanies(req.params.id);
+      if (!result) return res.status(404).json({ error: "Batch not found" });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/discovery/status", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getDiscoveryProgress } = await import("./company-discovery");
+      res.json(getDiscoveryProgress());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/discovery/sources", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { INTELLIGENCE_SOURCES } = await import("./company-discovery");
+      res.json(INTELLIGENCE_SOURCES);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/discovery/batches/:id/scan", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { scanBatch } = await import("./company-discovery");
+      await scanBatch(req.params.id);
+      res.json({ started: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/discovery/batches/:id/analyze", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { analyzeBatch } = await import("./company-discovery");
+      await analyzeBatch(req.params.id);
+      res.json({ started: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return httpServer;
 }

@@ -854,7 +854,7 @@ export const DEAL_CURRENTS = {
 } as const;
 
 export const DEAL_TAB_CATEGORIES = {
-  CONVERGENCE: { name: "Credit Intelligence", subs: ["Gap Matrix", "Convergence Signals", "Legislative Triggers"] },
+  CONVERGENCE: { name: "Credit Intelligence", subs: ["Gap Matrix", "Company Discovery", "Intelligence Pipeline", "Results", "Legislative Triggers"] },
   GOVERNMENT_CONTRACTS: { name: "Government Contracts", subs: ["Federal Procurement", "Grants & Awards", "Defense"] },
   REGULATORY: { name: "Regulatory & Legislative", subs: ["New Laws", "Rule Changes", "Tax Policy"] },
   PRIVATE_CAPITAL: { name: "Private Capital", subs: ["PE Rounds", "VC Rounds", "Private Placements"] },
@@ -1076,6 +1076,48 @@ export const customFingerprintRules = pgTable("custom_fingerprint_rules", {
 
 export type CustomFingerprintRule = typeof customFingerprintRules.$inferSelect;
 export type InsertCustomFingerprintRule = typeof customFingerprintRules.$inferInsert;
+
+export const discoveryBatches = pgTable("discovery_batches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  industry: varchar("industry").notNull(),
+  revenueMin: integer("revenue_min").notNull(),
+  revenueMax: integer("revenue_max").notNull(),
+  companyCount: integer("company_count").notNull().default(0),
+  status: varchar("status").notNull().default("idle"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("db_status_idx").on(table.status),
+]);
+
+export const insertDiscoveryBatchSchema = createInsertSchema(discoveryBatches).omit({ id: true, createdAt: true });
+export type DiscoveryBatch = typeof discoveryBatches.$inferSelect;
+export type InsertDiscoveryBatch = z.infer<typeof insertDiscoveryBatchSchema>;
+
+export const batchCompanies = pgTable("batch_companies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchId: varchar("batch_id").notNull().references(() => discoveryBatches.id),
+  companyName: varchar("company_name").notNull(),
+  cik: varchar("cik"),
+  sic: varchar("sic"),
+  sicDescription: varchar("sic_description"),
+  state: varchar("state"),
+  revenue: real("revenue"),
+  totalAssets: real("total_assets"),
+  companySize: varchar("company_size"),
+  intelligenceData: jsonb("intelligence_data"),
+  analysisResults: jsonb("analysis_results"),
+  scannedAt: timestamp("scanned_at"),
+  analyzedAt: timestamp("analyzed_at"),
+}, (table) => [
+  index("bc_batch_idx").on(table.batchId),
+  index("bc_company_idx").on(table.companyName),
+  index("bc_cik_idx").on(table.cik),
+]);
+
+export const insertBatchCompanySchema = createInsertSchema(batchCompanies).omit({ id: true, scannedAt: true, analyzedAt: true });
+export type BatchCompany = typeof batchCompanies.$inferSelect;
+export type InsertBatchCompany = z.infer<typeof insertBatchCompanySchema>;
 
 export const legislativeCreditMap = pgTable("legislative_credit_map", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

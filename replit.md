@@ -56,7 +56,15 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
     - Legislative mapping: Congress.gov + Federal Register events auto-linked to affected credits
     - Tables: `tax_credit_registry`, `credit_gap_analysis`, `custom_fingerprint_rules`, `legislative_credit_map`
     - API routes: `/api/credits/registry`, `/api/credits/gap-matrix`, `/api/credits/gaps/:creditId`, `/api/credits/priority-targets`, `/api/credits/legislative-alerts`, `/api/credits/rules`, `/api/credits/rules/preview`, `/api/credits/scan`
-    - Frontend: Credit Intelligence tab (3 sub-tabs: Gap Matrix, Convergence Signals, Legislative Triggers), Priority Targets bar, Custom Rule form with live preview
+    - Frontend: Credit Intelligence tab (5 sub-tabs: Gap Matrix, Company Discovery, Intelligence Pipeline, Results, Legislative Triggers), Priority Targets bar, Custom Rule form with live preview
+  - **Company Discovery Pipeline** (3-step company intelligence):
+    - `server/company-discovery.ts` — discover companies by industry+revenue, scan 25+ intelligence sources, analyze credit eligibility
+    - Tables: `discovery_batches`, `batch_companies` (with intelligenceData + analysisResults JSONB)
+    - Step 1 — Company Discovery: select industry + revenue range ($10M-$1B), discover 100/500/1000 companies via SEC EDGAR browse-edgar + fast XBRL scan
+    - Step 2 — Intelligence Pipeline: scan each company across 25 government data sources (SEC EDGAR, USPTO, NSF, EPA ECHO, OSHA, SBIR/STTR, ClinicalTrials.gov, CFPB, CPSC, DOE OSTI, GLEIF, FDIC, Federal Register, Census, BLS, USASpending, SAM.gov, Grants.gov, FEC, ITC Trade, Congress.gov, OpenCorporates, OpenFDA)
+    - Step 3 — Results: cross-reference intelligence to determine R&D Tax Credit (§41) + Tariff Tax Credit eligibility per company, with evidence text and estimated values
+    - API routes: POST/GET `/api/discovery/batches`, GET `/api/discovery/batches/:id`, GET `/api/discovery/status`, GET `/api/discovery/sources`, GET `/api/discovery/industries`, POST `/api/discovery/batches/:id/scan`, POST `/api/discovery/batches/:id/analyze`
+    - Frontend: 3 sub-tabs with live progress, source indicator grid, expandable company results with credit status badges
     - Scheduled: seeds registry + legislative mapping + gap scan every 30 minutes + 90s after startup
   - **Mass Bloom Pipeline** (scaling company discovery):
     - `server/mass-bloom.ts` — batch SIC sweep engine for SEC EDGAR at scale

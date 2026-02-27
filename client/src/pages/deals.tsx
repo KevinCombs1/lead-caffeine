@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import {
   Database, Target, X, ChevronRight, Link2, ExternalLink,
   TrendingUp, TrendingDown, AlertTriangle, Sparkles, Eye,
   FileText, Plus, Trash2, ChevronDown, ChevronUp, Scan, Sprout,
+  CheckCircle2, XCircle, Circle, Loader2, Factory, Beaker,
 } from "lucide-react";
 import { DEAL_TAB_CATEGORIES } from "@shared/schema";
 
@@ -648,55 +649,604 @@ function EntityPanel({ entityId, onClose }: { entityId: string; onClose: () => v
   );
 }
 
-function ConvergenceRadarContent({ convergences, isLoading, onExpandConvergence, activeSub }: {
-  convergences: any[];
-  isLoading: boolean;
-  onExpandConvergence: (cp: any) => void;
-  activeSub: string | null;
-}) {
-  const filtered = useMemo(() => {
-    if (!convergences) return [];
-    if (!activeSub) return convergences;
-    if (activeSub === "Cross-Sector Patterns") {
-      return convergences.filter((cp: any) => (cp.currentsInvolved?.length || 0) >= 2 || (cp.metadata?.sourceCount || 0) >= 3);
-    }
-    if (activeSub === "Prediction Models") {
-      return convergences.filter((cp: any) => cp.probability >= 0.4);
-    }
-    if (activeSub === "Timeline Projections") {
-      return convergences.filter((cp: any) => (cp.involvedTimelineIds?.length || 0) > 0 || cp.timeHorizon);
-    }
-    return convergences;
-  }, [convergences, activeSub]);
+const REVENUE_PRESETS = [
+  { label: "$10M – $100M", min: 10_000_000, max: 100_000_000 },
+  { label: "$100M – $500M", min: 100_000_000, max: 500_000_000 },
+  { label: "$500M – $1B", min: 500_000_000, max: 1_000_000_000 },
+];
 
-  if (isLoading) {
-    return (
-      <div className="space-y-3">
-        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-32 rounded-lg" />)}
-      </div>
-    );
-  }
+function formatDollar(val: number | null | undefined): string {
+  if (val === null || val === undefined || isNaN(Number(val))) return "$0";
+  const num = Number(val);
+  if (num >= 1e9) return `$${(num / 1e9).toFixed(1)}B`;
+  if (num >= 1e6) return `$${(num / 1e6).toFixed(1)}M`;
+  if (num >= 1e3) return `$${(num / 1e3).toFixed(0)}K`;
+  return `$${num.toFixed(0)}`;
+}
 
-  if (filtered.length === 0) {
-    return (
-      <div className="text-center py-12 relative" data-testid="convergence-empty">
-        <div className="w-24 h-24 mx-auto mb-4 opacity-[0.15] rounded-full"
-          style={{
-            background: "radial-gradient(circle, rgba(139,92,246,0.3) 0%, rgba(245,158,11,0.1) 40%, transparent 70%)",
-            animation: "coreGlow 4s ease-in-out infinite",
-          }}
-        />
-        <p className="text-sm text-muted-foreground/40">No convergence points detected yet</p>
-        <p className="text-[11px] text-muted-foreground/30 mt-1">Compile data first, then convergences auto-detect every 30 minutes</p>
-      </div>
-    );
-  }
+function CompanyDiscoveryContent() {
+  const [industry, setIndustry] = useState("");
+  const [revenueMin, setRevenueMin] = useState(10_000_000);
+  const [revenueMax, setRevenueMax] = useState(100_000_000);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+
+  const industriesQuery = useQuery<string[]>({ queryKey: ["/api/discovery/industries"] });
+  const batchesQuery = useQuery<any[]>({ queryKey: ["/api/discovery/batches"] });
+  const statusQuery = useQuery<any>({
+    queryKey: ["/api/discovery/status"],
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      return data?.phase === "discovering" ? 1500 : false;
+    },
+  });
+  const batchDetailQuery = useQuery<any>({
+    queryKey: ["/api/discovery/batches", activeBatchId],
+    enabled: !!activeBatchId,
+  });
+
+  const discoverMutation = useMutation({
+    mutationFn: async (count: number) => {
+      const res = await apiRequest("POST", "/api/discovery/batches", { industry, revenueMin, revenueMax, count });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/discovery/batches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/discovery/status"] });
+    },
+  });
+
+  const isDiscovering = statusQuery.data?.phase === "discovering";
+  const progress = statusQuery.data;
+
+  useEffect(() => {
+    if (progress?.phase === "idle" && progress?.batchId && !activeBatchId) {
+      setActiveBatchId(progress.batchId);
+      queryClient.invalidateQueries({ queryKey: ["/api/discovery/batches"] });
+    }
+  }, [progress?.phase, progress?.batchId]);
+
+  const industries = industriesQuery.data || [];
+  const batches = batchesQuery.data || [];
+  const batchDetail = batchDetailQuery.data;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="convergence-list">
-      {filtered.map((cp: any) => (
-        <ConvergenceCard key={cp.id} cp={cp} onExpand={onExpandConvergence} />
-      ))}
+    <div className="space-y-4" data-testid="company-discovery">
+      <div className="qi-panel rounded-xl p-4 relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
+          style={{ background: "radial-gradient(ellipse at 30% 30%, rgba(245,158,11,0.2) 0%, transparent 70%)" }}
+        />
+        <div className="relative z-10 space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Factory className="w-4 h-4 text-amber-400/70" />
+            <h3 className="text-xs font-semibold text-amber-300/80" data-testid="text-discovery-title">DISCOVER COMPANIES</h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[10px] text-muted-foreground/50 mb-1 block">Industry</label>
+              <select
+                value={industry}
+                onChange={(e) => setIndustry(e.target.value)}
+                className="w-full h-8 px-2 text-xs bg-white/5 border border-white/10 rounded-lg text-foreground/80 focus:border-amber-500/30 focus:outline-none"
+                data-testid="select-industry"
+              >
+                <option value="">Select industry...</option>
+                {industries.map((ind) => (
+                  <option key={ind} value={ind}>{ind}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] text-muted-foreground/50 mb-1 block">Revenue Range</label>
+              <div className="flex gap-1">
+                {REVENUE_PRESETS.map((p) => (
+                  <button
+                    key={p.label}
+                    onClick={() => { setRevenueMin(p.min); setRevenueMax(p.max); }}
+                    className={`flex-1 text-[9px] px-1.5 py-1.5 rounded-md border transition-all ${
+                      revenueMin === p.min && revenueMax === p.max
+                        ? "border-amber-500/40 bg-amber-500/10 text-amber-300/90"
+                        : "border-white/8 bg-white/3 text-muted-foreground/50 hover:border-white/15"
+                    }`}
+                    data-testid={`button-preset-${p.label}`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] text-muted-foreground/50 mb-1 block">Discover</label>
+              <div className="flex gap-1">
+                {[100, 500, 1000].map((count) => (
+                  <Button
+                    key={count}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => discoverMutation.mutate(count)}
+                    disabled={!industry || isDiscovering || discoverMutation.isPending}
+                    className="flex-1 text-[10px] h-8 border-amber-500/20 text-amber-300/70 hover:bg-amber-500/10 hover:text-amber-200 disabled:opacity-30"
+                    data-testid={`button-discover-${count}`}
+                  >
+                    {count}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {isDiscovering && progress && (
+            <div className="qi-panel rounded-lg p-3 border border-amber-500/20 bg-amber-500/5" data-testid="discovery-progress">
+              <div className="flex items-center gap-2 mb-2">
+                <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                <span className="text-[11px] text-amber-300/80">Discovering companies...</span>
+                <span className="text-[10px] text-muted-foreground/40 ml-auto">
+                  {progress.companiesFound}/{progress.companiesTarget} found
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-500/60 to-amber-400/40 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, (progress.companiesFound / Math.max(1, progress.companiesTarget)) * 100)}%` }}
+                />
+              </div>
+              <div className="flex items-center gap-3 mt-1.5 text-[9px] text-muted-foreground/40">
+                <span>SIC codes: {progress.sicCodesProcessed}/{progress.sicCodesTotal}</span>
+                <span>XBRL scanned: {progress.xbrlScanned}</span>
+                {progress.currentCompany && <span className="truncate max-w-[200px]">Current: {progress.currentCompany}</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {batches.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Database className="w-3.5 h-3.5 text-muted-foreground/40" />
+            <h4 className="text-[11px] font-semibold text-muted-foreground/50">PREVIOUS BATCHES</h4>
+          </div>
+          <div className="space-y-1.5">
+            {batches.map((b: any) => (
+              <button
+                key={b.id}
+                onClick={() => setActiveBatchId(activeBatchId === b.id ? null : b.id)}
+                className={`w-full text-left px-3 py-2 rounded-lg border transition-all ${
+                  activeBatchId === b.id
+                    ? "border-amber-500/30 bg-amber-500/5"
+                    : "border-white/5 bg-white/[0.015] hover:border-white/10"
+                }`}
+                data-testid={`batch-${b.id}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-foreground/80">{b.name}</span>
+                  <Badge variant="outline" className={`text-[8px] ${
+                    b.status === "complete" ? "text-emerald-400 border-emerald-500/20" :
+                    b.status === "error" ? "text-rose-400 border-rose-500/20" :
+                    b.status === "discovering" || b.status === "scanning" || b.status === "analyzing" ? "text-amber-400 border-amber-500/20" :
+                    "text-muted-foreground/40 border-white/10"
+                  }`} data-testid={`batch-status-${b.id}`}>
+                    {b.status}
+                  </Badge>
+                  <span className="text-[10px] text-muted-foreground/40 ml-auto">{b.companyCount} companies</span>
+                  <span className="text-[10px] text-muted-foreground/30">{b.industry}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeBatchId && batchDetail?.companies?.length > 0 && (
+        <div className="space-y-2" data-testid="batch-companies">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-3.5 h-3.5 text-emerald-400/60" />
+            <h4 className="text-[11px] font-semibold text-emerald-300/60">{batchDetail.batch.name} — {batchDetail.companies.length} COMPANIES</h4>
+          </div>
+          <div className="space-y-1">
+            {batchDetail.companies.slice(0, 50).map((co: any, i: number) => (
+              <div key={co.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.015] border border-white/5" data-testid={`company-row-${i}`}>
+                <div className="w-5 text-[10px] text-muted-foreground/30 font-mono">{i + 1}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-foreground/80 truncate">{co.companyName}</div>
+                  <div className="text-[10px] text-muted-foreground/40">{co.sicDescription || co.sic}</div>
+                </div>
+                <div className="text-xs font-mono text-emerald-400/70">{formatDollar(co.revenue)}</div>
+                {co.state && <div className="text-[9px] text-amber-400/50 font-mono">{co.state}</div>}
+              </div>
+            ))}
+            {batchDetail.companies.length > 50 && (
+              <div className="text-center text-[10px] text-muted-foreground/30 py-1">
+                + {batchDetail.companies.length - 50} more companies
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IntelligencePipelineContent() {
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+
+  const batchesQuery = useQuery<any[]>({ queryKey: ["/api/discovery/batches"] });
+  const sourcesQuery = useQuery<any[]>({ queryKey: ["/api/discovery/sources"] });
+  const statusQuery = useQuery<any>({
+    queryKey: ["/api/discovery/status"],
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      return (data?.phase === "scanning" || data?.phase === "analyzing") ? 1200 : false;
+    },
+  });
+  const batchDetailQuery = useQuery<any>({
+    queryKey: ["/api/discovery/batches", selectedBatchId],
+    enabled: !!selectedBatchId,
+  });
+
+  const scanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/discovery/batches/${selectedBatchId}/scan`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/discovery/status"] });
+    },
+  });
+
+  const analyzeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/discovery/batches/${selectedBatchId}/analyze`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/discovery/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/discovery/batches"] });
+    },
+  });
+
+  const batches = batchesQuery.data || [];
+  const sources = sourcesQuery.data || [];
+  const progress = statusQuery.data;
+  const isScanning = progress?.phase === "scanning";
+  const isAnalyzing = progress?.phase === "analyzing";
+  const batchDetail = batchDetailQuery.data;
+  const hasScannedCompanies = batchDetail?.companies?.some((c: any) => c.intelligenceData);
+
+  const sourceResults = progress?.scanProgress?.sourceResults || {};
+  const successCount = Object.values(sourceResults).filter((s: any) => s.status === "success" || s.count > 0).length;
+  const noDataCount = Object.values(sourceResults).filter((s: any) => s.status === "no_data").length;
+  const errorCount = Object.values(sourceResults).filter((s: any) => s.status === "error").length;
+  const pendingCount = Object.values(sourceResults).filter((s: any) => s.status === "pending").length;
+
+  useEffect(() => {
+    if (progress?.phase === "idle" && (progress?.scanProgress?.companiesScanned > 0 || progress?.analyzeProgress?.companiesAnalyzed > 0)) {
+      queryClient.invalidateQueries({ queryKey: ["/api/discovery/batches", selectedBatchId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/discovery/batches"] });
+    }
+  }, [progress?.phase]);
+
+  return (
+    <div className="space-y-4" data-testid="intelligence-pipeline">
+      <div className="qi-panel rounded-xl p-4 relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
+          style={{ background: "radial-gradient(ellipse at 70% 30%, rgba(6,182,212,0.2) 0%, transparent 70%)" }}
+        />
+        <div className="relative z-10 space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Scan className="w-4 h-4 text-cyan-400/70" />
+            <h3 className="text-xs font-semibold text-cyan-300/80" data-testid="text-pipeline-title">INTELLIGENCE PIPELINE</h3>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <label className="text-[10px] text-muted-foreground/50 mb-1 block">Select Batch</label>
+              <select
+                value={selectedBatchId || ""}
+                onChange={(e) => setSelectedBatchId(e.target.value || null)}
+                className="w-full h-8 px-2 text-xs bg-white/5 border border-white/10 rounded-lg text-foreground/80 focus:border-cyan-500/30 focus:outline-none"
+                data-testid="select-batch-pipeline"
+              >
+                <option value="">Select a batch...</option>
+                {batches.map((b: any) => (
+                  <option key={b.id} value={b.id}>{b.name} ({b.companyCount} companies)</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => scanMutation.mutate()}
+                disabled={!selectedBatchId || isScanning || isAnalyzing || scanMutation.isPending}
+                className="text-[10px] h-8 border-cyan-500/20 text-cyan-300/70 hover:bg-cyan-500/10 hover:text-cyan-200 disabled:opacity-30"
+                data-testid="button-scan-intelligence"
+              >
+                <Scan className="w-3 h-3 mr-1" />
+                Scan Intelligence
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => analyzeMutation.mutate()}
+                disabled={!selectedBatchId || !hasScannedCompanies || isScanning || isAnalyzing || analyzeMutation.isPending}
+                className="text-[10px] h-8 border-emerald-500/20 text-emerald-300/70 hover:bg-emerald-500/10 hover:text-emerald-200 disabled:opacity-30"
+                data-testid="button-analyze-credits"
+              >
+                <Beaker className="w-3 h-3 mr-1" />
+                Analyze Credits
+              </Button>
+            </div>
+          </div>
+
+          {isScanning && progress.scanProgress && (
+            <div className="qi-panel rounded-lg p-3 border border-cyan-500/20 bg-cyan-500/5" data-testid="scan-progress">
+              <div className="flex items-center gap-2 mb-2">
+                <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                <span className="text-[11px] text-cyan-300/80">Scanning intelligence sources...</span>
+                <span className="text-[10px] text-muted-foreground/40 ml-auto">
+                  {progress.scanProgress.companiesScanned}/{progress.scanProgress.companiesTotal} companies
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden mb-2">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-500/60 to-cyan-400/40 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, (progress.scanProgress.companiesScanned / Math.max(1, progress.scanProgress.companiesTotal)) * 100)}%` }}
+                />
+              </div>
+              {progress.scanProgress.currentCompany && (
+                <div className="text-[9px] text-muted-foreground/40 truncate">Current: {progress.scanProgress.currentCompany}</div>
+              )}
+            </div>
+          )}
+
+          {isAnalyzing && progress.analyzeProgress && (
+            <div className="qi-panel rounded-lg p-3 border border-emerald-500/20 bg-emerald-500/5" data-testid="analyze-progress">
+              <div className="flex items-center gap-2 mb-2">
+                <Loader2 className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                <span className="text-[11px] text-emerald-300/80">Analyzing credit eligibility...</span>
+                <span className="text-[10px] text-muted-foreground/40 ml-auto">
+                  {progress.analyzeProgress.companiesAnalyzed}/{progress.analyzeProgress.companiesTotal}
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500/60 to-emerald-400/40 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, (progress.analyzeProgress.companiesAnalyzed / Math.max(1, progress.analyzeProgress.companiesTotal)) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {sources.length > 0 && (isScanning || hasScannedCompanies || Object.keys(sourceResults).length > 0) && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 mb-1">
+            <Radio className="w-3.5 h-3.5 text-cyan-400/50" />
+            <h4 className="text-[11px] font-semibold text-cyan-300/60">SOURCE NETWORK ({sources.length} sources)</h4>
+            {(successCount > 0 || noDataCount > 0 || errorCount > 0) && (
+              <div className="ml-auto flex items-center gap-2 text-[9px]">
+                <span className="text-emerald-400/70">{successCount} succeeded</span>
+                <span className="text-muted-foreground/40">{noDataCount} no data</span>
+                {errorCount > 0 && <span className="text-rose-400/70">{errorCount} failed</span>}
+                {pendingCount > 0 && <span className="text-amber-400/50">{pendingCount} pending</span>}
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1.5" data-testid="source-grid">
+            {sources.map((src: any) => {
+              const result = sourceResults[src.id];
+              const hasData = result && result.count > 0;
+              const isError = result?.status === "error";
+              const isNoData = result?.status === "no_data";
+              const isPending = !result || result.status === "pending";
+              return (
+                <div
+                  key={src.id}
+                  className={`qi-panel rounded-lg px-2 py-2 border transition-all duration-300 ${
+                    hasData ? "border-emerald-500/25 bg-emerald-500/5" :
+                    isError ? "border-rose-500/20 bg-rose-500/5" :
+                    isNoData ? "border-white/8 bg-white/[0.01]" :
+                    isPending && isScanning ? "border-amber-500/15 bg-amber-500/3" :
+                    "border-white/5 bg-white/[0.01]"
+                  }`}
+                  data-testid={`source-card-${src.id}`}
+                >
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    {hasData ? <CheckCircle2 className="w-3 h-3 text-emerald-400 flex-shrink-0" /> :
+                     isError ? <XCircle className="w-3 h-3 text-rose-400/70 flex-shrink-0" /> :
+                     isNoData ? <Circle className="w-3 h-3 text-muted-foreground/30 flex-shrink-0" /> :
+                     isPending && isScanning ? <Loader2 className="w-3 h-3 text-amber-400/50 animate-spin flex-shrink-0" /> :
+                     <Circle className="w-3 h-3 text-white/10 flex-shrink-0" />
+                    }
+                    <span className={`text-[9px] font-medium truncate ${
+                      hasData ? "text-emerald-300/80" :
+                      isError ? "text-rose-300/60" :
+                      "text-muted-foreground/50"
+                    }`}>{src.name}</span>
+                  </div>
+                  <div className="flex items-center gap-1 pl-4.5">
+                    {result?.responseTimeMs > 0 && (
+                      <span className="text-[8px] text-muted-foreground/30 font-mono">{result.responseTimeMs}ms</span>
+                    )}
+                    {hasData && result.count > 0 && (
+                      <span className="text-[8px] text-emerald-400/50 font-mono ml-auto">{result.count} hits</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const CREDIT_STATUS_STYLES: Record<string, { label: string; className: string }> = {
+  filed: { label: "Filed", className: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+  likely_eligible: { label: "Eligible — Not Filed", className: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+  potential_opportunity: { label: "Opportunity", className: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+  not_applicable: { label: "N/A", className: "text-muted-foreground/40 bg-white/5 border-white/10" },
+  insufficient_data: { label: "No Data", className: "text-muted-foreground/30 bg-white/3 border-white/8" },
+};
+
+function ResultsContent() {
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [expandedCompany, setExpandedCompany] = useState<string | null>(null);
+
+  const batchesQuery = useQuery<any[]>({ queryKey: ["/api/discovery/batches"] });
+  const batchDetailQuery = useQuery<any>({
+    queryKey: ["/api/discovery/batches", selectedBatchId],
+    enabled: !!selectedBatchId,
+  });
+
+  const batches = (batchesQuery.data || []).filter((b: any) => b.status === "complete");
+  const batchDetail = batchDetailQuery.data;
+  const companies = batchDetail?.companies || [];
+  const analyzedCompanies = companies.filter((c: any) => c.analysisResults);
+
+  const stats = useMemo(() => {
+    if (analyzedCompanies.length === 0) return { total: 0, rdEligible: 0, rdFiled: 0, tariffOpps: 0, totalEstimated: 0 };
+    let rdEligible = 0, rdFiled = 0, tariffOpps = 0, totalEstimated = 0;
+    for (const co of analyzedCompanies) {
+      const rd = co.analysisResults?.rd_credit;
+      const tariff = co.analysisResults?.tariff_credit;
+      if (rd?.status === "likely_eligible") { rdEligible++; totalEstimated += rd.estimatedValue || 0; }
+      if (rd?.status === "filed") rdFiled++;
+      if (tariff?.status === "potential_opportunity") { tariffOpps++; totalEstimated += tariff.estimatedValue || 0; }
+    }
+    return { total: analyzedCompanies.length, rdEligible, rdFiled, tariffOpps, totalEstimated };
+  }, [analyzedCompanies]);
+
+  return (
+    <div className="space-y-4" data-testid="results-content">
+      <div className="qi-panel rounded-xl p-4 relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
+          style={{ background: "radial-gradient(ellipse at 50% 50%, rgba(16,185,129,0.2) 0%, transparent 70%)" }}
+        />
+        <div className="relative z-10 space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Target className="w-4 h-4 text-emerald-400/70" />
+            <h3 className="text-xs font-semibold text-emerald-300/80" data-testid="text-results-title">CREDIT ANALYSIS RESULTS</h3>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <label className="text-[10px] text-muted-foreground/50 mb-1 block">Select Completed Batch</label>
+              <select
+                value={selectedBatchId || ""}
+                onChange={(e) => { setSelectedBatchId(e.target.value || null); setExpandedCompany(null); }}
+                className="w-full h-8 px-2 text-xs bg-white/5 border border-white/10 rounded-lg text-foreground/80 focus:border-emerald-500/30 focus:outline-none"
+                data-testid="select-batch-results"
+              >
+                <option value="">Select a batch...</option>
+                {batches.map((b: any) => (
+                  <option key={b.id} value={b.id}>{b.name} ({b.companyCount} companies)</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {selectedBatchId && stats.total > 0 && (
+            <div className="grid grid-cols-4 gap-2" data-testid="results-stats">
+              <div className="qi-panel rounded-lg p-2 text-center border border-white/5">
+                <div className="text-lg font-bold text-foreground/80">{stats.total}</div>
+                <div className="text-[9px] text-muted-foreground/40">Analyzed</div>
+              </div>
+              <div className="qi-panel rounded-lg p-2 text-center border border-amber-500/15">
+                <div className="text-lg font-bold text-amber-400">{stats.rdEligible}</div>
+                <div className="text-[9px] text-amber-300/50">R&D Eligible</div>
+              </div>
+              <div className="qi-panel rounded-lg p-2 text-center border border-cyan-500/15">
+                <div className="text-lg font-bold text-cyan-400">{stats.tariffOpps}</div>
+                <div className="text-[9px] text-cyan-300/50">Tariff Opps</div>
+              </div>
+              <div className="qi-panel rounded-lg p-2 text-center border border-emerald-500/15">
+                <div className="text-lg font-bold text-emerald-400">{formatDollar(stats.totalEstimated)}</div>
+                <div className="text-[9px] text-emerald-300/50">Est. Value</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {selectedBatchId && analyzedCompanies.length > 0 && (
+        <div className="space-y-1" data-testid="results-company-list">
+          {analyzedCompanies.map((co: any, i: number) => {
+            const rd = co.analysisResults?.rd_credit;
+            const tariff = co.analysisResults?.tariff_credit;
+            const rdStyle = CREDIT_STATUS_STYLES[rd?.status] || CREDIT_STATUS_STYLES.insufficient_data;
+            const tariffStyle = CREDIT_STATUS_STYLES[tariff?.status] || CREDIT_STATUS_STYLES.insufficient_data;
+            const isExpanded = expandedCompany === co.id;
+
+            return (
+              <div key={co.id} data-testid={`result-row-${i}`}>
+                <button
+                  onClick={() => setExpandedCompany(isExpanded ? null : co.id)}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all ${
+                    isExpanded ? "border-emerald-500/20 bg-emerald-500/3" : "border-white/5 bg-white/[0.015] hover:border-white/10"
+                  }`}
+                  data-testid={`button-expand-${i}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-5 text-[10px] text-muted-foreground/30 font-mono flex-shrink-0">{i + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-foreground/80 truncate">{co.companyName}</div>
+                      <div className="text-[10px] text-muted-foreground/40">{co.sicDescription || co.sic}</div>
+                    </div>
+                    <div className="text-xs font-mono text-foreground/50 flex-shrink-0">{formatDollar(co.revenue)}</div>
+                    <Badge variant="outline" className={`text-[8px] flex-shrink-0 ${rdStyle.className}`} data-testid={`badge-rd-${i}`}>
+                      R&D: {rdStyle.label}
+                    </Badge>
+                    <Badge variant="outline" className={`text-[8px] flex-shrink-0 ${tariffStyle.className}`} data-testid={`badge-tariff-${i}`}>
+                      Tariff: {tariffStyle.label}
+                    </Badge>
+                    {rd?.estimatedValue && (
+                      <span className="text-[10px] font-mono text-emerald-400/70 flex-shrink-0">{formatDollar(rd.estimatedValue)}</span>
+                    )}
+                    {isExpanded ? <ChevronUp className="w-3 h-3 text-muted-foreground/30 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 text-muted-foreground/30 flex-shrink-0" />}
+                  </div>
+                </button>
+                {isExpanded && (
+                  <div className="ml-8 mr-3 mt-1 mb-2 space-y-2 text-[10px]" data-testid={`evidence-${i}`}>
+                    {rd && (
+                      <div className="qi-panel rounded-lg p-2.5 border border-white/5">
+                        <div className="font-semibold text-amber-300/70 mb-1">R&D Tax Credit (§41)</div>
+                        <div className="text-muted-foreground/60 leading-relaxed">{rd.evidence}</div>
+                        {rd.estimatedValue && <div className="text-emerald-400/70 mt-1 font-mono">Estimated credit: {formatDollar(rd.estimatedValue)}</div>}
+                        <div className="text-muted-foreground/30 mt-0.5">Confidence: {Math.round((rd.confidence || 0) * 100)}%</div>
+                      </div>
+                    )}
+                    {tariff && (
+                      <div className="qi-panel rounded-lg p-2.5 border border-white/5">
+                        <div className="font-semibold text-cyan-300/70 mb-1">Tariff Tax Credits</div>
+                        <div className="text-muted-foreground/60 leading-relaxed">{tariff.evidence}</div>
+                        {tariff.estimatedValue && <div className="text-emerald-400/70 mt-1 font-mono">Estimated value: {formatDollar(tariff.estimatedValue)}</div>}
+                        <div className="text-muted-foreground/30 mt-0.5">Confidence: {Math.round((tariff.confidence || 0) * 100)}%</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {selectedBatchId && analyzedCompanies.length === 0 && (
+        <div className="text-center py-12 relative" data-testid="results-empty">
+          <div className="w-24 h-24 mx-auto mb-4 opacity-[0.15] rounded-full"
+            style={{ background: "radial-gradient(circle, rgba(16,185,129,0.3) 0%, rgba(245,158,11,0.1) 40%, transparent 70%)" }}
+          />
+          <p className="text-sm text-muted-foreground/40">No analysis results yet</p>
+          <p className="text-[11px] text-muted-foreground/30 mt-1">Go to Intelligence Pipeline to scan and analyze this batch</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1300,27 +1850,21 @@ function LegislativeTriggersContent() {
   );
 }
 
-function CreditIntelligenceContent({ activeSub, convergences, isLoadingConvergences, onExpandConvergence }: {
+function CreditIntelligenceContent({ activeSub }: {
   activeSub: string | null;
-  convergences: any[];
-  isLoadingConvergences: boolean;
-  onExpandConvergence: (cp: any) => void;
 }) {
-  if (activeSub === "Convergence Signals") {
-    return (
-      <ConvergenceRadarContent
-        convergences={convergences}
-        isLoading={isLoadingConvergences}
-        onExpandConvergence={onExpandConvergence}
-        activeSub={null}
-      />
-    );
+  if (activeSub === "Company Discovery") {
+    return <CompanyDiscoveryContent />;
   }
-
+  if (activeSub === "Intelligence Pipeline") {
+    return <IntelligencePipelineContent />;
+  }
+  if (activeSub === "Results") {
+    return <ResultsContent />;
+  }
   if (activeSub === "Legislative Triggers") {
     return <LegislativeTriggersContent />;
   }
-
   return <GapMatrixContent />;
 }
 
@@ -1422,7 +1966,7 @@ export default function DealsPage() {
     const convergenceTabIndex = TABS.findIndex(t => t.name === "Credit Intelligence");
     if (convergenceTabIndex >= 0) {
       setActiveTab(convergenceTabIndex);
-      setActiveSub("Convergence Signals");
+      setActiveSub("Company Discovery");
     }
     setSelectedConvergenceId(cp.id);
   }, []);
@@ -1574,7 +2118,7 @@ export default function DealsPage() {
               )}
               <div className="ml-auto text-[11px] text-muted-foreground/40">
                 {isConvergenceTab
-                  ? activeSub === "Convergence Signals" ? `${convergenceQuery.data?.length || 0} convergences` : `${statsQuery.data?.creditsTracked || 38} credits tracked`
+                  ? `${statsQuery.data?.creditsTracked || 38} credits tracked`
                   : `${totalEvents} events`
                 }
               </div>
@@ -1583,9 +2127,6 @@ export default function DealsPage() {
             {isConvergenceTab ? (
               <CreditIntelligenceContent
                 activeSub={activeSub}
-                convergences={convergenceQuery.data || []}
-                isLoadingConvergences={convergenceQuery.isLoading}
-                onExpandConvergence={(cp) => setSelectedConvergenceId(cp.id)}
               />
             ) : eventsQuery.isLoading ? (
               <div className="space-y-2" data-testid="events-loading">
