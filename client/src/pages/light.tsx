@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Switch } from "@/components/ui/switch";
@@ -1701,14 +1701,19 @@ export default function LightEngine() {
                   <SelectTrigger className="h-10 text-sm bg-transparent text-amber-200/60 border-amber-500/15">
                     <SelectValue placeholder="Pick an industry to bloom..." />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-[320px]">
                     {tree?.categories.map(cat => {
                       const subs = tree.industries[cat] || [];
-                      return subs.map(ind => (
-                        <SelectItem key={ind.key} value={ind.key}>
-                          <span className="text-amber-300/50 text-[10px] mr-1.5">{cat}</span> {ind.label}
-                        </SelectItem>
-                      ));
+                      return (
+                        <SelectGroup key={cat}>
+                          <SelectLabel className="text-[10px] font-semibold text-amber-300/50 uppercase tracking-wider px-2 py-1.5">{cat}</SelectLabel>
+                          {subs.map(ind => (
+                            <SelectItem key={ind.key} value={ind.key} className="pl-4">
+                              {ind.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      );
                     })}
                   </SelectContent>
                 </Select>
@@ -1773,14 +1778,19 @@ export default function LightEngine() {
                 <SelectTrigger className="h-7 text-xs bg-transparent text-amber-200/50 border-amber-500/10 border-dashed">
                   <SelectValue placeholder="Industry..." />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-[320px]">
                   {tree?.categories.map(cat => {
                     const subs = tree.industries[cat] || [];
-                    return subs.map(ind => (
-                      <SelectItem key={ind.key} value={ind.key}>
-                        <span className="text-amber-300/50 text-[10px] mr-1.5">{cat}</span> {ind.label}
-                      </SelectItem>
-                    ));
+                    return (
+                      <SelectGroup key={cat}>
+                        <SelectLabel className="text-[10px] font-semibold text-amber-300/50 uppercase tracking-wider px-2 py-1">{cat}</SelectLabel>
+                        {subs.map(ind => (
+                          <SelectItem key={ind.key} value={ind.key} className="pl-4 text-xs">
+                            {ind.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    );
                   })}
                 </SelectContent>
               </Select>
