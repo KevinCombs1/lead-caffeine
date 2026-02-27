@@ -2,6 +2,7 @@ import { db } from "./db";
 import { eq, desc, and, sql, ilike, gte, lte } from "drizzle-orm";
 import {
   dealSources, dealEntities, dealEvents, dealTrends, dealTimelines, convergencePoints,
+  creditGapAnalysis, fiscalLeads,
   type DealSource, type InsertDealSource,
   type DealEntity, type InsertDealEntity,
   type DealEvent, type InsertDealEvent,
@@ -1314,12 +1315,22 @@ export async function getDealStats(): Promise<{
   totalEvents: number; totalValue: number; activeSources: number; convergenceCount: number;
   eventsByTab: Record<string, number>; eventsByCurrent: Record<string, number>;
   totalStreams: number; sourceHealthSummary: { healthy: number; degraded: number; failing: number };
+  creditsTracked: number; totalGaps: number; totalUnclaimedValue: number; companiesScanned: number;
 }> {
   const [eventStats] = await db.select({ total: sql<number>`count(*)::int`, totalValue: sql<number>`coalesce(sum(value), 0)` }).from(dealEvents);
   const [sourceCount] = await db.select({ count: sql<number>`count(*)::int` }).from(dealSources).where(eq(dealSources.status, "active"));
   const [cpCount] = await db.select({ count: sql<number>`count(*)::int` }).from(convergencePoints);
   const tabRows = await db.select({ tab: dealEvents.tabCategory, count: sql<number>`count(*)::int` }).from(dealEvents).groupBy(dealEvents.tabCategory);
   const currentRows = await db.select({ current: dealEvents.current, count: sql<number>`count(*)::int` }).from(dealEvents).groupBy(dealEvents.current);
+
+  const [gapStats] = await db.select({
+    totalGaps: sql<number>`count(*)::int`,
+    totalUnclaimed: sql<number>`coalesce(sum(estimated_unclaimed_value), 0)`,
+    creditsTracked: sql<number>`count(distinct credit_id)::int`,
+    companiesScanned: sql<number>`count(distinct company_name)::int`,
+  }).from(creditGapAnalysis).where(sql`gap_status IN ('confirmed_unclaimed', 'likely_unclaimed', 'estimated_eligible')`);
+
+  const [leadCount] = await db.select({ count: sql<number>`count(*)::int` }).from(fiscalLeads);
 
   const eventsByTab: Record<string, number> = {};
   for (const r of tabRows) eventsByTab[r.tab] = r.count;
@@ -1341,5 +1352,9 @@ export async function getDealStats(): Promise<{
     activeSources: sourceCount.count, convergenceCount: cpCount.count,
     eventsByTab, eventsByCurrent, totalStreams,
     sourceHealthSummary: { healthy, degraded, failing },
+    creditsTracked: gapStats.creditsTracked || 38,
+    totalGaps: gapStats.totalGaps || 0,
+    totalUnclaimedValue: Number(gapStats.totalUnclaimed) || 0,
+    companiesScanned: Math.max(gapStats.companiesScanned || 0, leadCount.count || 0),
   };
 }

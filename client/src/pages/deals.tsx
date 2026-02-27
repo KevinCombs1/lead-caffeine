@@ -13,7 +13,7 @@ import {
   Radio, BarChart3, Layers, Filter, Clock, DollarSign,
   Database, Target, X, ChevronRight, Link2, ExternalLink,
   TrendingUp, TrendingDown, AlertTriangle, Sparkles, Eye,
-  FileText, Plus, Trash2, ChevronDown, ChevronUp, Scan,
+  FileText, Plus, Trash2, ChevronDown, ChevronUp, Scan, Sprout,
 } from "lucide-react";
 import { DEAL_TAB_CATEGORIES } from "@shared/schema";
 
@@ -218,10 +218,10 @@ function StatsBar({ stats, isLoading }: {
   }
 
   const items = [
-    { label: "Total Events", value: stats?.totalEvents || 0, icon: Database, color: "text-amber-400", glowColor: "rgba(245, 158, 11, 0.08)" },
-    { label: "Total Value", value: formatValue(stats?.totalValue || 0), icon: DollarSign, color: "text-emerald-400", glowColor: "rgba(16, 185, 129, 0.08)" },
-    { label: "Active Sources", value: stats?.activeSources || 0, icon: Activity, color: "text-cyan-400", glowColor: "rgba(6, 182, 212, 0.08)" },
-    { label: "Convergence Points", value: stats?.convergenceCount || 0, icon: Target, color: "text-violet-400", glowColor: "rgba(139, 92, 246, 0.08)" },
+    { label: "Credits Tracked", value: stats?.creditsTracked || 38, icon: Scan, color: "text-amber-400", glowColor: "rgba(245, 158, 11, 0.08)" },
+    { label: "Gaps Detected", value: stats?.totalGaps || 0, icon: Target, color: "text-rose-400", glowColor: "rgba(244, 63, 94, 0.08)" },
+    { label: "Est. Unclaimed", value: formatValue(stats?.totalUnclaimedValue || 0), icon: DollarSign, color: "text-emerald-400", glowColor: "rgba(16, 185, 129, 0.08)" },
+    { label: "Companies Scanned", value: stats?.companiesScanned || 0, icon: Building2, color: "text-cyan-400", glowColor: "rgba(6, 182, 212, 0.08)" },
   ];
 
   return (
@@ -750,6 +750,16 @@ function PriorityTargets({ targets, isLoading }: { targets: any[]; isLoading: bo
                 <span className="text-[10px] text-rose-400/60">{t.unclaimedCreditCount} unclaimed</span>
               </div>
               <div className="flex items-center gap-1 mt-1.5">
+                {t.companySize && (
+                  <span className={`text-[8px] px-1.5 py-0.5 rounded font-medium ${
+                    t.companySize === "mid_size" ? "bg-emerald-500/15 text-emerald-400/80 border border-emerald-500/20" :
+                    t.companySize === "large" ? "bg-blue-500/10 text-blue-400/60" :
+                    t.companySize === "micro" ? "bg-amber-500/10 text-amber-400/60" :
+                    "bg-white/5 text-muted-foreground/40"
+                  }`} data-testid={`size-badge-${t.companyName}`}>
+                    {t.companySize === "mid_size" ? "MID-SIZE" : t.companySize?.toUpperCase() || ""}
+                  </span>
+                )}
                 {t.companyIndustry && (
                   <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-muted-foreground/50 truncate max-w-[100px]">{t.companyIndustry}</span>
                 )}
@@ -780,7 +790,7 @@ function PriorityTargets({ targets, isLoading }: { targets: any[]; isLoading: bo
 
 function GapMatrixContent({ onViewXRay }: { onViewXRay?: (leadId: string) => void }) {
   const { toast } = useToast();
-  const matrixQuery = useQuery<any[]>({ queryKey: ["/api/credits/gap-matrix"] });
+  const matrixQuery = useQuery<any>({ queryKey: ["/api/credits/gap-matrix"] });
   const rulesQuery = useQuery<any[]>({ queryKey: ["/api/credits/rules"] });
   const [expandedCredit, setExpandedCredit] = useState<string | null>(null);
   const [showRuleForm, setShowRuleForm] = useState(false);
@@ -788,6 +798,14 @@ function GapMatrixContent({ onViewXRay }: { onViewXRay?: (leadId: string) => voi
   const gapDetailQuery = useQuery<any[]>({
     queryKey: ["/api/credits/gaps", expandedCredit],
     enabled: !!expandedCredit,
+  });
+
+  const bloomStatusQuery = useQuery<any>({
+    queryKey: ["/api/light/mass-bloom/status"],
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      return data?.status === "running" ? 3000 : false;
+    },
   });
 
   const scanMutation = useMutation({
@@ -802,19 +820,67 @@ function GapMatrixContent({ onViewXRay }: { onViewXRay?: (leadId: string) => voi
     onError: (err: any) => toast({ title: "Scan Error", description: err.message, variant: "destructive" }),
   });
 
-  const matrix = matrixQuery.data || [];
-  const totalGaps = matrix.reduce((sum, m) => sum + m.gapCount, 0);
-  const totalUnclaimed = matrix.reduce((sum, m) => sum + m.totalUnclaimed, 0);
+  const bloomMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/light/mass-bloom");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Mass Bloom Started", description: "Discovering tax credit opportunities across industries..." });
+      queryClient.invalidateQueries({ queryKey: ["/api/light/mass-bloom/status"] });
+    },
+    onError: (err: any) => toast({ title: "Mass Bloom Error", description: err.message, variant: "destructive" }),
+  });
+
+  const matrixData = matrixQuery.data;
+  const matrix = matrixData?.matrix || matrixData || [];
+  const pipelineStats = matrixData?.pipelineStats;
+  const totalGaps = Array.isArray(matrix) ? matrix.reduce((sum: number, m: any) => sum + m.gapCount, 0) : 0;
+  const totalUnclaimed = Array.isArray(matrix) ? matrix.reduce((sum: number, m: any) => sum + m.totalUnclaimed, 0) : 0;
+  const bloomStatus = bloomStatusQuery.data;
+  const isBloomRunning = bloomStatus?.status === "running";
 
   if (matrixQuery.isLoading) return <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>;
 
   return (
     <div className="space-y-3" data-testid="gap-matrix-content">
+      {isBloomRunning && (
+        <div className="qi-panel p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5" data-testid="mass-bloom-progress">
+          <div className="flex items-center gap-2 mb-2">
+            <Sprout className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+            <span className="text-xs font-medium text-emerald-300/80">Mass Bloom In Progress</span>
+            <span className="text-[10px] text-muted-foreground/40 ml-auto">{bloomStatus.sicCodesProcessed}/{bloomStatus.sicCodesTotal} SIC codes</span>
+          </div>
+          <div className="grid grid-cols-4 gap-2 text-[10px]">
+            <div><span className="text-muted-foreground/40">Found:</span> <span className="text-emerald-400 font-bold">{bloomStatus.companiesFound?.toLocaleString()}</span></div>
+            <div><span className="text-muted-foreground/40">New:</span> <span className="text-cyan-400 font-bold">{bloomStatus.companiesNew?.toLocaleString()}</span></div>
+            <div><span className="text-muted-foreground/40">XBRL:</span> <span className="text-amber-400 font-bold">{bloomStatus.xbrlEnriched}/{bloomStatus.xbrlScanned}</span></div>
+            <div><span className="text-muted-foreground/40">Gaps:</span> <span className="text-rose-400 font-bold">{bloomStatus.gapsFound?.toLocaleString()}</span></div>
+          </div>
+          <div className="mt-2 h-1 rounded-full bg-white/5 overflow-hidden">
+            <div className="h-full rounded-full bg-emerald-500/50 transition-all duration-500" style={{ width: `${Math.round((bloomStatus.sicCodesProcessed / Math.max(bloomStatus.sicCodesTotal, 1)) * 100)}%` }} />
+          </div>
+        </div>
+      )}
+
+      {bloomStatus?.status === "complete" && bloomStatus.companiesNew > 0 && (
+        <div className="qi-panel p-2 rounded-lg border border-emerald-500/10 text-[10px] text-muted-foreground/50" data-testid="mass-bloom-complete">
+          Last sweep: <span className="text-emerald-400 font-bold">{bloomStatus.companiesNew.toLocaleString()}</span> new companies,{" "}
+          <span className="text-cyan-400 font-bold">{bloomStatus.xbrlEnriched}</span> XBRL enriched{" "}
+          ({bloomStatus.sizeBreakdown?.midSize || 0} mid-size, {bloomStatus.sizeBreakdown?.large || 0} large, {bloomStatus.sizeBreakdown?.micro || 0} micro)
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="text-[11px] text-muted-foreground/50">
-            <span className="text-emerald-400 font-bold">{totalGaps}</span> gaps across <span className="text-amber-400 font-bold">{matrix.length}</span> credits
+            <span className="text-emerald-400 font-bold">{totalGaps}</span> gaps across <span className="text-amber-400 font-bold">{Array.isArray(matrix) ? matrix.length : 0}</span> credits
           </div>
+          {pipelineStats && (
+            <div className="text-[11px] text-muted-foreground/50">
+              <span className="text-cyan-400 font-bold">{pipelineStats.totalCompanies.toLocaleString()}</span> companies across <span className="text-amber-400 font-bold">{pipelineStats.totalIndustries}</span> industries
+            </div>
+          )}
           {totalUnclaimed > 0 && (
             <div className="text-[11px] text-muted-foreground/50">
               Est. unclaimed: <span className="text-emerald-400 font-bold">{formatValue(totalUnclaimed)}</span>
@@ -822,6 +888,17 @@ function GapMatrixContent({ onViewXRay }: { onViewXRay?: (leadId: string) => voi
           )}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => bloomMutation.mutate()}
+            disabled={isBloomRunning || bloomMutation.isPending}
+            className="h-7 text-[10px] border-emerald-500/20 text-emerald-300/70 hover:bg-emerald-500/10"
+            data-testid="button-mass-bloom"
+          >
+            {isBloomRunning ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Sprout className="w-3 h-3 mr-1" />}
+            Mass Bloom
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -1258,6 +1335,7 @@ export default function DealsPage() {
   const [currentFilter, setCurrentFilter] = useState<string | null>(null);
   const [selectedConvergenceId, setSelectedConvergenceId] = useState<string | null>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [showMarketData, setShowMarketData] = useState(false);
 
   const tabCategory = TABS[activeTab]?.name;
   const subCategories = TABS[activeTab]?.subs || [];
@@ -1359,9 +1437,9 @@ export default function DealsPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-amber-200/90" data-testid="text-page-title" style={{ textShadow: "0 0 30px rgba(245, 158, 11, 0.15)" }}>
-                3D Deal Paradise
+                Deal Paradise
               </h1>
-              <p className="text-[11px] text-muted-foreground/50 mt-0.5">Capital convergence across all dimensions</p>
+              <p className="text-[11px] text-muted-foreground/50 mt-0.5">Tax credit opportunity machine — find unclaimed money</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1408,73 +1486,12 @@ export default function DealsPage() {
           </div>
         </div>
 
+        <StatsBar stats={statsQuery.data} isLoading={statsQuery.isLoading} />
+
         <PriorityTargets
           targets={priorityTargetsQuery.data || []}
           isLoading={priorityTargetsQuery.isLoading}
         />
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
-            <HeatMap
-              stateData={heatmapQuery.data || []}
-              selectedState={selectedState}
-              onSelectState={setSelectedState}
-            />
-          </div>
-          <div className="space-y-3">
-            <StatsBar stats={statsQuery.data} isLoading={statsQuery.isLoading} />
-
-            <div className="qi-panel p-3 rounded-lg relative overflow-hidden" data-testid="current-filters" style={{ perspective: "800px" }}>
-              <h4 className="text-[11px] font-semibold text-muted-foreground/60 mb-2 relative z-10">THE THREE CURRENTS</h4>
-              <div className="flex gap-2 relative z-10">
-                {Object.entries(CURRENT_LABELS).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setCurrentFilter(currentFilter === key ? null : key)}
-                    className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-all duration-300 ${
-                      currentFilter === key
-                        ? CURRENT_COLORS[key] + " qi-active shadow-[0_0_8px_rgba(255,255,255,0.05)]"
-                        : "text-muted-foreground/50 border-white/5 hover:border-white/10"
-                    }`}
-                    style={{
-                      transform: currentFilter === key ? "perspective(800px) rotateX(1deg) scale(1.03)" : "perspective(800px) rotateX(0deg)",
-                      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                    }}
-                    data-testid={`filter-current-${key}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="qi-panel p-3 rounded-lg" data-testid="sources-panel">
-              <h4 className="text-[11px] font-semibold text-muted-foreground/60 mb-2">DATA SOURCES ({sourcesQuery.data?.length || 0})</h4>
-              <div className="space-y-1.5 max-h-[320px] overflow-y-auto scrollbar-hide">
-                {sourcesQuery.data?.map((src: any) => (
-                  <div key={src.id} className="flex items-center justify-between group/src">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full transition-shadow ${
-                        src.status === "active"
-                          ? "bg-emerald-400 shadow-[0_0_4px_rgba(16,185,129,0.4)]"
-                          : "bg-gray-500"
-                      }`} />
-                      <span className="text-[11px] text-muted-foreground/70 group-hover/src:text-muted-foreground/90 transition-colors">{src.name}</span>
-                    </div>
-                    <button
-                      onClick={() => fetchSourceMutation.mutate(src.slug)}
-                      disabled={fetchSourceMutation.isPending}
-                      className="text-[10px] text-amber-400/50 hover:text-amber-400 qi-button transition-all px-1.5 py-0.5 rounded"
-                      data-testid={`button-fetch-${src.slug}`}
-                    >
-                      Fetch
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
 
         <div className="qi-panel rounded-xl overflow-hidden relative" data-testid="tabs-container" style={{ perspective: "1200px" }}>
           <div className="absolute top-2 right-2 w-16 h-16 pointer-events-none opacity-[0.06] z-0 transition-all duration-500 rounded-full"
@@ -1488,7 +1505,7 @@ export default function DealsPage() {
             {TABS.map((tab, i) => {
               const Icon = TAB_ICONS[tab.name] || Activity;
               const count = tab.name === "Credit Intelligence"
-                ? convergenceCount
+                ? (statsQuery.data?.totalGaps || 0)
                 : (statsQuery.data?.eventsByTab?.[tab.name] || 0);
               const isActive = activeTab === i;
               const isRadar = tab.name === "Credit Intelligence";
@@ -1557,7 +1574,7 @@ export default function DealsPage() {
               )}
               <div className="ml-auto text-[11px] text-muted-foreground/40">
                 {isConvergenceTab
-                  ? activeSub === "Convergence Signals" ? `${convergenceQuery.data?.length || 0} convergences` : "33 credits"
+                  ? activeSub === "Convergence Signals" ? `${convergenceQuery.data?.length || 0} convergences` : `${statsQuery.data?.creditsTracked || 38} credits tracked`
                   : `${totalEvents} events`
                 }
               </div>
@@ -1650,6 +1667,84 @@ export default function DealsPage() {
               </div>
             )}
           </div>
+        </div>
+
+        <div className="qi-panel rounded-xl overflow-hidden" data-testid="market-intelligence-section">
+          <button
+            onClick={() => setShowMarketData(!showMarketData)}
+            className="w-full flex items-center justify-between px-4 py-3 text-left transition-all duration-300 hover:bg-white/[0.02]"
+            data-testid="button-toggle-market-data"
+          >
+            <div className="flex items-center gap-2">
+              <Database className="w-3.5 h-3.5 text-muted-foreground/40" />
+              <span className="text-xs font-semibold text-muted-foreground/50">MARKET INTELLIGENCE</span>
+              <span className="text-[10px] text-muted-foreground/30">Heatmap, Data Sources, Currents</span>
+            </div>
+            {showMarketData ? <ChevronUp className="w-4 h-4 text-muted-foreground/30" /> : <ChevronDown className="w-4 h-4 text-muted-foreground/30" />}
+          </button>
+          {showMarketData && (
+            <div className="px-4 pb-4 space-y-4 qi-shift">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2">
+                  <HeatMap
+                    stateData={heatmapQuery.data || []}
+                    selectedState={selectedState}
+                    onSelectState={setSelectedState}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <div className="qi-panel p-3 rounded-lg relative overflow-hidden" data-testid="current-filters" style={{ perspective: "800px" }}>
+                    <h4 className="text-[11px] font-semibold text-muted-foreground/60 mb-2 relative z-10">THE THREE CURRENTS</h4>
+                    <div className="flex gap-2 relative z-10">
+                      {Object.entries(CURRENT_LABELS).map(([key, label]) => (
+                        <button
+                          key={key}
+                          onClick={() => setCurrentFilter(currentFilter === key ? null : key)}
+                          className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-all duration-300 ${
+                            currentFilter === key
+                              ? CURRENT_COLORS[key] + " qi-active shadow-[0_0_8px_rgba(255,255,255,0.05)]"
+                              : "text-muted-foreground/50 border-white/5 hover:border-white/10"
+                          }`}
+                          style={{
+                            transform: currentFilter === key ? "perspective(800px) rotateX(1deg) scale(1.03)" : "perspective(800px) rotateX(0deg)",
+                            transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                          }}
+                          data-testid={`filter-current-${key}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="qi-panel p-3 rounded-lg" data-testid="sources-panel">
+                    <h4 className="text-[11px] font-semibold text-muted-foreground/60 mb-2">DATA SOURCES ({sourcesQuery.data?.length || 0})</h4>
+                    <div className="space-y-1.5 max-h-[320px] overflow-y-auto scrollbar-hide">
+                      {sourcesQuery.data?.map((src: any) => (
+                        <div key={src.id} className="flex items-center justify-between group/src">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-1.5 h-1.5 rounded-full transition-shadow ${
+                              src.status === "active"
+                                ? "bg-emerald-400 shadow-[0_0_4px_rgba(16,185,129,0.4)]"
+                                : "bg-gray-500"
+                            }`} />
+                            <span className="text-[11px] text-muted-foreground/70 group-hover/src:text-muted-foreground/90 transition-colors">{src.name}</span>
+                          </div>
+                          <button
+                            onClick={() => fetchSourceMutation.mutate(src.slug)}
+                            disabled={fetchSourceMutation.isPending}
+                            className="text-[10px] text-amber-400/50 hover:text-amber-400 qi-button transition-all px-1.5 py-0.5 rounded"
+                            data-testid={`button-fetch-${src.slug}`}
+                          >
+                            Fetch
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

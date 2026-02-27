@@ -5,10 +5,11 @@ D.A.T.A. Cloudware is a tax credit intelligence platform operating across two ph
 
 **Phase 1 — Light Engine**: Tax credit discovery and gentle outreach. Discovers companies through SEC EDGAR sweeps, matches them against 38 tax credit programs via Credit X-Ray (76+ XBRL concepts), identifies website lead forms, and performs non-intrusive outreach.
 
-**Phase 2 — Deal Paradise**: Tax Credit Opportunity Machine at world scale. Three layers:
-1. **Gap Matrix** — 38 tax credits showing who qualifies but hasn't claimed, across ALL entities, ALL industries, ALL sources
+**Phase 2 — Deal Paradise**: Tax Credit Opportunity Machine. Three layers:
+1. **Gap Matrix** — 38 tax credits showing who qualifies but hasn't claimed (the DEALS — front and center)
 2. **Filing Fingerprints** — Automatic detection rules + custom rules with live preview before saving
-3. **Legislative Triggers** — Law changes mapped to credit opportunities, not government tracking
+3. **Legislative Triggers** — Law changes mapped to new credit opportunities
+- Credit Intelligence is the default tab — deal intelligence first, market data secondary (collapsible)
 
 ## User Preferences
 The agent should prioritize iterative development and ask before making major changes. It should focus on high-level features and avoid granular implementation details.
@@ -57,6 +58,18 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
     - API routes: `/api/credits/registry`, `/api/credits/gap-matrix`, `/api/credits/gaps/:creditId`, `/api/credits/priority-targets`, `/api/credits/legislative-alerts`, `/api/credits/rules`, `/api/credits/rules/preview`, `/api/credits/scan`
     - Frontend: Credit Intelligence tab (3 sub-tabs: Gap Matrix, Convergence Signals, Legislative Triggers), Priority Targets bar, Custom Rule form with live preview
     - Scheduled: seeds registry + legislative mapping + gap scan every 30 minutes + 90s after startup
+  - **Mass Bloom Pipeline** (scaling company discovery):
+    - `server/mass-bloom.ts` — batch SIC sweep engine for SEC EDGAR at scale
+    - Sweeps 68 priority SIC codes covering manufacturing, tech, biotech, construction, energy, healthcare, professional services
+    - Rate limiting: 130ms delay between SEC EDGAR requests + automatic retry with backoff on 429/503 responses
+    - Dedup: checks existing DB CIKs + names AND in-run CIK + name dedup to prevent duplicates across SIC codes
+    - Fast XBRL scan: extracts 8 key financial fields (revenue, R&D, assets, employees, tax rate, NOL, capex, PP&E) per company
+    - Company size classification: mid_size ($10M-$1B revenue), large (>$1B), micro (<$10M)
+    - Feeds directly into Gap Flagger — enriched companies get "inferred" confidence instead of "estimated_by_industry"
+    - Priority Targets: excludes states/governments/crypto, sorts mid-size above large-cap when values are similar
+    - Gap Matrix: shows pipeline stats (total companies, industries, size breakdown)
+    - API routes: POST `/api/light/mass-bloom` (trigger sweep), GET `/api/light/mass-bloom/status` (progress)
+    - Frontend: Mass Bloom button with live progress bar, company size badges on Priority Targets
 
 ## External Dependencies
 - **PostgreSQL**: Primary database for data storage.

@@ -854,17 +854,17 @@ export const DEAL_CURRENTS = {
 } as const;
 
 export const DEAL_TAB_CATEGORIES = {
-  CAPITAL_MARKETS: { name: "Capital Markets", subs: ["IPOs", "Secondary Offerings", "SPACs"] },
-  MERGERS_ACQUISITIONS: { name: "Mergers & Acquisitions", subs: ["M&A", "Divestitures", "Joint Ventures"] },
-  PRIVATE_CAPITAL: { name: "Private Capital", subs: ["PE Rounds", "VC Rounds", "Private Placements"] },
+  CONVERGENCE: { name: "Credit Intelligence", subs: ["Gap Matrix", "Convergence Signals", "Legislative Triggers"] },
   GOVERNMENT_CONTRACTS: { name: "Government Contracts", subs: ["Federal Procurement", "Grants & Awards", "Defense"] },
-  REAL_ESTATE: { name: "Real Estate & Infrastructure", subs: ["Commercial", "Development", "REITs"] },
   REGULATORY: { name: "Regulatory & Legislative", subs: ["New Laws", "Rule Changes", "Tax Policy"] },
+  PRIVATE_CAPITAL: { name: "Private Capital", subs: ["PE Rounds", "VC Rounds", "Private Placements"] },
+  ENERGY: { name: "Energy & Resources", subs: ["Energy Deals", "Clean Tech", "Mining & Extraction"] },
+  REAL_ESTATE: { name: "Real Estate & Infrastructure", subs: ["Commercial", "Development", "REITs"] },
   INTELLECTUAL_PROPERTY: { name: "Intellectual Property", subs: ["Patents", "Licensing", "Technology Transfer"] },
   CREDIT_DEBT: { name: "Credit & Debt", subs: ["Bond Issuance", "Credit Facilities", "Restructuring"] },
-  ENERGY: { name: "Energy & Resources", subs: ["Energy Deals", "Clean Tech", "Mining & Extraction"] },
   LABOR: { name: "Labor & Human Capital", subs: ["Executive Moves", "Mass Hiring", "Layoffs & Restructuring"] },
-  CONVERGENCE: { name: "Credit Intelligence", subs: ["Gap Matrix", "Convergence Signals", "Legislative Triggers"] },
+  MERGERS_ACQUISITIONS: { name: "Mergers & Acquisitions", subs: ["M&A", "Divestitures", "Joint Ventures"] },
+  CAPITAL_MARKETS: { name: "Capital Markets", subs: ["IPOs", "Secondary Offerings", "SPACs"] },
 } as const;
 
 export const dealSources = pgTable("deal_sources", {

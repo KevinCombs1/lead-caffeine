@@ -132,82 +132,132 @@ export async function runGapScan(): Promise<{ scanned: number; gaps: number }> {
   }
 }
 
+function extractTaxPosition(lead: any): any {
+  const enrichment = (lead.enrichmentData || {}) as any;
+  const taxPos = (lead.taxPositionSummary || {}) as any;
+  return {
+    ...taxPos,
+    rdExpense: taxPos.rdExpense ?? taxPos.rdExpenseAmount ?? enrichment.rdExpense ?? null,
+    revenue: taxPos.revenue ?? enrichment.revenue ?? null,
+    totalAssets: taxPos.totalAssets ?? enrichment.totalAssets ?? null,
+    employeeCount: taxPos.employeeCount ?? enrichment.employeeCount ?? null,
+    effectiveTaxRate: taxPos.effectiveTaxRate ?? enrichment.effectiveTaxRate ?? null,
+    nolCarryforward: taxPos.nolCarryforward ?? enrichment.nolCarryforward ?? null,
+    capex: taxPos.capex ?? enrichment.capex ?? null,
+    ppeNet: taxPos.ppeNet ?? enrichment.ppeNet ?? null,
+    rdIntensity: taxPos.rdIntensity ?? (enrichment.rdExpense && enrichment.revenue ? enrichment.rdExpense / enrichment.revenue : null),
+    companySize: enrichment.companySize ?? null,
+  };
+}
+
 async function scanXbrlLeads(registry: TaxCreditRegistryEntry[]): Promise<{ scanned: number; gaps: number }> {
   const leads = await db.select().from(fiscalLeads);
-  const leadsWithAnalysis = leads.filter(l => l.creditAnalysis && Array.isArray(l.creditAnalysis) && (l.creditAnalysis as any[]).length > 0);
 
-  if (leadsWithAnalysis.length === 0) return { scanned: 0, gaps: 0 };
+  const leadsWithCreditAnalysis = leads.filter(l => (l as any).creditAnalysis && Array.isArray((l as any).creditAnalysis) && ((l as any).creditAnalysis as any[]).length > 0);
+  const leadsWithEnrichment = leads.filter(l => {
+    if (leadsWithCreditAnalysis.some(la => la.id === l.id)) return false;
+    const enrichment = (l.enrichmentData || {}) as any;
+    return enrichment.revenue || enrichment.rdExpense || enrichment.totalAssets || enrichment.employeeCount || enrichment.capex;
+  });
+
+  const allScannableLeads = [...leadsWithCreditAnalysis, ...leadsWithEnrichment];
+  if (allScannableLeads.length === 0) return { scanned: 0, gaps: 0 };
 
   let gaps = 0;
 
-  for (const lead of leadsWithAnalysis) {
-    const creditAnalysis = lead.creditAnalysis as any[];
-    const taxPosition = (lead.taxPositionSummary || {}) as any;
+  for (const lead of allScannableLeads) {
+    const creditAnalysis = ((lead as any).creditAnalysis || []) as any[];
+    const taxPosition = extractTaxPosition(lead);
+    const hasCreditAnalysis = creditAnalysis.length > 0;
 
     for (const credit of registry) {
-      const existing = creditAnalysis.find((ca: any) => ca.creditId === credit.id);
-      const status = existing?.status;
+      if (hasCreditAnalysis) {
+        const existing = creditAnalysis.find((ca: any) => ca.creditId === credit.id);
+        const status = existing?.status;
 
-      let gapStatus = "unknown";
-      let confidence = "estimated_by_industry";
-      let evidence = "";
-      let estimatedValue: number | null = null;
-      let fingerprintsMatched: string[] = [];
+        let gapStatus = "unknown";
+        let confidence = "estimated_by_industry";
+        let evidence = "";
+        let estimatedValue: number | null = null;
+        let fingerprintsMatched: string[] = [];
 
-      if (status === "unclaimed") {
-        gapStatus = "confirmed_unclaimed";
-        confidence = "xbrl_verified";
-        evidence = existing.evidence || `${lead.company} shows no ${credit.name} activity in filings`;
-        estimatedValue = existing.potentialAmount || null;
-        fingerprintsMatched.push("xbrl_credit_analysis");
-      } else if (status === "likely_unclaimed") {
-        gapStatus = "likely_unclaimed";
-        confidence = "xbrl_verified";
-        evidence = existing.evidence || `${lead.company} likely missing ${credit.name}`;
-        estimatedValue = existing.potentialAmount || null;
-        fingerprintsMatched.push("xbrl_credit_analysis");
-      } else if (status === "active" || status === "partial") {
-        gapStatus = "claimed";
-        confidence = "xbrl_verified";
-        evidence = existing.evidence || `${lead.company} actively claims ${credit.name}`;
-        estimatedValue = null;
+        if (status === "unclaimed") {
+          gapStatus = "confirmed_unclaimed";
+          confidence = "xbrl_verified";
+          evidence = existing.evidence || `${lead.company} shows no ${credit.name} activity in filings`;
+          estimatedValue = existing.potentialAmount || null;
+          fingerprintsMatched.push("xbrl_credit_analysis");
+        } else if (status === "likely_unclaimed") {
+          gapStatus = "likely_unclaimed";
+          confidence = "xbrl_verified";
+          evidence = existing.evidence || `${lead.company} likely missing ${credit.name}`;
+          estimatedValue = existing.potentialAmount || null;
+          fingerprintsMatched.push("xbrl_credit_analysis");
+        } else if (status === "active" || status === "partial") {
+          gapStatus = "claimed";
+          confidence = "xbrl_verified";
+          evidence = existing.evidence || `${lead.company} actively claims ${credit.name}`;
+          estimatedValue = null;
+        } else {
+          const fpResults = applyFingerprints(credit.id, lead.company || "", taxPosition);
+          if (fpResults) {
+            gapStatus = fpResults.gapStatus;
+            confidence = "inferred";
+            evidence = fpResults.evidence;
+            estimatedValue = fpResults.estimatedValue;
+            fingerprintsMatched = fpResults.matched;
+          } else {
+            continue;
+          }
+        }
+
+        if (gapStatus === "unknown") continue;
+
+        await upsertGap({
+          creditId: credit.id,
+          companyName: lead.company || "Unknown",
+          companySic: lead.sic || null,
+          companyState: lead.state || null,
+          companyIndustry: lead.sicDescription || null,
+          leadId: lead.id,
+          entityId: null,
+          gapStatus,
+          confidence,
+          estimatedUnclaimedValue: estimatedValue,
+          evidence,
+          fingerprintsMatched,
+          legislativeTrigger: null,
+        });
+
+        if (gapStatus !== "claimed") gaps++;
       } else {
         const fpResults = applyFingerprints(credit.id, lead.company || "", taxPosition);
-        if (fpResults) {
-          gapStatus = fpResults.gapStatus;
-          confidence = "inferred";
-          evidence = fpResults.evidence;
-          estimatedValue = fpResults.estimatedValue;
-          fingerprintsMatched = fpResults.matched;
-        } else {
-          continue;
-        }
+        if (!fpResults) continue;
+        if (fpResults.gapStatus === "claimed") continue;
+
+        await upsertGap({
+          creditId: credit.id,
+          companyName: lead.company || "Unknown",
+          companySic: lead.sic || null,
+          companyState: lead.state || null,
+          companyIndustry: lead.sicDescription || null,
+          leadId: lead.id,
+          entityId: null,
+          gapStatus: fpResults.gapStatus,
+          confidence: "inferred",
+          estimatedUnclaimedValue: fpResults.estimatedValue,
+          evidence: fpResults.evidence,
+          fingerprintsMatched: fpResults.matched,
+          legislativeTrigger: null,
+        });
+
+        gaps++;
       }
-
-      if (gapStatus === "unknown") continue;
-
-      await upsertGap({
-        creditId: credit.id,
-        companyName: lead.company || "Unknown",
-        companySic: lead.sic || null,
-        companyState: lead.state || null,
-        companyIndustry: lead.industryCategory || null,
-        leadId: lead.leadId,
-        entityId: null,
-        gapStatus,
-        confidence,
-        estimatedUnclaimedValue: estimatedValue,
-        evidence,
-        fingerprintsMatched,
-        legislativeTrigger: null,
-      });
-
-      if (gapStatus !== "claimed") gaps++;
     }
   }
 
-  console.log(`[CREDIT-GAP] XBRL scan: ${leadsWithAnalysis.length} leads, ${gaps} gaps`);
-  return { scanned: leadsWithAnalysis.length, gaps };
+  console.log(`[CREDIT-GAP] XBRL scan: ${allScannableLeads.length} leads (${leadsWithCreditAnalysis.length} with analysis, ${leadsWithEnrichment.length} enriched), ${gaps} gaps`);
+  return { scanned: allScannableLeads.length, gaps };
 }
 
 function applyFingerprints(creditId: string, company: string, taxPosition: any): {
@@ -388,7 +438,7 @@ async function applyCustomRules(): Promise<{ upgraded: number }> {
     const leads = await db.select().from(fiscalLeads);
 
     for (const lead of leads) {
-      const taxPosition = (lead.taxPositionSummary || {}) as any;
+      const taxPosition = extractTaxPosition(lead);
       let allMatch = true;
 
       for (const cond of conditions) {
@@ -411,8 +461,8 @@ async function applyCustomRules(): Promise<{ upgraded: number }> {
           companyName: lead.company || "Unknown",
           companySic: lead.sic || null,
           companyState: lead.state || null,
-          companyIndustry: lead.industryCategory || null,
-          leadId: lead.leadId,
+          companyIndustry: lead.sicDescription || null,
+          leadId: lead.id,
           entityId: null,
           gapStatus: "likely_unclaimed",
           confidence: "inferred",
@@ -435,7 +485,7 @@ export async function previewRule(creditId: string, conditions: Array<{ field: s
   const matched: string[] = [];
 
   for (const lead of leads) {
-    const taxPosition = (lead.taxPositionSummary || {}) as any;
+    const taxPosition = extractTaxPosition(lead);
     let allMatch = true;
 
     for (const cond of conditions) {
@@ -517,31 +567,49 @@ export async function mapLegislativeChanges(): Promise<number> {
   return mapped;
 }
 
-export async function getGapMatrix(): Promise<Array<{
-  creditId: string; creditName: string; section: string; neglectLevel: string;
-  gapCount: number; totalUnclaimed: number; topIndustries: string[];
-  confidenceBreakdown: { verified: number; inferred: number; estimated: number };
-  legislativeAlerts: number;
-}>> {
+export async function getGapMatrix(): Promise<{
+  matrix: Array<{
+    creditId: string; creditName: string; section: string; neglectLevel: string;
+    gapCount: number; totalUnclaimed: number; topIndustries: string[];
+    confidenceBreakdown: { verified: number; inferred: number; estimated: number };
+    legislativeAlerts: number;
+  }>;
+  pipelineStats: { totalCompanies: number; totalIndustries: number; sizeBreakdown: { midSize: number; large: number; micro: number; unknown: number } };
+}> {
   const registry = await db.select().from(taxCreditRegistry);
   const allGaps = await db.select().from(creditGapAnalysis);
   const legMaps = await db.select().from(legislativeCreditMap);
 
+  const allLeads = await db.select({ enrichmentData: fiscalLeads.enrichmentData, sicDescription: fiscalLeads.sicDescription }).from(fiscalLeads);
+  const industries = new Set<string>();
+  let midSize = 0, large = 0, micro = 0, unknown = 0;
+  for (const lead of allLeads) {
+    if (lead.sicDescription) industries.add(lead.sicDescription);
+    const enrichment = (lead.enrichmentData || {}) as any;
+    const size = enrichment.companySize;
+    if (size === "mid_size") midSize++;
+    else if (size === "large") large++;
+    else if (size === "micro") micro++;
+    else unknown++;
+  }
+
   const matrix = registry.map(credit => {
     const creditGaps = allGaps.filter(g => g.creditId === credit.id && g.gapStatus !== "claimed");
-    const industries = new Map<string, number>();
+    const gapIndustries = new Map<string, number>();
     let totalUnclaimed = 0;
     let verified = 0, inferred = 0, estimated = 0;
 
     for (const gap of creditGaps) {
       totalUnclaimed += gap.estimatedUnclaimedValue || 0;
-      if (gap.companyIndustry) industries.set(gap.companyIndustry, (industries.get(gap.companyIndustry) || 0) + 1);
+      if (gap.companyIndustry) gapIndustries.set(gap.companyIndustry, (gapIndustries.get(gap.companyIndustry) || 0) + 1);
       if (gap.confidence === "xbrl_verified") verified++;
       else if (gap.confidence === "inferred") inferred++;
       else estimated++;
     }
 
-    const topIndustries = [...industries.entries()]
+    const NOISE_INDUSTRIES = ['state', 'country', 'government', 'government_agency', 'insider', 'cryptocurrency', 'public_company'];
+    const topIndustries = [...gapIndustries.entries()]
+      .filter(([name]) => !NOISE_INDUSTRIES.includes(name.toLowerCase()))
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([name]) => name);
@@ -561,7 +629,14 @@ export async function getGapMatrix(): Promise<Array<{
     };
   });
 
-  return matrix.sort((a, b) => b.gapCount - a.gapCount);
+  return {
+    matrix: matrix.sort((a, b) => b.gapCount - a.gapCount),
+    pipelineStats: {
+      totalCompanies: allLeads.length,
+      totalIndustries: industries.size,
+      sizeBreakdown: { midSize, large, micro, unknown },
+    },
+  };
 }
 
 export async function getGapsForCredit(creditId: string): Promise<CreditGapAnalysis[]> {
@@ -573,22 +648,43 @@ export async function getGapsForCredit(creditId: string): Promise<CreditGapAnaly
 export async function getPriorityTargets(limit: number = 10): Promise<Array<{
   companyName: string; companyIndustry: string | null; companyState: string | null;
   unclaimedCreditCount: number; totalEstimatedValue: number; confidence: string;
-  leadId: string | null; topCredits: string[];
+  leadId: string | null; topCredits: string[]; companySize: string | null;
 }>> {
+  const EXCLUDED_EXACT = ['state', 'country', 'government', 'government_agency', 'insider', 'cryptocurrency'];
+  const EXCLUDED_CONTAINS = ['government', 'state government', 'federal government', 'public administration'];
+
   const allGaps = await db.select().from(creditGapAnalysis)
     .where(sql`gap_status IN ('confirmed_unclaimed', 'likely_unclaimed', 'estimated_eligible')`);
 
-  const byCompany = new Map<string, typeof allGaps>();
-  for (const gap of allGaps) {
+  const filteredGaps = allGaps.filter(g => {
+    if (!g.companyIndustry) return true;
+    const ind = g.companyIndustry.toLowerCase();
+    if (EXCLUDED_EXACT.includes(ind)) return false;
+    if (EXCLUDED_CONTAINS.some(ex => ind.includes(ex))) return false;
+    return true;
+  });
+
+  const byCompany = new Map<string, typeof filteredGaps>();
+  for (const gap of filteredGaps) {
     const key = gap.companyName;
     if (!byCompany.has(key)) byCompany.set(key, []);
     byCompany.get(key)!.push(gap);
+  }
+
+  const allLeads = await db.select({ company: fiscalLeads.company, enrichmentData: fiscalLeads.enrichmentData }).from(fiscalLeads);
+  const leadSizeMap = new Map<string, string>();
+  for (const lead of allLeads) {
+    const enrichment = (lead.enrichmentData || {}) as any;
+    if (enrichment.companySize) {
+      leadSizeMap.set(lead.company.toLowerCase().trim(), enrichment.companySize);
+    }
   }
 
   const targets = [...byCompany.entries()].map(([companyName, gaps]) => {
     const totalValue = gaps.reduce((sum, g) => sum + (g.estimatedUnclaimedValue || 0), 0);
     const hasVerified = gaps.some(g => g.confidence === "xbrl_verified");
     const hasInferred = gaps.some(g => g.confidence === "inferred");
+    const companySize = leadSizeMap.get(companyName.toLowerCase().trim()) || null;
 
     return {
       companyName,
@@ -599,10 +695,18 @@ export async function getPriorityTargets(limit: number = 10): Promise<Array<{
       confidence: hasVerified ? "xbrl_verified" : hasInferred ? "inferred" : "estimated_by_industry",
       leadId: gaps[0].leadId,
       topCredits: gaps.slice(0, 5).map(g => g.creditId),
+      companySize,
     };
   });
 
-  return targets.sort((a, b) => b.totalEstimatedValue - a.totalEstimatedValue).slice(0, limit);
+  targets.sort((a, b) => {
+    const sizeScore = (s: string | null) => s === "mid_size" ? 2 : s === "large" ? 1 : 0;
+    const aDiff = sizeScore(a.companySize) - sizeScore(b.companySize);
+    if (aDiff !== 0 && Math.abs(a.totalEstimatedValue - b.totalEstimatedValue) < a.totalEstimatedValue * 0.5) return -aDiff;
+    return b.totalEstimatedValue - a.totalEstimatedValue;
+  });
+
+  return targets.slice(0, limit);
 }
 
 export async function getLegislativeAlerts(): Promise<Array<{

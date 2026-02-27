@@ -1611,6 +1611,27 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/light/mass-bloom", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { runMassBloom } = await import("./mass-bloom");
+      const maxSicCodes = req.body?.maxSicCodes ?? undefined;
+      const skipXbrl = req.body?.skipXbrl ?? false;
+      runMassBloom({ maxSicCodes, skipXbrl }).catch(err => console.error("[MASS-BLOOM] Background error:", err));
+      res.json({ started: true, message: "Mass bloom sweep started" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/light/mass-bloom/status", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getMassBloomProgress } = await import("./mass-bloom");
+      res.json(getMassBloomProgress());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/deals/entities", requireAuth, async (req: Request, res: Response) => {
     try {
       const { listEntities } = await import("./deal-intelligence");
