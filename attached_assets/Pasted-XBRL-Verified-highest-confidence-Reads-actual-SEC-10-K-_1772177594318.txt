@@ -1,0 +1,208 @@
+XBRL-Verified (highest confidence) — Reads actual SEC 10-K filings via 76+ XBRL taxonomy concepts. If a company files with the SEC, we can see their R&D expenses, foreign tax credits, deferred tax liabilities, PP&E values, employee counts, etc. directly from their balance sheet. This is the gold standard.
+
+Inferred (medium confidence) — Cross-references intelligence from 25+ government data sources (USPTO patents, EPA facilities, OSHA violations, DOE grants, SBIR awards, etc.) with SIC industry codes to infer eligibility. For example: if a company has SBIR awards + patents, they almost certainly qualify for R&D credits.
+
+Estimated by Industry (lowest confidence) — Uses SIC code and industry category matching. If you're in manufacturing (SIC 2000-3999), you're matched to applicable credits for that industry even without specific evidence.
+
+How Dollar Amounts Are Estimated
+There are two estimation methods:
+
+XBRL-based: When we have actual financial data, we calculate directly. For example, if a company reports $10M in R&D expense but shows no R&D credit activity, we estimate 6.5% of that = $650K unclaimed.
+
+Heuristic industry medians: When we lack specific financial data, each credit has a per-company median value based on typical mid-size company claims. These get scaled by a "match strength" multiplier (how many signals confirm eligibility).
+
+All 38 Credits
+1. R&D Tax Credit (IRC §41) — Low neglect
+What: 6-8% of qualified research expenses
+Detection: XBRL-verified via researchCredit, researchCarryforward, researchRateImpact, and rdExpense fields. If R&D expense exists but no credit activity shows, flagged as unclaimed.
+$ Estimate: 6.5% of reported R&D expense. Heuristic median: $125K.
+Why it matters: The most widely applicable credit. Every company doing product development, software, or process improvement likely qualifies, but many still don't claim it properly.
+2. Work Opportunity Tax Credit / WOTC (IRC §51) — High neglect
+What: $2,400–$9,600 per qualifying hire (veterans, SNAP recipients, ex-felons, etc.)
+Detection: Employee count from XBRL + general credits check. If a company has 50+ employees and no employment credits, flagged. Assumes 5% qualifying hire rate.
+$ Estimate: min(employees × 5%, 100) × $4,800. Heuristic median: $24K.
+Why it matters: High neglect because the paperwork must be filed within 28 days of hire. Most companies don't know to do this.
+3. Employee Retention Credit / ERC (IRC §3134) — High neglect, SUNSET
+What: $5,000–$7,000 per employee per quarter during COVID
+Detection: Employment-based analysis. Any company with employees during 2020-2021 that shows no ERC activity.
+$ Estimate: Heuristic median: $50K.
+Why it matters: Retroactive only via amended returns. The IRS is still processing legitimate claims. Many qualifying companies never filed.
+4. Energy Investment Tax Credit / ITC (IRC §48) — Medium neglect
+What: 30% of qualified energy property costs (solar, wind, battery storage, geothermal)
+Detection: XBRL investmentCredit field. If zero or absent with significant assets, flagged.
+$ Estimate: XBRL-verified when claimed. Heuristic median: $180K.
+Why it matters: Expanded massively by IRA. Companies in energy, construction, manufacturing, and even retail with rooftop solar qualify.
+5. Production Tax Credit / PTC (IRC §45) — Medium neglect
+What: $0.0275/kWh from renewable electricity
+Detection: Generic credit analysis against industry match (energy, manufacturing, environmental).
+$ Estimate: Heuristic median: $95K.
+Why it matters: Alternative to ITC for energy producers. Less neglected because it's well-known in the energy sector.
+6. New Energy Efficient Home Credit (IRC §45L) — High neglect
+What: $2,500–$5,000 per qualifying dwelling unit
+Detection: Industry match — construction & real estate companies.
+$ Estimate: Heuristic median: $25K.
+Why it matters: Homebuilders meeting ENERGY STAR or Zero Energy Ready standards often don't realize they qualify per unit.
+7. Commercial Building Energy Deduction (IRC §179D) — High neglect
+What: Up to $5.36 per square foot
+Detection: Industry match + PP&E/asset analysis for companies with commercial buildings.
+$ Estimate: Heuristic median: $85K.
+Why it matters: Any company that owns or leases commercial space and makes energy-efficient improvements qualifies. Architects and engineers who design government buildings can also claim it.
+8. Historic Rehabilitation Tax Credit (IRC §47) — High neglect
+What: 20% of qualified rehabilitation costs on certified historic structures
+Detection: Industry match — construction, real estate, hospitality, retail, professional services.
+$ Estimate: Heuristic median: $200K.
+Why it matters: Substantial rehab projects on older buildings in historic districts. Often overlooked because the certification process is complex.
+9. New Markets Tax Credit / NMTC (IRC §45D) — High neglect
+What: 39% of investment over 7 years in Community Development Entities
+Detection: Industry match — banking, investment, financial services, real estate.
+$ Estimate: Heuristic median: $150K.
+Why it matters: Complex allocation process but enormous value for investments in low-income areas.
+10. Low-Income Housing Tax Credit / LIHTC (IRC §42) — Low neglect
+What: 9% or 4% of qualified basis annually for 10 years
+Detection: Industry match — construction, real estate, banking, investment.
+$ Estimate: Heuristic median: $350K.
+Why it matters: Well-known in affordable housing, but the syndication market means many investors don't realize they can participate.
+11. Opportunity Zone Tax Incentive (IRC §1400Z-2) — High neglect
+What: Capital gains deferral + 10-year exclusion on new gains
+Detection: Industry match + capital gains signals from XBRL.
+$ Estimate: Heuristic median: $120K.
+Why it matters: Any company or investor with capital gains can defer them by investing in Qualified Opportunity Zones. Widely underutilized outside real estate.
+12. Small Business Health Care Tax Credit (IRC §45R) — High neglect
+What: Up to 50% of employer-paid health insurance premiums
+Detection: Employee count check (must be <25 FTEs with average wages under $56K).
+$ Estimate: Heuristic median: $15K.
+Why it matters: Very narrow eligibility but the companies that qualify often don't know about it.
+13. Disabled Access Credit (IRC §44) — High neglect
+What: Up to $5,000/year for ADA compliance improvements
+Detection: Industry match — retail, hospitality, professional services, personal services.
+$ Estimate: Heuristic median: $4K.
+Why it matters: Small dollar amount but easy to claim. Any small business making accessibility improvements qualifies.
+14. Orphan Drug Credit (IRC §45C) — Medium neglect
+What: 25% of clinical testing expenses for rare diseases (<200K patients)
+Detection: Industry match — pharma, biotech, medical devices, frontier biotech.
+$ Estimate: Heuristic median: $500K.
+Why it matters: Large credit for a niche industry. Companies in clinical trials for rare diseases should always be claiming this.
+15. Biodiesel & Alternative Fuel Credits (IRC §40A/§6426) — Medium neglect
+What: $1.00/gallon biodiesel; varies by fuel type
+Detection: Industry match — energy, chemicals, agriculture, transportation, manufacturing.
+$ Estimate: Heuristic median: $60K.
+Why it matters: Companies producing or using biofuels, renewable diesel, or alternative fuels.
+16. Carbon Capture Credit (IRC §45Q) — Medium neglect
+What: $85/ton (direct air capture); $60/ton (geological storage)
+Detection: Industry match — energy, heavy manufacturing, mining, chemicals, environmental.
+$ Estimate: Heuristic median: $250K.
+Why it matters: Massively expanded by IRA. Industrial facilities capturing carbon for sequestration or enhanced oil recovery.
+17. Clean Vehicle Credit (IRC §30D/§45W) — Medium neglect
+What: $7,500 consumer; $40,000 commercial per vehicle
+Detection: Industry match — automotive, transportation, retail, construction, manufacturing.
+$ Estimate: Heuristic median: $22.5K.
+Why it matters: Companies buying EVs or plug-in hybrids for their fleet.
+18. Semiconductor Manufacturing Credit (IRC §48D / CHIPS Act) — Low neglect
+What: 25% of qualified investment in semiconductor fabs
+Detection: Industry match — electronics, semiconductors, advanced manufacturing.
+$ Estimate: Heuristic median: $1M.
+Why it matters: Largest per-credit value. Well-known but only applies to companies in chip manufacturing or related supply chain.
+19. Employer-Provided Childcare Credit (IRC §45F) — High neglect
+What: 25% facility costs + 10% resource/referral (max $150K)
+Detection: Employment-based analysis — companies with employees and no childcare credit activity.
+$ Estimate: Heuristic median: $50K.
+Why it matters: Any employer providing childcare facilities or resource services. Extremely underutilized.
+20. Employer Tip Credit / FICA (IRC §45B) — High neglect
+What: FICA taxes on tips exceeding minimum wage
+Detection: Industry match — hospitality, food & beverage, personal services.
+$ Estimate: Heuristic median: $18K.
+Why it matters: This is the FICA credit you mentioned. Every restaurant, bar, and hospitality business with tipped employees should claim this. Many don't.
+21. Indian Employment Credit (IRC §45A) — High neglect
+What: 20% of excess qualified wages + benefits (up to $20K/employee)
+Detection: Industry match — mining, energy, construction, manufacturing, hospitality near reservations.
+$ Estimate: Heuristic median: $12K.
+Why it matters: Companies operating on or near reservations employing tribal members. Very specific but valuable.
+22. Mine Rescue Team Training Credit (IRC §45N) — High neglect
+What: $10,000 per qualified mine rescue team employee
+Detection: Industry match — mining & natural resources only.
+$ Estimate: Heuristic median: $8K.
+Why it matters: Extremely narrow — only mining operations with rescue teams.
+23. Clean Hydrogen Production Credit (IRC §45V) — Medium neglect
+What: Up to $3.00/kg of qualified clean hydrogen
+Detection: Industry match — energy, chemicals, heavy manufacturing, environmental, transportation.
+$ Estimate: Heuristic median: $200K.
+Why it matters: New IRA credit. Hydrogen producers with low carbon intensity qualify. Growing rapidly.
+24. Zero-Emission Nuclear Power Credit (IRC §45U) — Low neglect
+What: $0.015/kWh (adjusted for inflation)
+Detection: Industry match — energy & utilities, fusion & advanced energy.
+$ Estimate: Heuristic median: $150K.
+Why it matters: Preserving existing nuclear plants. Well-known in the nuclear industry.
+25. Advanced Manufacturing Production Credit (IRC §45X) — High neglect
+What: Varies by component ($35/kWh battery cells, $12/m² solar wafers, etc.)
+Detection: Industry match — manufacturing, electronics, energy, chemicals, advanced manufacturing.
+$ Estimate: Heuristic median: $300K.
+Why it matters: IRA centerpiece for reshoring. Companies domestically producing solar, wind, battery, or critical mineral components. Many eligible manufacturers don't realize this credit exists.
+26. Qualifying Advanced Energy Project Credit (IRC §48C) — High neglect
+What: 30% of qualified investment in clean energy manufacturing facilities
+Detection: Investment credit analysis + industry match.
+$ Estimate: Heuristic median: $350K.
+Why it matters: Re-equipping or establishing manufacturing facilities for clean energy equipment. Competitive allocation process.
+27. Commercial Clean Vehicle Credit (IRC §45W) — High neglect
+What: $7,500–$40,000 per vehicle
+Detection: Industry match — transportation, retail, construction, professional services, agriculture.
+$ Estimate: Heuristic median: $30K.
+Why it matters: Broader than consumer EV credits. Any business purchasing EVs, hybrids, or fuel cell vehicles for their fleet.
+28. Sustainable Aviation Fuel Credit (IRC §40B) — High neglect, SUNSET
+What: $1.25–$1.75 per gallon
+Detection: Industry match — transportation, aerospace, energy, chemicals.
+$ Estimate: Heuristic median: $75K.
+Why it matters: Transitioning to §45Z Clean Fuel Production Credit. Companies producing SAF with 50%+ emissions reduction.
+29. Alternative Fuel Vehicle Refueling Credit (IRC §30C) — High neglect
+What: 30% of costs (up to $100K per location)
+Detection: Industry match — retail, hospitality, construction, transportation, professional services.
+$ Estimate: Heuristic median: $25K.
+Why it matters: Installing EV chargers, hydrogen fueling, or alternative fuel infrastructure. Any business location in an eligible census tract.
+30. Military Spouse Hiring Credit (IRC §45AA) — High neglect
+What: $500 per qualifying hire
+Detection: Industry match — retail, hospitality, professional services, financial services.
+$ Estimate: Heuristic median: $5K.
+Why it matters: Small per-hire amount but easy to claim near military bases.
+31. Qualified Business Income Deduction (IRC §199A) — Medium neglect
+What: 20% deduction on qualified business income for pass-throughs
+Detection: Entity type analysis — S-corps, partnerships, sole proprietors. Industry match for phase-out thresholds.
+$ Estimate: Heuristic median: $80K.
+Why it matters: Pass-through entities often underutilize this. Specified service businesses (law, accounting, consulting) have income phase-outs that require planning.
+32. Qualified Small Business Stock / QSBS (IRC §1202) — High neglect
+What: 100% exclusion of gains (up to $10M or 10x basis)
+Detection: Industry match + entity/asset analysis for C-corps under $50M in assets.
+$ Estimate: Heuristic median: $95K.
+Why it matters: Founders and early investors in qualifying C-corps can exclude massive capital gains. Many don't structure their shares properly to qualify.
+33. Like-Kind Exchange (IRC §1031) — Medium neglect
+What: Full deferral of capital gains on qualifying property exchanges
+Detection: Industry match — investment, banking, insurance, financial services, real estate.
+$ Estimate: Heuristic median: $150K.
+Why it matters: Real estate investors swapping investment properties. Only applies to real property now (no longer personal property after 2017 TCJA).
+34. Bonus Depreciation (IRC §168(k)) — Medium neglect, PHASING OUT
+What: 60% first-year deduction (2024), declining 20% annually to 0% after 2026
+Detection: XBRL-verified via deferred tax liability on PP&E, net PP&E, and capex. If significant PP&E exists but no accelerated depreciation detected, flagged.
+$ Estimate: capex × 60% × 21% tax rate. Heuristic median: $100K.
+Why it matters: Urgently time-sensitive — phasing out completely by 2027. Companies with capital expenditures should accelerate purchases now.
+35. Section 179 Expensing (IRC §179) — Medium neglect
+What: Up to $1,160,000 immediate deduction (2024)
+Detection: Same depreciation analysis as bonus depreciation — PP&E, capex, deferred tax liability.
+$ Estimate: Heuristic median: $60K.
+Why it matters: Immediate expensing for equipment and software purchases. Simpler than bonus depreciation and doesn't phase out.
+36. Cost Segregation Study (IRC §168 / Rev. Proc. 87-56) — High neglect
+What: 20-40% of building cost reclassified to 5-15 year property
+Detection: Same depreciation analysis — companies with significant real property assets.
+$ Estimate: Heuristic median varies widely by property value.
+Why it matters: Building owners can reclassify components (lighting, flooring, landscaping) into shorter depreciation schedules. Requires a formal engineering study but the payoff is enormous.
+37. Employer Credit for Paid Family & Medical Leave (IRC §45S) — High neglect
+What: 12.5–25% of wages paid during qualifying leave
+Detection: Employment-based analysis — companies with employees and no paid leave credit activity.
+$ Estimate: Heuristic median: $15K.
+Why it matters: Companies offering paid family/medical leave above minimum requirements. Many employers don't know this credit exists.
+38. R&D Payroll Tax Offset for Startups (IRC §41(h)) — High neglect
+What: Up to $500,000/year against payroll taxes
+Detection: Revenue threshold (<$5M) + R&D expense signals. Industry match for tech, biotech, medical devices.
+$ Estimate: Heuristic median: $75K.
+Why it matters: Pre-revenue startups can apply R&D credits against payroll taxes instead of income taxes. Most startups don't realize this option exists.
++ Foreign Tax Credit (IRC §904) — Auto-detected
+What: Credit for taxes paid to foreign governments
+Detection: XBRL-verified via foreignTaxCredit, foreignCarryforward, and foreignPreTax fields. Auto-added whenever foreign income activity is detected, even if not in the industry match list.
+$ Estimate: Directly from XBRL filings.
