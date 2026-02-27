@@ -26,6 +26,8 @@ import {
   BarChart3, MapPin, TrendingUp, DollarSign, Users, FileText, Factory,
 } from "lucide-react";
 import { Shape4DCanvas } from "@/components/shapes-4d";
+import { HowToGuide } from "@/components/how-to-guide";
+import { HelpCircle } from "lucide-react";
 
 interface FormField {
   tag?: string;
@@ -400,6 +402,7 @@ export default function LightEngine() {
   const [showCashews, setShowCashews] = useState(false);
   const [bloomIndustry, setBloomIndustry] = useState<string>("");
   const [bloomIndustryOpen, setBloomIndustryOpen] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [bloomState, setBloomState] = useState<string>("");
   const [bloomCount, setBloomCount] = useState<string>("100");
   const [bloomXbrlGate, setBloomXbrlGate] = useState(true);
@@ -1004,6 +1007,7 @@ export default function LightEngine() {
   return (
     <div className="p-8 space-y-6 max-w-4xl mx-auto">
       <GoldenCashews show={showCashews} />
+      {showGuide && <HowToGuide onClose={() => setShowGuide(false)} />}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1016,12 +1020,18 @@ export default function LightEngine() {
               <p className="text-xs text-amber-400/30">{hasLeads ? "Lead forms, ad networks, and credit health across all leads" : "Tax credit intelligence — start by discovering leads"}</p>
             </div>
           </div>
-          {hasLeads && (
-            <Button variant="ghost" size="sm" onClick={() => deltaQuery.refetch()} data-testid="button-refresh-delta"
-              className="text-amber-400/40" disabled={deltaQuery.isFetching}>
-              {deltaQuery.isFetching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sun className="w-3.5 h-3.5" />}
+          <div className="flex items-center gap-1">
+            {hasLeads && (
+              <Button variant="ghost" size="sm" onClick={() => deltaQuery.refetch()} data-testid="button-refresh-delta"
+                className="text-amber-400/40" disabled={deltaQuery.isFetching}>
+                {deltaQuery.isFetching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sun className="w-3.5 h-3.5" />}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => setShowGuide(g => !g)} data-testid="button-how-to-guide"
+              className={showGuide ? "text-amber-300/70" : "text-amber-400/30 hover:text-amber-400/50"}>
+              <HelpCircle className="w-3.5 h-3.5" />
             </Button>
-          )}
+          </div>
         </div>
 
         {hasLeads && agg && (
