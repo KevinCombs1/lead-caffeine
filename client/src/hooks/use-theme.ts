@@ -66,6 +66,7 @@ export const THEMES: ThemeConfig[] = [
 ];
 
 const STORAGE_KEY = "data-theme";
+const CONTRAST_KEY = "max-contrast";
 
 function getInitialTheme(): ThemeConfig {
   if (typeof window === "undefined") return THEMES[0];
@@ -77,8 +78,14 @@ function getInitialTheme(): ThemeConfig {
   return THEMES[0];
 }
 
+function getInitialContrast(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(CONTRAST_KEY) === "true";
+}
+
 export function useTheme() {
   const [theme, setThemeState] = useState<ThemeConfig>(getInitialTheme);
+  const [maxContrast, setMaxContrastState] = useState<boolean>(getInitialContrast);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme.id);
@@ -89,6 +96,15 @@ export function useTheme() {
       document.documentElement.classList.remove("dark");
     }
   }, [theme]);
+
+  useEffect(() => {
+    if (maxContrast) {
+      document.documentElement.classList.add("max-contrast");
+    } else {
+      document.documentElement.classList.remove("max-contrast");
+    }
+    localStorage.setItem(CONTRAST_KEY, String(maxContrast));
+  }, [maxContrast]);
 
   const setTheme = useCallback((id: string) => {
     const found = THEMES.find((t) => t.id === id);
@@ -102,5 +118,9 @@ export function useTheme() {
     });
   }, []);
 
-  return { theme, setTheme, cycleTheme, themes: THEMES };
+  const toggleMaxContrast = useCallback(() => {
+    setMaxContrastState((prev) => !prev);
+  }, []);
+
+  return { theme, setTheme, cycleTheme, maxContrast, toggleMaxContrast, themes: THEMES };
 }

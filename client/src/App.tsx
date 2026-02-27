@@ -9,13 +9,13 @@ import LightEngine from "@/pages/light";
 import ShapesPage from "@/pages/shapes";
 import DealsPage from "@/pages/deals";
 import NotFound from "@/pages/not-found";
-import { Loader2, Sun, LogOut, Box, Radio, Palette } from "lucide-react";
+import { Loader2, Sun, LogOut, Box, Radio, Palette, Contrast } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { Link, useLocation } from "wouter";
 
 function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   const [location] = useLocation();
-  const { theme, cycleTheme } = useTheme();
+  const { theme, cycleTheme, maxContrast, toggleMaxContrast } = useTheme();
 
   return (
     <div className="min-h-screen bg-background">
@@ -55,6 +55,18 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={toggleMaxContrast}
+            className={`flex items-center gap-1.5 text-xs transition-colors ${
+              maxContrast
+                ? "text-foreground bg-foreground/10 rounded px-1.5 py-0.5"
+                : "text-muted-foreground/50 hover:text-muted-foreground"
+            }`}
+            data-testid="button-max-contrast"
+            title={maxContrast ? "Max Contrast: ON" : "Max Contrast: OFF"}
+          >
+            <Contrast className="w-3 h-3" />
+          </button>
           <button
             onClick={cycleTheme}
             className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"

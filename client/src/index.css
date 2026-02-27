@@ -1155,3 +1155,142 @@
 :root:not(.dark) [class*="hover:text-violet"]:hover {
   color: rgb(110, 60, 210) !important;
 }
+
+.max-contrast,
+.max-contrast * {
+  color: #000000 !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  --tw-ring-color: rgba(0, 0, 0, 0.25) !important;
+  text-shadow: none !important;
+}
+
+.max-contrast {
+  background-color: #ffffff !important;
+  --background: 0 0% 100%;
+  --foreground: 0 0% 0%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 0%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 0%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 25%;
+  --border: 0 0% 85%;
+  --input: 0 0% 85%;
+  --primary: 0 0% 0%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 0%;
+  --accent: 0 0% 96%;
+  --accent-foreground: 0 0% 0%;
+  --destructive: 0 80% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --sidebar: 0 0% 98%;
+  --sidebar-foreground: 0 0% 0%;
+  --sidebar-border: 0 0% 85%;
+  --sidebar-primary: 0 0% 0%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 0 0% 94%;
+  --sidebar-accent-foreground: 0 0% 0%;
+}
+
+.max-contrast div,
+.max-contrast section,
+.max-contrast main,
+.max-contrast aside,
+.max-contrast header,
+.max-contrast footer,
+.max-contrast nav,
+.max-contrast article {
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.max-contrast .qi-panel,
+.max-contrast [class*="bg-card"],
+.max-contrast [class*="bg-background"],
+.max-contrast [class*="bg-muted"],
+.max-contrast [class*="bg-popover"],
+.max-contrast [class*="bg-secondary"],
+.max-contrast [class*="bg-accent"] {
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+
+.max-contrast [class*="bg-amber"],
+.max-contrast [class*="bg-cyan"],
+.max-contrast [class*="bg-emerald"],
+.max-contrast [class*="bg-violet"],
+.max-contrast [class*="bg-rose"],
+.max-contrast [class*="bg-sky"],
+.max-contrast [class*="bg-blue"],
+.max-contrast [class*="bg-orange"],
+.max-contrast [class*="bg-red"],
+.max-contrast [class*="bg-green"],
+.max-contrast [class*="bg-lime"],
+.max-contrast [class*="bg-pink"],
+.max-contrast [class*="bg-purple"],
+.max-contrast [class*="bg-indigo"],
+.max-contrast [class*="bg-slate"],
+.max-contrast [class*="bg-zinc"],
+.max-contrast [class*="bg-gray"],
+.max-contrast [class*="bg-neutral"],
+.max-contrast [class*="bg-black"],
+.max-contrast [class*="bg-white"] {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  background-image: none !important;
+}
+
+.max-contrast .bg-primary,
+.max-contrast button[class*="bg-primary"],
+.max-contrast [class*="bg-destructive"] {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+.max-contrast .bg-primary *,
+.max-contrast button[class*="bg-primary"] *,
+.max-contrast [class*="bg-destructive"] * {
+  color: #ffffff !important;
+}
+
+.max-contrast [class*="from-"],
+.max-contrast [class*="to-"],
+.max-contrast [class*="via-"] {
+  --tw-gradient-from: transparent !important;
+  --tw-gradient-to: transparent !important;
+  --tw-gradient-via: transparent !important;
+  background-image: none !important;
+}
+
+.max-contrast svg {
+  color: inherit !important;
+}
+
+.max-contrast img {
+  color: inherit !important;
+}
+
+.max-contrast input,
+.max-contrast textarea,
+.max-contrast select {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: rgba(0, 0, 0, 0.25) !important;
+}
+
+.max-contrast [class*="shadow"] {
+  box-shadow: none !important;
+}
+
+.max-contrast ::placeholder {
+  color: rgba(0, 0, 0, 0.45) !important;
+}
+
+.max-contrast .border,
+.max-contrast [class*="border-"] {
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+.max-contrast canvas {
+  opacity: 0.15 !important;
+}
