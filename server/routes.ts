@@ -1493,6 +1493,124 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/credits/registry", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { seedCreditRegistry } = await import("./credit-gap-engine");
+      await seedCreditRegistry();
+      const { db: database } = await import("./db");
+      const { taxCreditRegistry } = await import("@shared/schema");
+      const registry = await database.select().from(taxCreditRegistry);
+      res.json(registry);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/credits/gap-matrix", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getGapMatrix } = await import("./credit-gap-engine");
+      const matrix = await getGapMatrix();
+      res.json(matrix);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/credits/gaps/:creditId", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { getGapsForCredit } = await import("./credit-gap-engine");
+      const gaps = await getGapsForCredit(req.params.creditId);
+      res.json(gaps);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/credits/priority-targets", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { getPriorityTargets } = await import("./credit-gap-engine");
+      const limit = parseInt(req.query.limit as string) || 10;
+      const targets = await getPriorityTargets(limit);
+      res.json(targets);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/credits/legislative-alerts", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getLegislativeAlerts } = await import("./credit-gap-engine");
+      const alerts = await getLegislativeAlerts();
+      res.json(alerts);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/credits/rules", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { db: database } = await import("./db");
+      const { customFingerprintRules } = await import("@shared/schema");
+      const rules = await database.select().from(customFingerprintRules);
+      res.json(rules);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/credits/rules/preview", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { creditId, conditions } = req.body;
+      if (!creditId || !conditions) return res.status(400).json({ error: "creditId and conditions required" });
+      const { previewRule } = await import("./credit-gap-engine");
+      const result = await previewRule(creditId, conditions);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/credits/rules", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { creditId, ruleName, conditions } = req.body;
+      if (!creditId || !ruleName || !conditions) return res.status(400).json({ error: "creditId, ruleName, and conditions required" });
+      const { db: database } = await import("./db");
+      const { customFingerprintRules } = await import("@shared/schema");
+      const [rule] = await database.insert(customFingerprintRules).values({
+        creditId, ruleName, conditions,
+      }).returning();
+      const { runGapScan } = await import("./credit-gap-engine");
+      runGapScan().catch(err => console.error("[RULES] Re-scan after rule creation error:", err.message));
+      res.json(rule);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/credits/rules/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { db: database } = await import("./db");
+      const { customFingerprintRules } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      await database.delete(customFingerprintRules).where(eq(customFingerprintRules.id, req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/credits/scan", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { seedCreditRegistry, mapLegislativeChanges, runGapScan } = await import("./credit-gap-engine");
+      await seedCreditRegistry();
+      await mapLegislativeChanges();
+      const result = await runGapScan();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/deals/entities", requireAuth, async (req: Request, res: Response) => {
     try {
       const { listEntities } = await import("./deal-intelligence");

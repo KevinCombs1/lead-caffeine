@@ -13,6 +13,7 @@ import {
   Radio, BarChart3, Layers, Filter, Clock, DollarSign,
   Database, Target, X, ChevronRight, Link2, ExternalLink,
   TrendingUp, TrendingDown, AlertTriangle, Sparkles, Eye,
+  FileText, Plus, Trash2, ChevronDown, ChevronUp, Scan,
 } from "lucide-react";
 import { DEAL_TAB_CATEGORIES } from "@shared/schema";
 
@@ -27,7 +28,7 @@ const TAB_ICONS: Record<string, any> = {
   "Credit & Debt": DollarSign,
   "Energy & Resources": Zap,
   "Labor & Human Capital": Users,
-  "Convergence Radar": Radio,
+  "Credit Intelligence": Scan,
 };
 
 const TAB_SHAPES: Record<string, "orthoplex" | "tesseract" | "duoprism" | "hypercone"> = {
@@ -41,7 +42,7 @@ const TAB_SHAPES: Record<string, "orthoplex" | "tesseract" | "duoprism" | "hyper
   "Credit & Debt": "hypercone",
   "Energy & Resources": "tesseract",
   "Labor & Human Capital": "duoprism",
-  "Convergence Radar": "orthoplex",
+  "Credit Intelligence": "orthoplex",
 };
 
 const CURRENT_COLORS: Record<string, string> = {
@@ -700,6 +701,552 @@ function ConvergenceRadarContent({ convergences, isLoading, onExpandConvergence,
   );
 }
 
+const CONFIDENCE_BADGE: Record<string, { label: string; className: string }> = {
+  xbrl_verified: { label: "XBRL Verified", className: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+  inferred: { label: "Inferred", className: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+  estimated_by_industry: { label: "Estimated", className: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" },
+};
+
+const NEGLECT_COLOR: Record<string, string> = {
+  critical: "text-rose-400",
+  high: "text-amber-400",
+  moderate: "text-yellow-400",
+  low: "text-emerald-400",
+};
+
+function PriorityTargets({ targets, isLoading }: { targets: any[]; isLoading: boolean }) {
+  const [expandedCompany, setExpandedCompany] = useState<string | null>(null);
+
+  if (isLoading) return <Skeleton className="h-24 rounded-xl" />;
+  if (!targets || targets.length === 0) return null;
+
+  return (
+    <div className="qi-panel p-3 rounded-xl relative overflow-hidden" data-testid="priority-targets">
+      <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
+        style={{ background: "radial-gradient(ellipse at 50% 50%, rgba(16,185,129,0.15) 0%, transparent 70%)" }}
+      />
+      <div className="relative z-10">
+        <div className="flex items-center gap-2 mb-2.5">
+          <Target className="w-3.5 h-3.5 text-emerald-400" style={{ animation: "breathe 3s ease-in-out infinite" }} />
+          <h3 className="text-xs font-semibold text-emerald-300/80" data-testid="text-priority-targets-title">PRIORITY TARGETS</h3>
+          <div className="ml-auto text-[10px] text-muted-foreground/40">{targets.length} companies</div>
+        </div>
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+          {targets.map((t: any, i: number) => (
+            <button
+              key={t.companyName}
+              onClick={() => setExpandedCompany(expandedCompany === t.companyName ? null : t.companyName)}
+              className={`flex-shrink-0 qi-panel rounded-lg p-2.5 min-w-[200px] max-w-[260px] border transition-all duration-300 text-left group qi-stagger-${Math.min(i + 1, 4)} ${
+                expandedCompany === t.companyName ? "border-emerald-500/30 bg-emerald-500/5" : "border-white/5 hover:border-emerald-500/20"
+              }`}
+              style={{ perspective: "800px", background: expandedCompany !== t.companyName ? "linear-gradient(135deg, rgba(16,185,129,0.08), transparent)" : undefined }}
+              data-testid={`priority-target-${i}`}
+            >
+              <div className="text-[11px] font-medium text-foreground/80 truncate mb-1 group-hover:text-foreground/95 transition-colors">
+                {t.companyName}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-emerald-400/80">{formatValue(t.totalEstimatedValue)}</span>
+                <span className="text-[10px] text-rose-400/60">{t.unclaimedCreditCount} unclaimed</span>
+              </div>
+              <div className="flex items-center gap-1 mt-1.5">
+                {t.companyIndustry && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-muted-foreground/50 truncate max-w-[100px]">{t.companyIndustry}</span>
+                )}
+                {t.companyState && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400/60 font-mono">{t.companyState}</span>
+                )}
+                <Badge variant="outline" className={`text-[8px] ml-auto ${CONFIDENCE_BADGE[t.confidence]?.className || "text-muted-foreground border-white/10"}`}>
+                  {CONFIDENCE_BADGE[t.confidence]?.label || t.confidence}
+                </Badge>
+              </div>
+              {expandedCompany === t.companyName && t.topCredits && (
+                <div className="mt-2 pt-2 border-t border-white/5 space-y-1">
+                  {t.topCredits.map((c: string) => (
+                    <div key={c} className="text-[10px] text-muted-foreground/60 flex items-center gap-1">
+                      <AlertTriangle className="w-2.5 h-2.5 text-rose-400/50" />
+                      {c.replace(/_/g, " ")}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GapMatrixContent({ onViewXRay }: { onViewXRay?: (leadId: string) => void }) {
+  const { toast } = useToast();
+  const matrixQuery = useQuery<any[]>({ queryKey: ["/api/credits/gap-matrix"] });
+  const rulesQuery = useQuery<any[]>({ queryKey: ["/api/credits/rules"] });
+  const [expandedCredit, setExpandedCredit] = useState<string | null>(null);
+  const [showRuleForm, setShowRuleForm] = useState(false);
+
+  const gapDetailQuery = useQuery<any[]>({
+    queryKey: ["/api/credits/gaps", expandedCredit],
+    enabled: !!expandedCredit,
+  });
+
+  const scanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/credits/scan");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Gap Scan Complete", description: `Scanned ${data.scanned} companies, found ${data.gaps} gaps` });
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/credits") });
+    },
+    onError: (err: any) => toast({ title: "Scan Error", description: err.message, variant: "destructive" }),
+  });
+
+  const matrix = matrixQuery.data || [];
+  const totalGaps = matrix.reduce((sum, m) => sum + m.gapCount, 0);
+  const totalUnclaimed = matrix.reduce((sum, m) => sum + m.totalUnclaimed, 0);
+
+  if (matrixQuery.isLoading) return <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>;
+
+  return (
+    <div className="space-y-3" data-testid="gap-matrix-content">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="text-[11px] text-muted-foreground/50">
+            <span className="text-emerald-400 font-bold">{totalGaps}</span> gaps across <span className="text-amber-400 font-bold">{matrix.length}</span> credits
+          </div>
+          {totalUnclaimed > 0 && (
+            <div className="text-[11px] text-muted-foreground/50">
+              Est. unclaimed: <span className="text-emerald-400 font-bold">{formatValue(totalUnclaimed)}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowRuleForm(!showRuleForm)}
+            className="h-7 text-[10px] border-cyan-500/20 text-cyan-300/70 hover:bg-cyan-500/10"
+            data-testid="button-add-rule"
+          >
+            <Plus className="w-3 h-3 mr-1" />
+            Custom Rule
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => scanMutation.mutate()}
+            disabled={scanMutation.isPending}
+            className="h-7 text-[10px] border-emerald-500/20 text-emerald-300/70 hover:bg-emerald-500/10"
+            data-testid="button-run-gap-scan"
+          >
+            {scanMutation.isPending ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Scan className="w-3 h-3 mr-1" />}
+            Scan Now
+          </Button>
+        </div>
+      </div>
+
+      {showRuleForm && <CustomRuleForm onClose={() => setShowRuleForm(false)} rules={rulesQuery.data || []} />}
+
+      <div className="space-y-1" data-testid="gap-matrix-table">
+        <div className="grid grid-cols-12 gap-2 px-3 py-1.5 text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-wider">
+          <div className="col-span-4">Credit</div>
+          <div className="col-span-1 text-center">Gaps</div>
+          <div className="col-span-2 text-right">Unclaimed</div>
+          <div className="col-span-2">Top Industry</div>
+          <div className="col-span-2">Confidence</div>
+          <div className="col-span-1 text-center">Alerts</div>
+        </div>
+
+        {matrix.map((row: any) => {
+          const isExpanded = expandedCredit === row.creditId;
+          return (
+            <div key={row.creditId} data-testid={`gap-row-${row.creditId}`}>
+              <button
+                onClick={() => setExpandedCredit(isExpanded ? null : row.creditId)}
+                className={`w-full grid grid-cols-12 gap-2 px-3 py-2.5 rounded-lg text-left transition-all duration-300 ${
+                  isExpanded ? "bg-emerald-500/5 border border-emerald-500/15" : "bg-white/[0.015] hover:bg-white/[0.04] border border-transparent hover:border-white/5"
+                }`}
+              >
+                <div className="col-span-4 flex items-center gap-2 min-w-0">
+                  {isExpanded ? <ChevronUp className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />}
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-foreground/80 truncate">{row.creditName}</div>
+                    <div className="text-[10px] text-muted-foreground/40">{row.section}</div>
+                  </div>
+                </div>
+                <div className="col-span-1 flex items-center justify-center">
+                  <span className={`text-xs font-bold ${row.gapCount > 0 ? "text-rose-400" : "text-muted-foreground/30"}`}>{row.gapCount}</span>
+                </div>
+                <div className="col-span-2 flex items-center justify-end">
+                  <span className={`text-xs font-mono ${row.totalUnclaimed > 0 ? "text-emerald-400/80" : "text-muted-foreground/30"}`}>
+                    {row.totalUnclaimed > 0 ? formatValue(row.totalUnclaimed) : "—"}
+                  </span>
+                </div>
+                <div className="col-span-2 flex items-center">
+                  <span className="text-[10px] text-muted-foreground/50 truncate">
+                    {row.topIndustries?.[0] || "—"}
+                  </span>
+                </div>
+                <div className="col-span-2 flex items-center gap-1">
+                  {row.confidenceBreakdown?.verified > 0 && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400">{row.confidenceBreakdown.verified}</span>
+                  )}
+                  {row.confidenceBreakdown?.inferred > 0 && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-400">{row.confidenceBreakdown.inferred}</span>
+                  )}
+                  {row.confidenceBreakdown?.estimated > 0 && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-cyan-500/10 text-cyan-400">{row.confidenceBreakdown.estimated}</span>
+                  )}
+                </div>
+                <div className="col-span-1 flex items-center justify-center">
+                  {row.legislativeAlerts > 0 ? (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 font-bold">{row.legislativeAlerts}</span>
+                  ) : (
+                    <span className="text-muted-foreground/20">—</span>
+                  )}
+                </div>
+              </button>
+
+              {isExpanded && (
+                <div className="ml-6 mr-2 mt-1 mb-2 space-y-1 qi-shift" data-testid={`gap-detail-${row.creditId}`}>
+                  {gapDetailQuery.isLoading ? (
+                    <div className="space-y-1">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 rounded" />)}</div>
+                  ) : (gapDetailQuery.data || []).length === 0 ? (
+                    <div className="text-center py-4 text-[11px] text-muted-foreground/40">No company gaps detected for this credit yet</div>
+                  ) : (
+                    (gapDetailQuery.data || []).map((gap: any) => (
+                      <div
+                        key={gap.id}
+                        className="flex items-center gap-3 px-3 py-2 rounded bg-white/[0.02] hover:bg-white/[0.04] transition-all border border-transparent hover:border-white/5"
+                        data-testid={`gap-company-${gap.id}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[11px] font-medium text-foreground/75 truncate">{gap.companyName}</div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {gap.companyIndustry && <span className="text-[9px] text-muted-foreground/40">{gap.companyIndustry}</span>}
+                            {gap.companyState && <span className="text-[9px] font-mono text-muted-foreground/30">{gap.companyState}</span>}
+                            {gap.companySic && <span className="text-[9px] text-muted-foreground/25">SIC: {gap.companySic}</span>}
+                          </div>
+                        </div>
+                        <Badge variant="outline" className={`text-[8px] ${
+                          gap.gapStatus === "confirmed_unclaimed" ? "text-rose-400 border-rose-500/20" :
+                          gap.gapStatus === "likely_unclaimed" ? "text-amber-400 border-amber-500/20" :
+                          "text-cyan-400 border-cyan-500/20"
+                        }`}>
+                          {gap.gapStatus.replace(/_/g, " ")}
+                        </Badge>
+                        <Badge variant="outline" className={`text-[8px] ${CONFIDENCE_BADGE[gap.confidence]?.className || ""}`}>
+                          {CONFIDENCE_BADGE[gap.confidence]?.label || gap.confidence}
+                        </Badge>
+                        {gap.estimatedUnclaimedValue != null && gap.estimatedUnclaimedValue > 0 && (
+                          <span className="text-[11px] font-mono font-bold text-emerald-400/70">{formatValue(gap.estimatedUnclaimedValue)}</span>
+                        )}
+                        {gap.leadId && (
+                          <a
+                            href={`/?tab=light-engine&lead=${gap.leadId}`}
+                            className="text-[10px] text-violet-400/60 hover:text-violet-400 flex items-center gap-0.5 transition-colors flex-shrink-0"
+                            data-testid={`link-xray-${gap.leadId}`}
+                          >
+                            <Eye className="w-3 h-3" />
+                            X-Ray
+                          </a>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CustomRuleForm({ onClose, rules }: { onClose: () => void; rules: any[] }) {
+  const { toast } = useToast();
+  const [creditId, setCreditId] = useState("");
+  const [ruleName, setRuleName] = useState("");
+  const [field, setField] = useState("rdExpense");
+  const [operator, setOperator] = useState("gt");
+  const [value, setValue] = useState("");
+  const [previewResult, setPreviewResult] = useState<{ matchCount: number; sampleCompanies: string[] } | null>(null);
+
+  const registryQuery = useQuery<any[]>({ queryKey: ["/api/credits/registry"] });
+
+  const previewMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/credits/rules/preview", {
+        creditId,
+        conditions: [{ field, operator, value: parseFloat(value) || value }],
+      });
+      return res.json();
+    },
+    onSuccess: (data) => setPreviewResult(data),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/credits/rules", {
+        creditId,
+        ruleName,
+        conditions: [{ field, operator, value: parseFloat(value) || value }],
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Rule Created", description: "Gap scan re-running with new rule applied" });
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/credits") });
+      onClose();
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteRuleMutation = useMutation({
+    mutationFn: async (ruleId: string) => {
+      await apiRequest("DELETE", `/api/credits/rules/${ruleId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/credits/rules"] });
+      toast({ title: "Rule Deleted" });
+    },
+  });
+
+  const FIELDS = [
+    { value: "rdExpense", label: "R&D Expense" },
+    { value: "rdIntensity", label: "R&D Intensity" },
+    { value: "effectiveRate", label: "Effective Tax Rate" },
+    { value: "employeeCount", label: "Employee Count" },
+    { value: "capex", label: "Capital Expenditures" },
+    { value: "nolCarryforward", label: "NOL Carryforward" },
+    { value: "totalAssets", label: "Total Assets" },
+    { value: "totalRevenue", label: "Total Revenue" },
+    { value: "ppeNet", label: "PP&E Net" },
+    { value: "industryCategory", label: "Industry Category" },
+  ];
+
+  return (
+    <div className="qi-panel p-3 rounded-lg border border-cyan-500/15 space-y-3" data-testid="custom-rule-form">
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs font-semibold text-cyan-300/80">Custom Fingerprint Rules</h4>
+        <button onClick={onClose} className="p-1 hover:bg-white/5 rounded"><X className="w-3.5 h-3.5 text-muted-foreground" /></button>
+      </div>
+
+      {rules.length > 0 && (
+        <div className="space-y-1 mb-2">
+          <div className="text-[10px] text-muted-foreground/40 font-semibold">ACTIVE RULES</div>
+          {rules.map((r: any) => (
+            <div key={r.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02] text-[11px]" data-testid={`rule-${r.id}`}>
+              <FileText className="w-3 h-3 text-cyan-400/50" />
+              <span className="flex-1 text-foreground/70">{r.ruleName}</span>
+              <span className="text-[10px] text-muted-foreground/40">{r.creditId}</span>
+              <button onClick={() => deleteRuleMutation.mutate(r.id)} className="p-0.5 hover:bg-rose-500/10 rounded" data-testid={`button-delete-rule-${r.id}`}>
+                <Trash2 className="w-3 h-3 text-rose-400/50 hover:text-rose-400" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[10px] text-muted-foreground/40 mb-1 block">Credit</label>
+          <select
+            value={creditId}
+            onChange={(e) => setCreditId(e.target.value)}
+            className="w-full h-7 text-[11px] bg-white/5 border border-white/10 rounded px-2 text-foreground/80"
+            data-testid="select-credit"
+          >
+            <option value="">Select credit...</option>
+            {(registryQuery.data || []).map((c: any) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] text-muted-foreground/40 mb-1 block">Rule Name</label>
+          <Input
+            value={ruleName}
+            onChange={(e) => setRuleName(e.target.value)}
+            className="h-7 text-[11px] bg-white/5 border-white/10"
+            placeholder="My custom rule"
+            data-testid="input-rule-name"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className="text-[10px] text-muted-foreground/40 mb-1 block">Field</label>
+          <select
+            value={field}
+            onChange={(e) => setField(e.target.value)}
+            className="w-full h-7 text-[11px] bg-white/5 border border-white/10 rounded px-2 text-foreground/80"
+            data-testid="select-field"
+          >
+            {FIELDS.map(f => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] text-muted-foreground/40 mb-1 block">Operator</label>
+          <select
+            value={operator}
+            onChange={(e) => setOperator(e.target.value)}
+            className="w-full h-7 text-[11px] bg-white/5 border border-white/10 rounded px-2 text-foreground/80"
+            data-testid="select-operator"
+          >
+            <option value="gt">Greater than</option>
+            <option value="lt">Less than</option>
+            <option value="eq">Equals</option>
+            <option value="gte">Greater or equal</option>
+            <option value="lte">Less or equal</option>
+            <option value="contains">Contains</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] text-muted-foreground/40 mb-1 block">Value</label>
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="h-7 text-[11px] bg-white/5 border-white/10"
+            placeholder="100000"
+            data-testid="input-rule-value"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => previewMutation.mutate()}
+          disabled={!creditId || !value || previewMutation.isPending}
+          className="h-7 text-[10px] border-amber-500/20 text-amber-300/70 hover:bg-amber-500/10"
+          data-testid="button-preview-rule"
+        >
+          {previewMutation.isPending ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Eye className="w-3 h-3 mr-1" />}
+          Preview
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => saveMutation.mutate()}
+          disabled={!creditId || !ruleName || !value || saveMutation.isPending}
+          className="h-7 text-[10px] border-emerald-500/20 text-emerald-300/70 hover:bg-emerald-500/10"
+          data-testid="button-save-rule"
+        >
+          {saveMutation.isPending ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Plus className="w-3 h-3 mr-1" />}
+          Save & Apply
+        </Button>
+
+        {previewResult && (
+          <div className="flex-1 text-right">
+            <span className="text-[11px] text-amber-300/70">
+              This rule would flag <span className="font-bold text-amber-400">{previewResult.matchCount}</span> companies
+            </span>
+            {previewResult.sampleCompanies.length > 0 && (
+              <div className="text-[9px] text-muted-foreground/40 mt-0.5">
+                e.g. {previewResult.sampleCompanies.slice(0, 3).join(", ")}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LegislativeTriggersContent() {
+  const alertsQuery = useQuery<any[]>({ queryKey: ["/api/credits/legislative-alerts"] });
+
+  if (alertsQuery.isLoading) return <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}</div>;
+
+  const alerts = alertsQuery.data || [];
+
+  if (alerts.length === 0) {
+    return (
+      <div className="text-center py-12 relative" data-testid="legislative-empty">
+        <div className="w-24 h-24 mx-auto mb-4 opacity-[0.15] rounded-full"
+          style={{ background: "radial-gradient(circle, rgba(139,92,246,0.3) 0%, rgba(245,158,11,0.1) 40%, transparent 70%)", animation: "coreGlow 4s ease-in-out infinite" }}
+        />
+        <p className="text-sm text-muted-foreground/40">No legislative triggers mapped yet</p>
+        <p className="text-[11px] text-muted-foreground/30 mt-1">Legislative events are mapped to credits during each scan cycle</p>
+      </div>
+    );
+  }
+
+  const IMPACT_BADGE: Record<string, { label: string; className: string; icon: any }> = {
+    expanded_eligibility: { label: "Expanded", className: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20", icon: TrendingUp },
+    new_credit: { label: "New Credit", className: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20", icon: Sparkles },
+    sunset_warning: { label: "Sunset", className: "text-rose-400 bg-rose-500/10 border-rose-500/20", icon: AlertTriangle },
+    rate_change: { label: "Rate Change", className: "text-amber-400 bg-amber-500/10 border-amber-500/20", icon: TrendingDown },
+  };
+
+  return (
+    <div className="space-y-2" data-testid="legislative-triggers-content">
+      {alerts.map((alert: any) => {
+        const impact = IMPACT_BADGE[alert.impactType] || IMPACT_BADGE.rate_change;
+        const ImpactIcon = impact.icon;
+        return (
+          <div
+            key={alert.id}
+            className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-white/[0.015] hover:bg-white/[0.04] transition-all duration-300 border border-transparent hover:border-white/5"
+            data-testid={`legislative-alert-${alert.id}`}
+          >
+            <ImpactIcon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${impact.className.split(" ")[0]}`} />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-foreground/80 leading-snug">{alert.eventTitle}</div>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className="text-[10px] text-violet-400/60">{alert.creditName}</span>
+                <Badge variant="outline" className={`text-[8px] ${impact.className}`}>{impact.label}</Badge>
+                <span className="text-[10px] text-muted-foreground/30">{alert.sourceType}</span>
+                {alert.effectiveDate && (
+                  <span className="text-[10px] text-muted-foreground/30">{formatDate(alert.effectiveDate)}</span>
+                )}
+              </div>
+              {alert.affectedIndustries && alert.affectedIndustries.length > 0 && (
+                <div className="flex gap-1 mt-1 flex-wrap">
+                  {alert.affectedIndustries.slice(0, 3).map((ind: string) => (
+                    <span key={ind} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-muted-foreground/40">{ind}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CreditIntelligenceContent({ activeSub, convergences, isLoadingConvergences, onExpandConvergence }: {
+  activeSub: string | null;
+  convergences: any[];
+  isLoadingConvergences: boolean;
+  onExpandConvergence: (cp: any) => void;
+}) {
+  if (activeSub === "Convergence Signals") {
+    return (
+      <ConvergenceRadarContent
+        convergences={convergences}
+        isLoading={isLoadingConvergences}
+        onExpandConvergence={onExpandConvergence}
+        activeSub={null}
+      />
+    );
+  }
+
+  if (activeSub === "Legislative Triggers") {
+    return <LegislativeTriggersContent />;
+  }
+
+  return <GapMatrixContent />;
+}
+
 const TABS = Object.values(DEAL_TAB_CATEGORIES);
 
 export default function DealsPage() {
@@ -714,12 +1261,13 @@ export default function DealsPage() {
 
   const tabCategory = TABS[activeTab]?.name;
   const subCategories = TABS[activeTab]?.subs || [];
-  const isConvergenceTab = tabCategory === "Convergence Radar";
+  const isConvergenceTab = tabCategory === "Credit Intelligence";
 
   const statsQuery = useQuery<any>({ queryKey: ["/api/deals/stats"] });
   const heatmapQuery = useQuery<any[]>({ queryKey: ["/api/deals/heatmap"] });
   const sourcesQuery = useQuery<any[]>({ queryKey: ["/api/deals/sources"] });
   const topOppsQuery = useQuery<any[]>({ queryKey: ["/api/deals/top-opportunities"] });
+  const priorityTargetsQuery = useQuery<any[]>({ queryKey: ["/api/credits/priority-targets"], enabled: true });
   const convergenceQuery = useQuery<any[]>({
     queryKey: ["/api/deals/convergence"],
     enabled: isConvergenceTab,
@@ -793,10 +1341,10 @@ export default function DealsPage() {
   const convergenceCount = statsQuery.data?.convergenceCount || 0;
 
   const handleOpportunitySelect = useCallback((cp: any) => {
-    const convergenceTabIndex = TABS.findIndex(t => t.name === "Convergence Radar");
+    const convergenceTabIndex = TABS.findIndex(t => t.name === "Credit Intelligence");
     if (convergenceTabIndex >= 0) {
       setActiveTab(convergenceTabIndex);
-      setActiveSub(null);
+      setActiveSub("Convergence Signals");
     }
     setSelectedConvergenceId(cp.id);
   }, []);
@@ -860,9 +1408,9 @@ export default function DealsPage() {
           </div>
         </div>
 
-        <TopOpportunities
-          opportunities={topOppsQuery.data || []}
-          onSelect={handleOpportunitySelect}
+        <PriorityTargets
+          targets={priorityTargetsQuery.data || []}
+          isLoading={priorityTargetsQuery.isLoading}
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -939,11 +1487,11 @@ export default function DealsPage() {
           <div className="flex items-center gap-0.5 px-2 pt-2 overflow-x-auto scrollbar-hide border-b border-white/5 relative z-10">
             {TABS.map((tab, i) => {
               const Icon = TAB_ICONS[tab.name] || Activity;
-              const count = tab.name === "Convergence Radar"
+              const count = tab.name === "Credit Intelligence"
                 ? convergenceCount
                 : (statsQuery.data?.eventsByTab?.[tab.name] || 0);
               const isActive = activeTab === i;
-              const isRadar = tab.name === "Convergence Radar";
+              const isRadar = tab.name === "Credit Intelligence";
               return (
                 <button
                   key={tab.name}
@@ -1009,18 +1557,18 @@ export default function DealsPage() {
               )}
               <div className="ml-auto text-[11px] text-muted-foreground/40">
                 {isConvergenceTab
-                  ? `${convergenceQuery.data?.length || 0} convergences`
+                  ? activeSub === "Convergence Signals" ? `${convergenceQuery.data?.length || 0} convergences` : "33 credits"
                   : `${totalEvents} events`
                 }
               </div>
             </div>
 
             {isConvergenceTab ? (
-              <ConvergenceRadarContent
-                convergences={convergenceQuery.data || []}
-                isLoading={convergenceQuery.isLoading}
-                onExpandConvergence={(cp) => setSelectedConvergenceId(cp.id)}
+              <CreditIntelligenceContent
                 activeSub={activeSub}
+                convergences={convergenceQuery.data || []}
+                isLoadingConvergences={convergenceQuery.isLoading}
+                onExpandConvergence={(cp) => setSelectedConvergenceId(cp.id)}
               />
             ) : eventsQuery.isLoading ? (
               <div className="space-y-2" data-testid="events-loading">

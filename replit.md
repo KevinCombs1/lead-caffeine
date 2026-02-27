@@ -1,9 +1,14 @@
-# Light Engine — D.A.T.A. Cloudware Phase 1
+# D.A.T.A. Cloudware — Light Engine + Deal Paradise
 
 ## Overview
-The Light Engine is a tax credit intelligence and gentle outreach platform designed to identify companies eligible for federal and state tax credits. It discovers companies through SEC EDGAR sweeps, matches them against 38 tax credit programs, identifies their website lead forms, and performs non-intrusive outreach. The platform prioritizes graceful interaction, only engaging with websites that do not exhibit security signals, ensuring a respectful and non-disruptive approach.
+D.A.T.A. Cloudware is a tax credit intelligence platform operating across two phases:
 
-The project's vision is to streamline the identification of tax credit opportunities and facilitate initial contact with potential clients, leveraging advanced data analysis and a "gentle outreach" methodology.
+**Phase 1 — Light Engine**: Tax credit discovery and gentle outreach. Discovers companies through SEC EDGAR sweeps, matches them against 38 tax credit programs via Credit X-Ray (76+ XBRL concepts), identifies website lead forms, and performs non-intrusive outreach.
+
+**Phase 2 — Deal Paradise**: Tax Credit Opportunity Machine at world scale. Three layers:
+1. **Gap Matrix** — 38 tax credits showing who qualifies but hasn't claimed, across ALL entities, ALL industries, ALL sources
+2. **Filing Fingerprints** — Automatic detection rules + custom rules with live preview before saving
+3. **Legislative Triggers** — Law changes mapped to credit opportunities, not government tracking
 
 ## User Preferences
 The agent should prioritize iterative development and ask before making major changes. It should focus on high-level features and avoid granular implementation details.
@@ -42,6 +47,16 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
     - Manual trigger: POST `/api/deals/detect-convergences`
     - API routes: GET `/api/deals/top-opportunities`, GET `/api/deals/convergence/:id`, GET `/api/deals/entities`, GET `/api/deals/entities/:id`
     - Frontend: Top Opportunities bar, Convergence Radar tab with expandable detail panel, Entity Intelligence slide-out panel, enhanced event rows with entity links
+  - **Credit Intelligence Layer** (Gap Flagger + Legislative Triggers):
+    - `server/credit-gap-engine.ts` — core gap detection engine scanning ALL entities
+    - `server/credit-universe.ts` — 38 tax credit definitions with applicableCategories, neglectLevel, section
+    - Three detection layers: (1) XBRL-verified from fiscalLeads creditAnalysis, (2) Entity Intelligence from deal_entities + SIC/industry matching, (3) Custom fingerprint rules
+    - Upsert keyed on `(creditId, companyName)` — stable IDs, confidence never downgrades
+    - Legislative mapping: Congress.gov + Federal Register events auto-linked to affected credits
+    - Tables: `tax_credit_registry`, `credit_gap_analysis`, `custom_fingerprint_rules`, `legislative_credit_map`
+    - API routes: `/api/credits/registry`, `/api/credits/gap-matrix`, `/api/credits/gaps/:creditId`, `/api/credits/priority-targets`, `/api/credits/legislative-alerts`, `/api/credits/rules`, `/api/credits/rules/preview`, `/api/credits/scan`
+    - Frontend: Credit Intelligence tab (3 sub-tabs: Gap Matrix, Convergence Signals, Legislative Triggers), Priority Targets bar, Custom Rule form with live preview
+    - Scheduled: seeds registry + legislative mapping + gap scan every 30 minutes + 90s after startup
 
 ## External Dependencies
 - **PostgreSQL**: Primary database for data storage.

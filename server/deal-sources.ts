@@ -1219,6 +1219,18 @@ function startScheduler() {
     }
   }, 30 * 60 * 1000);
 
+  setInterval(async () => {
+    try {
+      const { mapLegislativeChanges, runGapScan, seedCreditRegistry } = await import("./credit-gap-engine");
+      await seedCreditRegistry();
+      await mapLegislativeChanges();
+      const result = await runGapScan();
+      if (result.gaps > 0) console.log(`[SCHEDULER] Gap scan: ${result.gaps} gaps across ${result.scanned} companies`);
+    } catch (err: any) {
+      console.error(`[SCHEDULER] Credit gap scan error:`, err.message);
+    }
+  }, 30 * 60 * 1000);
+
   setTimeout(async () => {
     try {
       const { detectConvergences } = await import("./deal-intelligence");
@@ -1228,7 +1240,18 @@ function startScheduler() {
     }
   }, 60 * 1000);
 
-  console.log(`[SCHEDULER] Background fetch scheduler started (5-minute check interval, 30-minute convergence detection)`);
+  setTimeout(async () => {
+    try {
+      const { seedCreditRegistry, mapLegislativeChanges, runGapScan } = await import("./credit-gap-engine");
+      await seedCreditRegistry();
+      await mapLegislativeChanges();
+      await runGapScan();
+    } catch (err: any) {
+      console.error(`[SCHEDULER] Initial credit gap scan error:`, err.message);
+    }
+  }, 90 * 1000);
+
+  console.log(`[SCHEDULER] Background fetch scheduler started (5-minute check, 30-minute convergence + gap scan)`);
 }
 
 export async function getEvents(filters?: {
