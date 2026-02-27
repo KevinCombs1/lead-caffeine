@@ -864,7 +864,7 @@ export const DEAL_TAB_CATEGORIES = {
   CREDIT_DEBT: { name: "Credit & Debt", subs: ["Bond Issuance", "Credit Facilities", "Restructuring"] },
   ENERGY: { name: "Energy & Resources", subs: ["Energy Deals", "Clean Tech", "Mining & Extraction"] },
   LABOR: { name: "Labor & Human Capital", subs: ["Executive Moves", "Mass Hiring", "Layoffs & Restructuring"] },
-  CONVERGENCE: { name: "Convergence Radar", subs: ["Cross-Sector Patterns", "Prediction Models", "Timeline Projections"] },
+  CONVERGENCE: { name: "Credit Intelligence", subs: ["Gap Matrix", "Convergence Signals", "Legislative Triggers"] },
 } as const;
 
 export const dealSources = pgTable("deal_sources", {
@@ -1017,3 +1017,76 @@ export const convergencePoints = pgTable("convergence_points", {
 export const insertConvergencePointSchema = createInsertSchema(convergencePoints).omit({ id: true, detectedAt: true });
 export type ConvergencePoint = typeof convergencePoints.$inferSelect;
 export type InsertConvergencePoint = z.infer<typeof insertConvergencePointSchema>;
+
+export const taxCreditRegistry = pgTable("tax_credit_registry", {
+  id: varchar("id").primaryKey(),
+  name: varchar("name").notNull(),
+  section: varchar("section").notNull(),
+  description: text("description").notNull(),
+  maxValue: text("max_value").notNull(),
+  neglectLevel: varchar("neglect_level").notNull(),
+  applicableIndustries: text("applicable_industries").array().notNull(),
+  eligibilityKeywords: text("eligibility_keywords").array(),
+  fingerprints: jsonb("fingerprints"),
+  status: varchar("status").notNull().default("active"),
+  sunsetDate: timestamp("sunset_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type TaxCreditRegistryEntry = typeof taxCreditRegistry.$inferSelect;
+export type InsertTaxCreditRegistryEntry = typeof taxCreditRegistry.$inferInsert;
+
+export const creditGapAnalysis = pgTable("credit_gap_analysis", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  creditId: varchar("credit_id").notNull(),
+  companyName: text("company_name").notNull(),
+  companySic: varchar("company_sic"),
+  companyState: varchar("company_state"),
+  companyIndustry: varchar("company_industry"),
+  leadId: varchar("lead_id"),
+  entityId: varchar("entity_id"),
+  gapStatus: varchar("gap_status").notNull(),
+  confidence: varchar("confidence").notNull(),
+  estimatedUnclaimedValue: real("estimated_unclaimed_value"),
+  evidence: text("evidence"),
+  fingerprintsMatched: text("fingerprints_matched").array(),
+  legislativeTrigger: varchar("legislative_trigger"),
+  detectedAt: timestamp("detected_at").defaultNow(),
+  lastUpdatedAt: timestamp("last_updated_at").defaultNow(),
+}, (table) => [
+  index("cga_credit_idx").on(table.creditId),
+  index("cga_company_idx").on(table.companyName),
+  index("cga_status_idx").on(table.gapStatus),
+  index("cga_value_idx").on(table.estimatedUnclaimedValue),
+  index("cga_lead_idx").on(table.leadId),
+  index("cga_entity_idx").on(table.entityId),
+]);
+
+export type CreditGapAnalysis = typeof creditGapAnalysis.$inferSelect;
+export type InsertCreditGapAnalysis = typeof creditGapAnalysis.$inferInsert;
+
+export const customFingerprintRules = pgTable("custom_fingerprint_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  creditId: varchar("credit_id").notNull(),
+  ruleName: varchar("rule_name").notNull(),
+  conditions: jsonb("conditions").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type CustomFingerprintRule = typeof customFingerprintRules.$inferSelect;
+export type InsertCustomFingerprintRule = typeof customFingerprintRules.$inferInsert;
+
+export const legislativeCreditMap = pgTable("legislative_credit_map", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  creditId: varchar("credit_id").notNull(),
+  eventTitle: text("event_title").notNull(),
+  sourceType: varchar("source_type").notNull(),
+  impactType: varchar("impact_type").notNull(),
+  affectedIndustries: text("affected_industries").array(),
+  effectiveDate: timestamp("effective_date"),
+  detectedAt: timestamp("detected_at").defaultNow(),
+}, (table) => [
+  index("lcm_credit_idx").on(table.creditId),
+  index("lcm_impact_idx").on(table.impactType),
+]);
