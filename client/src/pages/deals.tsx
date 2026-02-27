@@ -221,7 +221,7 @@ function StatsBar({ stats, isLoading }: {
   }
 
   const items = [
-    { label: "Credits Tracked", value: stats?.creditsTracked || 38, icon: Scan, color: "text-amber-400", glowColor: "rgba(245, 158, 11, 0.08)" },
+    { label: "Infrablue Signal", value: `${stats?.infrablueSignal || 0}%`, icon: Radio, color: "text-violet-400", glowColor: "rgba(139, 92, 246, 0.08)" },
     { label: "Gaps Detected", value: stats?.totalGaps || 0, icon: Target, color: "text-rose-400", glowColor: "rgba(244, 63, 94, 0.08)" },
     { label: "Est. Unclaimed", value: formatValue(stats?.totalUnclaimedValue || 0), icon: DollarSign, color: "text-emerald-400", glowColor: "rgba(16, 185, 129, 0.08)" },
     { label: "Companies Scanned", value: stats?.companiesScanned || 0, icon: Building2, color: "text-cyan-400", glowColor: "rgba(6, 182, 212, 0.08)" },
@@ -1035,6 +1035,13 @@ function PriorityTargets({ targets, isLoading }: { targets: any[]; isLoading: bo
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-bold text-emerald-400/80">{formatValue(t.totalEstimatedValue)}</span>
                 <span className="text-[10px] text-rose-400/60">{t.unclaimedCreditCount} unclaimed</span>
+                {t.priorityScore > 0 && (
+                  <span className={`text-[9px] font-mono font-bold px-1 py-0.5 rounded ${
+                    t.priorityScore >= 70 ? "bg-emerald-500/15 text-emerald-400" :
+                    t.priorityScore >= 40 ? "bg-amber-500/15 text-amber-400" :
+                    "bg-white/5 text-muted-foreground/50"
+                  }`} data-testid={`priority-score-${i}`}>P{t.priorityScore}</span>
+                )}
               </div>
               <div className="flex items-center gap-1 mt-1.5">
                 {t.companySize && (
@@ -1057,19 +1064,135 @@ function PriorityTargets({ targets, isLoading }: { targets: any[]; isLoading: bo
                   {CONFIDENCE_BADGE[t.confidence]?.label || t.confidence}
                 </Badge>
               </div>
-              {expandedCompany === t.companyName && t.topCredits && (
-                <div className="mt-2 pt-2 border-t border-white/5 space-y-1">
-                  {t.topCredits.map((c: string) => (
+              {expandedCompany === t.companyName && (
+                <div className="mt-2 pt-2 border-t border-white/5 space-y-1.5">
+                  {t.topCredits?.map((c: string) => (
                     <div key={c} className="text-[10px] text-muted-foreground/60 flex items-center gap-1">
                       <AlertTriangle className="w-2.5 h-2.5 text-rose-400/50" />
                       {c.replace(/_/g, " ")}
                     </div>
                   ))}
+                  {t.creditCascades && t.creditCascades.length > 0 && (
+                    <div className="flex items-center gap-1 flex-wrap mt-1">
+                      <Zap className="w-2.5 h-2.5 text-amber-400/50" />
+                      <span className="text-[9px] text-amber-400/60">Cascades:</span>
+                      {t.creditCascades.map((c: string) => (
+                        <span key={c} className="text-[8px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-400/60">{c}</span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 mt-1">
+                    {t.taxEfficiencyScore > 0 && (
+                      <span className="text-[9px] text-muted-foreground/40">
+                        Tax Eff: <span className={`font-mono font-bold ${t.taxEfficiencyScore < 50 ? "text-rose-400/70" : "text-emerald-400/70"}`}>{t.taxEfficiencyScore}%</span>
+                      </span>
+                    )}
+                    {t.peerPressureIndex > 0 && (
+                      <span className="text-[9px] text-muted-foreground/40">
+                        Peer: <span className="font-mono font-bold text-violet-400/70">{t.peerPressureIndex}</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
             </button>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function EdgeMetricsPanel({ metrics }: { metrics: any }) {
+  const signalColor = metrics.infrablueSignal >= 70 ? "text-emerald-400" : metrics.infrablueSignal >= 40 ? "text-amber-400" : "text-rose-400";
+  const signalGlow = metrics.infrablueSignal >= 70 ? "rgba(16,185,129,0.2)" : metrics.infrablueSignal >= 40 ? "rgba(245,158,11,0.2)" : "rgba(244,63,94,0.2)";
+
+  return (
+    <div className="qi-panel p-3 rounded-lg border border-violet-500/15 space-y-3 relative overflow-hidden" data-testid="edge-metrics-panel">
+      <div className="absolute inset-0 pointer-events-none opacity-[0.04]"
+        style={{ background: `radial-gradient(ellipse at 20% 30%, rgba(139,92,246,0.15) 0%, transparent 60%), radial-gradient(ellipse at 80% 70%, ${signalGlow} 0%, transparent 50%)` }}
+      />
+      <div className="relative z-10">
+        <div className="flex items-center gap-2 mb-3">
+          <Radio className="w-3.5 h-3.5 text-violet-400" style={{ animation: "breathe 3s ease-in-out infinite" }} />
+          <h3 className="text-xs font-semibold text-violet-300/80" data-testid="text-edge-title">THE EDGE METRICS</h3>
+        </div>
+
+        <div className="flex items-center gap-6 mb-3 pb-3 border-b border-white/5">
+          <div className="text-center">
+            <div className={`text-2xl font-bold ${signalColor} font-mono`} style={{ textShadow: `0 0 20px ${signalGlow}` }} data-testid="text-infrablue-signal">
+              {metrics.infrablueSignal}%
+            </div>
+            <div className="text-[9px] text-violet-400/60 mt-0.5">INFRABLUE SIGNAL</div>
+          </div>
+          <div className="flex-1 grid grid-cols-4 gap-3">
+            <div>
+              <div className="text-[10px] text-muted-foreground/40">Credit Velocity</div>
+              <div className="text-sm font-bold text-cyan-400 font-mono" data-testid="text-credit-velocity">{formatValue(metrics.creditVelocity)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground/40">Cascade Opps</div>
+              <div className="text-sm font-bold text-amber-400 font-mono" data-testid="text-cascade-opps">{metrics.creditCascadeOpportunities}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground/40">Sunset Survivors</div>
+              <div className="text-sm font-bold text-rose-400 font-mono" data-testid="text-sunset-survivors">{metrics.sunsetSurvivorCount}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground/40">Retroactive</div>
+              <div className="text-sm font-bold text-emerald-400 font-mono" data-testid="text-retroactive">{metrics.retroactiveOpportunities}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          <div>
+            <div className="text-[10px] text-muted-foreground/40 mb-1">Opportunity Aging</div>
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400" data-testid="text-aging-fresh">{metrics.opportunityAging?.fresh || 0} fresh</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400">{metrics.opportunityAging?.aging || 0} aging</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400">{metrics.opportunityAging?.stale || 0} stale</span>
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] text-muted-foreground/40 mb-1">Net Benefit Ratio</div>
+            <div className="text-sm font-bold text-emerald-400 font-mono" data-testid="text-net-benefit">{metrics.netBenefitRatio}%</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-muted-foreground/40 mb-1">Total Unclaimed</div>
+            <div className="text-sm font-bold text-emerald-400 font-mono">{formatValue(metrics.totalUnclaimedValue)}</div>
+          </div>
+        </div>
+
+        {metrics.silentMajority && metrics.silentMajority.length > 0 && (
+          <div className="mb-3">
+            <div className="text-[10px] text-muted-foreground/40 mb-1.5 flex items-center gap-1">
+              <Eye className="w-3 h-3" /> SILENT MAJORITY — Credits with &lt;10% adoption
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {metrics.silentMajority.slice(0, 6).map((s: any) => (
+                <span key={s.creditId} className="text-[9px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400/70 border border-violet-500/15" data-testid={`silent-${s.creditId}`}>
+                  {s.creditName.length > 25 ? s.creditId.replace(/_/g, " ") : s.creditName} ({s.adoptionRate}%)
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {metrics.geographicPrivilege && metrics.geographicPrivilege.length > 0 && (
+          <div>
+            <div className="text-[10px] text-muted-foreground/40 mb-1.5 flex items-center gap-1">
+              <Globe className="w-3 h-3" /> GEOGRAPHIC PRIVILEGE — Top states by credit density
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {metrics.geographicPrivilege.slice(0, 8).map((g: any) => (
+                <span key={g.state} className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400/70 border border-cyan-500/15 font-mono" data-testid={`geo-priv-${g.state}`}>
+                  {g.state}: {g.creditDensity} credits ({formatValue(g.totalValue)})
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1119,9 +1242,12 @@ function GapMatrixContent({ onViewXRay }: { onViewXRay?: (leadId: string) => voi
     onError: (err: any) => toast({ title: "Industry Sweep Error", description: err.message, variant: "destructive" }),
   });
 
+  const [showEdgeMetrics, setShowEdgeMetrics] = useState(false);
+
   const matrixData = matrixQuery.data;
   const matrix = matrixData?.matrix || matrixData || [];
   const pipelineStats = matrixData?.pipelineStats;
+  const edgeMetrics = matrixData?.edgeMetrics;
   const totalGaps = Array.isArray(matrix) ? matrix.reduce((sum: number, m: any) => sum + m.gapCount, 0) : 0;
   const totalUnclaimed = Array.isArray(matrix) ? matrix.reduce((sum: number, m: any) => sum + m.totalUnclaimed, 0) : 0;
   const bloomStatus = bloomStatusQuery.data;
@@ -1207,8 +1333,28 @@ function GapMatrixContent({ onViewXRay }: { onViewXRay?: (leadId: string) => voi
             {scanMutation.isPending ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Scan className="w-3 h-3 mr-1" />}
             Scan Now
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowEdgeMetrics(!showEdgeMetrics)}
+            className={`h-7 text-[10px] border-violet-500/20 text-violet-300/70 hover:bg-violet-500/10 ${showEdgeMetrics ? "bg-violet-500/10" : ""}`}
+            data-testid="button-toggle-edge-metrics"
+          >
+            <Radio className="w-3 h-3 mr-1" />
+            Edge
+          </Button>
+          <a
+            href="/api/credits/gaps/export"
+            className="inline-flex items-center h-7 text-[10px] border border-cyan-500/20 text-cyan-300/70 hover:bg-cyan-500/10 rounded-md px-2 transition-colors"
+            data-testid="button-export-csv"
+          >
+            <FileText className="w-3 h-3 mr-1" />
+            CSV
+          </a>
         </div>
       </div>
+
+      {showEdgeMetrics && edgeMetrics && <EdgeMetricsPanel metrics={edgeMetrics} />}
 
       {showRuleForm && <CustomRuleForm onClose={() => setShowRuleForm(false)} rules={rulesQuery.data || []} />}
 

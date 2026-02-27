@@ -1386,14 +1386,31 @@ export async function getDealStats(): Promise<{
     }
   }
 
+  const totalGaps = gapStats.totalGaps || 0;
+  const totalUnclaimed = Number(gapStats.totalUnclaimed) || 0;
+  const companiesScanned = Math.max(gapStats.companiesScanned || 0, leadCount.count || 0);
+  const creditsTracked = gapStats.creditsTracked || 38;
+
+  const layerScores: number[] = [
+    totalGaps > 0 ? Math.min(100, totalGaps / 10) : 0,
+    creditsTracked >= 38 ? 100 : (creditsTracked / 38) * 100,
+    companiesScanned > 0 ? Math.min(100, companiesScanned / 50 * 100) : 0,
+    totalUnclaimed > 1000000 ? 90 : totalUnclaimed > 100000 ? 70 : totalUnclaimed > 0 ? 40 : 0,
+    cpCount.count > 0 ? Math.min(100, cpCount.count * 10) : 0,
+    sourceCount.count > 5 ? 80 : sourceCount.count * 16,
+    healthy > 5 ? 80 : healthy * 16,
+  ];
+  const infrablueSignal = Math.round(layerScores.reduce((a, b) => a + b, 0) / layerScores.length);
+
   return {
     totalEvents: eventStats.total, totalValue: Number(eventStats.totalValue),
     activeSources: sourceCount.count, convergenceCount: cpCount.count,
     eventsByTab, eventsByCurrent, totalStreams,
     sourceHealthSummary: { healthy, degraded, failing, stale },
-    creditsTracked: gapStats.creditsTracked || 38,
-    totalGaps: gapStats.totalGaps || 0,
-    totalUnclaimedValue: Number(gapStats.totalUnclaimed) || 0,
-    companiesScanned: Math.max(gapStats.companiesScanned || 0, leadCount.count || 0),
+    creditsTracked,
+    totalGaps,
+    totalUnclaimedValue: totalUnclaimed,
+    companiesScanned,
+    infrablueSignal,
   };
 }

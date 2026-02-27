@@ -1051,6 +1051,8 @@ export const creditGapAnalysis = pgTable("credit_gap_analysis", {
   evidence: text("evidence"),
   fingerprintsMatched: text("fingerprints_matched").array(),
   legislativeTrigger: varchar("legislative_trigger"),
+  priorityScore: real("priority_score"),
+  createdAt: timestamp("created_at").defaultNow(),
   detectedAt: timestamp("detected_at").defaultNow(),
   lastUpdatedAt: timestamp("last_updated_at").defaultNow(),
 }, (table) => [

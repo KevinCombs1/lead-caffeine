@@ -1589,6 +1589,38 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/credits/heatmap/state", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getGapHeatmapByState } = await import("./credit-gap-engine");
+      const heatmap = await getGapHeatmapByState();
+      res.json(heatmap);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/credits/heatmap/industry", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getGapHeatmapByIndustry } = await import("./credit-gap-engine");
+      const heatmap = await getGapHeatmapByIndustry();
+      res.json(heatmap);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/credits/gaps/export", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { exportGapsCSV } = await import("./credit-gap-engine");
+      const csv = await exportGapsCSV();
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=credit-gaps-export.csv");
+      res.send(csv);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/credits/scan", requireAuth, async (_req: Request, res: Response) => {
     try {
       const { seedCreditRegistry, mapLegislativeChanges, runGapScan } = await import("./credit-gap-engine");
