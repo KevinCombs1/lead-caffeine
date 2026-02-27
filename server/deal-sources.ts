@@ -1093,7 +1093,8 @@ export async function fetchFred(): Promise<{ fetched: number; stored: number }> 
   ];
   for (const s of series) {
     try {
-      const res = await rateLimitedFetch(`https://api.stlouisfed.org/fred/series/observations?series_id=${s.id}&api_key=DEMO_KEY&file_type=json&sort_order=desc&limit=5`, 200);
+      const fredKey = process.env.FRED_API_KEY || "DEMO_KEY";
+      const res = await rateLimitedFetch(`https://api.stlouisfed.org/fred/series/observations?series_id=${s.id}&api_key=${fredKey}&file_type=json&sort_order=desc&limit=5`, 200);
       const data = await res.json();
       const obs = data?.observations || [];
       if (obs.length >= 2) {
@@ -1119,7 +1120,8 @@ export async function fetchCongressGov(): Promise<{ fetched: number; stored: num
   const start = Date.now();
   const events: NormalizedEvent[] = [];
   try {
-    const res = await rateLimitedFetch("https://api.congress.gov/v3/bill?format=json&limit=25&sort=updateDate+desc&api_key=DEMO_KEY", 200);
+    const congressKey = process.env.CONGRESS_API_KEY || "DEMO_KEY";
+    const res = await rateLimitedFetch(`https://api.congress.gov/v3/bill?format=json&limit=25&sort=updateDate+desc&api_key=${congressKey}`, 200);
     const data = await res.json();
     for (const b of (data?.bills || [])) {
       const isFin = /tax|credit|invest|capital|fund|appropriat|budget|financ|economic/i.test(b.title || "");

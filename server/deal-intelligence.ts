@@ -43,21 +43,21 @@ async function _detectConvergencesInner(): Promise<number> {
   const start = Date.now();
   console.log("[INTELLIGENCE] Starting convergence detection...");
 
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   const ninetyDaysAhead = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
 
   const recentEvents = await db.select().from(dealEvents)
-    .where(gte(dealEvents.eventDate, thirtyDaysAgo))
-    .orderBy(desc(dealEvents.eventDate)).limit(500);
+    .where(gte(dealEvents.eventDate, ninetyDaysAgo))
+    .orderBy(desc(dealEvents.eventDate)).limit(1000);
 
   const recentTrends = await db.select().from(dealTrends)
-    .where(gte(dealTrends.recordedAt, thirtyDaysAgo))
+    .where(gte(dealTrends.recordedAt, ninetyDaysAgo))
     .orderBy(desc(dealTrends.recordedAt)).limit(200);
 
   const upcomingTimelines = await db.select().from(dealTimelines)
     .where(and(
       gte(dealTimelines.expectedDate, new Date()),
-      gte(dealTimelines.recordedAt, thirtyDaysAgo),
+      gte(dealTimelines.recordedAt, ninetyDaysAgo),
     ))
     .orderBy(dealTimelines.expectedDate).limit(100);
 
@@ -91,6 +91,17 @@ async function _detectConvergencesInner(): Promise<number> {
     c.sources.add(evt.sourceId);
     if (evt.eventDate && evt.eventDate > c.latestDate) c.latestDate = evt.eventDate;
     if (c.titles.length < 5) c.titles.push(evt.title);
+
+    const sectorOnly = getOrCreate(null, evt.tabCategory);
+    if (sectorOnly.key !== c.key) {
+      sectorOnly.eventIds.push(evt.id);
+      sectorOnly.currents.add(evt.current);
+      sectorOnly.totalValue += evt.value || 0;
+      sectorOnly.eventCount++;
+      sectorOnly.sources.add(evt.sourceId);
+      if (evt.eventDate && evt.eventDate > sectorOnly.latestDate) sectorOnly.latestDate = evt.eventDate;
+      if (sectorOnly.titles.length < 5) sectorOnly.titles.push(evt.title);
+    }
   }
 
   for (const trend of recentTrends) {
@@ -100,6 +111,14 @@ async function _detectConvergencesInner(): Promise<number> {
     c.currents.add(DEAL_CURRENTS.TRENDS);
     if (trend.sourceId) c.sources.add(trend.sourceId);
     if (trend.direction) c.directions.push(`${trend.metric}: ${trend.direction}`);
+
+    const sectorOnly = getOrCreate(null, sector);
+    if (sectorOnly.key !== c.key) {
+      sectorOnly.trendIds.push(trend.id);
+      sectorOnly.currents.add(DEAL_CURRENTS.TRENDS);
+      if (trend.sourceId) sectorOnly.sources.add(trend.sourceId);
+      if (trend.direction) sectorOnly.directions.push(`${trend.metric}: ${trend.direction}`);
+    }
   }
 
   for (const tl of upcomingTimelines) {
@@ -109,12 +128,20 @@ async function _detectConvergencesInner(): Promise<number> {
     c.currents.add(DEAL_CURRENTS.TIMELINES);
     if (tl.sourceId) c.sources.add(tl.sourceId);
     if (c.titles.length < 5) c.titles.push(tl.title);
+
+    const sectorOnly = getOrCreate(null, sector);
+    if (sectorOnly.key !== c.key) {
+      sectorOnly.timelineIds.push(tl.id);
+      sectorOnly.currents.add(DEAL_CURRENTS.TIMELINES);
+      if (tl.sourceId) sectorOnly.sources.add(tl.sourceId);
+      if (sectorOnly.titles.length < 5) sectorOnly.titles.push(tl.title);
+    }
   }
 
   const qualified: ConvergenceCandidate[] = [];
   for (const [, c] of candidates) {
     c.sourceCount = c.sources.size;
-    if (c.currents.size >= 2 || (c.eventCount >= 3 && c.sourceCount >= 2)) {
+    if (c.currents.size >= 2 || (c.eventCount >= 2 && c.sourceCount >= 1)) {
       qualified.push(c);
     }
   }
@@ -148,7 +175,7 @@ async function _detectConvergencesInner(): Promise<number> {
     const activeKeys = new Set<string>();
     for (const c of topConvergences) {
       const probability = scoreProbability(c);
-      if (probability < 0.1) continue;
+      if (probability < 0.05) continue;
 
       const insight = generateInsight(c, probability);
       const timeHorizon = determineTimeHorizon(c);

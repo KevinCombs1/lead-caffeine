@@ -42,7 +42,8 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
   - Background scheduler: 5-min check intervals, per-source intervals (CoinGecko 30min, Exchange 24hr, others 6-24hr)
   - **Deal Identifier Intelligence Layer** (convergence detection engine):
     - `server/deal-intelligence.ts` — convergence detection, probability scoring, insight generation, entity intelligence
-    - `detectConvergences()` — groups events/trends/timelines by state+sector, scores probability based on current diversity, source count, event count, value magnitude, recency, and cross-current reinforcement
+    - `detectConvergences()` — groups events/trends/timelines by state+sector AND sector-only (national), scores probability based on current diversity, source count, event count, value magnitude, recency, and cross-current reinforcement
+    - 90-day lookback window, 1000-event sample, relaxed qualification (≥2 events AND ≥1 source), 0.05 probability cutoff
     - **Concurrency-safe**: Mutex lock prevents overlapping runs; upsert logic wrapped in DB transaction preserves stable convergence point IDs across detection cycles (no delete-all + re-insert)
     - Runs automatically every 30 minutes + 60s after startup
     - Manual trigger: POST `/api/deals/detect-convergences`
@@ -62,7 +63,13 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
     - Tables: `discovery_batches`, `batch_companies` (with intelligenceData + analysisResults JSONB)
     - Step 1 — Company Discovery: select industry + revenue range ($10M-$1B), discover 100/500/1000 companies via SEC EDGAR browse-edgar + fast XBRL scan
     - Step 2 — Intelligence Pipeline: scan each company across 25 government data sources (SEC EDGAR, USPTO, NSF, EPA ECHO, OSHA, SBIR/STTR, ClinicalTrials.gov, CFPB, CPSC, DOE OSTI, GLEIF, FDIC, Federal Register, Census, BLS, USASpending, SAM.gov, Grants.gov, FEC, ITC Trade, Congress.gov, OpenCorporates, OpenFDA)
-    - Step 3 — Results: cross-reference intelligence to determine R&D Tax Credit (§41) + Tariff Tax Credit eligibility per company, with evidence text and estimated values
+    - Step 3 — Results: cross-reference intelligence to determine 10 tax credit eligibilities per company:
+      - R&D Tax Credit (§41), Tariff/Duty Drawback, WOTC (§51), Bonus Depreciation (§168k), §179 Expensing, QSBS (§1202), ERC (§3134), Opportunity Zones (§1400Z-2), Paid Leave (§45S), Childcare (§45F)
+      - Color-coded 10-dot matrix per company (green=filed, amber=eligible, dim=opportunity, gray=N/A)
+      - Expandable 5-column evidence grid showing all 10 credits with status, evidence text, and estimated values
+    - Tariff analysis uses 7 signals: SIC industry classification, ITC trade data, foreign tax credit, EPA ECHO facilities, SBIR materials, cost-of-revenue ratio, import-heavy industry flag
+    - Intelligence sources with API key awareness: SAM.gov, FEC, Congress.gov check for env vars (SAM_GOV_API_KEY, FEC_API_KEY, CONGRESS_API_KEY) with DEMO_KEY fallback; UI shows amber key indicator for unconfigured sources
+    - FRED uses FRED_API_KEY env var with DEMO_KEY fallback; ITC Trade validates SIC→HTS mapping; OpenCorporates has rate limiting + 403/429 handling
     - API routes: POST/GET `/api/discovery/batches`, GET `/api/discovery/batches/:id`, GET `/api/discovery/status`, GET `/api/discovery/sources`, GET `/api/discovery/industries`, POST `/api/discovery/batches/:id/scan`, POST `/api/discovery/batches/:id/analyze`
     - Frontend: 3 sub-tabs with live progress, source indicator grid, expandable company results with credit status badges
     - Scheduled: seeds registry + legislative mapping + gap scan every 30 minutes + 90s after startup

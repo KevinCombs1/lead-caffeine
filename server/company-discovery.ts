@@ -286,6 +286,13 @@ export interface IntelligenceSource {
   id: string;
   name: string;
   category: string;
+  requiresKey?: boolean;
+  hasKey?: boolean;
+}
+
+function getApiKey(envVar: string, fallback: string = "DEMO_KEY"): { key: string; isDemo: boolean } {
+  const key = process.env[envVar] || fallback;
+  return { key, isDemo: key === "DEMO_KEY" || key === fallback };
 }
 
 export const INTELLIGENCE_SOURCES: IntelligenceSource[] = [
@@ -308,11 +315,11 @@ export const INTELLIGENCE_SOURCES: IntelligenceSource[] = [
   { id: "federal_register", name: "Federal Register", category: "Regulatory" },
   { id: "census_cbp", name: "Census CBP", category: "Economic" },
   { id: "bls_industry", name: "BLS Industry", category: "Labor" },
-  { id: "sam_gov", name: "SAM.gov", category: "Government" },
+  { id: "sam_gov", name: "SAM.gov", category: "Government", requiresKey: true, hasKey: !!process.env.SAM_GOV_API_KEY },
   { id: "grants_gov", name: "Grants.gov", category: "Government" },
-  { id: "fec_contributions", name: "FEC Contributions", category: "Political" },
+  { id: "fec_contributions", name: "FEC Contributions", category: "Political", requiresKey: true, hasKey: !!process.env.FEC_API_KEY },
   { id: "itc_trade", name: "ITC Trade", category: "Trade" },
-  { id: "congress_gov", name: "Congress.gov", category: "Legislative" },
+  { id: "congress_gov", name: "Congress.gov", category: "Legislative", requiresKey: true, hasKey: !!process.env.CONGRESS_API_KEY },
   { id: "opencorporates", name: "OpenCorporates", category: "Corporate" },
 ];
 
@@ -551,12 +558,14 @@ async function querySource(sourceId: string, companyName: string, cik: string | 
       }
       case "sam_gov": {
         const q = encodeURIComponent(companyName.split(" ").slice(0, 3).join(" "));
-        const res = await apiFetch(`https://api.sam.gov/entity-information/v3/entities?legalBusinessName=${q}&registrationStatus=A&api_key=DEMO_KEY`);
+        const { key: samKey, isDemo: samIsDemo } = getApiKey("SAM_GOV_API_KEY");
+        const res = await apiFetch(`https://api.sam.gov/entity-information/v3/entities?legalBusinessName=${q}&registrationStatus=A&api_key=${samKey}`);
+        if (res.status === 429) return { status: "no_data", data: { limited: true, reason: samIsDemo ? "DEMO_KEY rate limited" : "Rate limited" }, responseTimeMs: Date.now() - start };
         if (!res.ok) return { status: "no_data", data: null, responseTimeMs: Date.now() - start };
         try {
           data = await res.json();
           if (!data?.entityData || data.entityData.length === 0) return { status: "no_data", data: null, responseTimeMs: Date.now() - start };
-          data = { entityCount: data.entityData.length, entities: data.entityData.slice(0, 3) };
+          data = { entityCount: data.entityData.length, entities: data.entityData.slice(0, 3), limited: samIsDemo };
         } catch { return { status: "no_data", data: null, responseTimeMs: Date.now() - start }; }
         break;
       }
@@ -573,39 +582,53 @@ async function querySource(sourceId: string, companyName: string, cik: string | 
       }
       case "fec_contributions": {
         const q = encodeURIComponent(companyName.split(" ").slice(0, 3).join(" "));
-        const res = await apiFetch(`https://api.open.fec.gov/v1/names/committees/?q=${q}&api_key=DEMO_KEY`);
+        const { key: fecKey, isDemo: fecIsDemo } = getApiKey("FEC_API_KEY");
+        const res = await apiFetch(`https://api.open.fec.gov/v1/names/committees/?q=${q}&api_key=${fecKey}`);
+        if (res.status === 429) return { status: "no_data", data: { limited: true, reason: fecIsDemo ? "DEMO_KEY rate limited" : "Rate limited" }, responseTimeMs: Date.now() - start };
         if (!res.ok) return { status: "no_data", data: null, responseTimeMs: Date.now() - start };
         try {
           data = await res.json();
           if (!data?.results || data.results.length === 0) return { status: "no_data", data: null, responseTimeMs: Date.now() - start };
-          data = { committeeCount: data.results.length, committees: data.results.slice(0, 5) };
+          data = { committeeCount: data.results.length, committees: data.results.slice(0, 5), limited: fecIsDemo };
         } catch { return { status: "no_data", data: null, responseTimeMs: Date.now() - start }; }
         break;
       }
       case "itc_trade": {
         if (!sic) return { status: "no_data", data: null, responseTimeMs: Date.now() - start };
-        const res = await apiFetch(`https://dataweb.usitc.gov/api/v2/trade/by_hts?hts=${sic}&year=2023&flow=IMP`);
-        if (!res.ok) return { status: "no_data", data: null, responseTimeMs: Date.now() - start };
+        const sicNum = parseInt(sic, 10);
+        const isManufacturing = sicNum >= 2000 && sicNum <= 3999;
+        const isWholesale = sicNum >= 5000 && sicNum <= 5199;
+        if (!isManufacturing && !isWholesale) {
+          return { status: "no_data", data: { reason: "SIC code not in import-heavy industry (manufacturing/wholesale)", sic }, responseTimeMs: Date.now() - start };
+        }
+        const htsBroad = sic.substring(0, 2);
         try {
+          const res = await apiFetch(`https://dataweb.usitc.gov/api/v2/trade/by_hts?hts=${htsBroad}&year=2023&flow=IMP`);
+          if (!res.ok) return { status: "no_data", data: { reason: "ITC API returned non-OK", sic, htsUsed: htsBroad }, responseTimeMs: Date.now() - start };
           data = await res.json();
-          if (!data || (Array.isArray(data) && data.length === 0)) return { status: "no_data", data: null, responseTimeMs: Date.now() - start };
-        } catch { return { status: "no_data", data: null, responseTimeMs: Date.now() - start }; }
+          if (!data || (Array.isArray(data) && data.length === 0)) return { status: "no_data", data: { reason: "No trade data for HTS prefix", sic, htsUsed: htsBroad }, responseTimeMs: Date.now() - start };
+          data = { tradeData: Array.isArray(data) ? data.slice(0, 5) : data, sic, htsUsed: htsBroad, industryType: isManufacturing ? "manufacturing" : "wholesale" };
+        } catch { return { status: "no_data", data: { reason: "ITC API error", sic, htsUsed: htsBroad }, responseTimeMs: Date.now() - start }; }
         break;
       }
       case "congress_gov": {
         const q = encodeURIComponent(companyName.split(" ").slice(0, 2).join(" "));
-        const res = await apiFetch(`https://api.congress.gov/v3/bill?query=${q}&limit=5&api_key=DEMO_KEY`);
+        const { key: congressKey, isDemo: congressIsDemo } = getApiKey("CONGRESS_API_KEY");
+        const res = await apiFetch(`https://api.congress.gov/v3/bill?query=${q}&limit=5&api_key=${congressKey}`);
+        if (res.status === 429) return { status: "no_data", data: { limited: true, reason: congressIsDemo ? "DEMO_KEY rate limited" : "Rate limited" }, responseTimeMs: Date.now() - start };
         if (!res.ok) return { status: "no_data", data: null, responseTimeMs: Date.now() - start };
         try {
           data = await res.json();
           if (!data?.bills || data.bills.length === 0) return { status: "no_data", data: null, responseTimeMs: Date.now() - start };
-          data = { billCount: data.bills.length, bills: data.bills.slice(0, 5) };
+          data = { billCount: data.bills.length, bills: data.bills.slice(0, 5), limited: congressIsDemo };
         } catch { return { status: "no_data", data: null, responseTimeMs: Date.now() - start }; }
         break;
       }
       case "opencorporates": {
         const q = encodeURIComponent(companyName);
+        await new Promise(r => setTimeout(r, 500));
         const res = await apiFetch(`https://api.opencorporates.com/v0.4/companies/search?q=${q}&jurisdiction_code=us&per_page=3`);
+        if (res.status === 403 || res.status === 429) return { status: "no_data", data: { reason: "Rate limited by OpenCorporates free tier" }, responseTimeMs: Date.now() - start };
         if (!res.ok) return { status: "no_data", data: null, responseTimeMs: Date.now() - start };
         try {
           data = await res.json();
@@ -770,37 +793,65 @@ function analyzeTariffCredit(intel: Record<string, SourceResult>): CreditDetermi
   const xbrl = intel.sec_xbrl?.data;
   const costOfRevenue = xbrl?.costOfRevenue;
   const revenue = xbrl?.revenue;
+  const sic = xbrl?.sic || intel.sec_edgar?.data?.sic;
   const hasTradeData = intel.itc_trade?.status === "success";
   const hasForeignOps = xbrl?.foreignTaxCredit !== null && xbrl?.foreignTaxCredit > 0;
   const costRatio = (costOfRevenue && revenue && revenue > 0) ? costOfRevenue / revenue : 0;
 
-  if (costRatio > 0.6 && (hasTradeData || hasForeignOps)) {
-    const estimatedDuty = costOfRevenue ? Math.round(costOfRevenue * 0.03) : null;
-    let evidence = `High cost of revenue ratio (${(costRatio * 100).toFixed(0)}%)`;
-    if (hasTradeData) evidence += ". Trade/import activity detected in ITC data";
-    if (hasForeignOps) evidence += `. Foreign tax credit of ${formatDollar(xbrl.foreignTaxCredit)} indicates international operations`;
-    evidence += ". Potential duty drawback or tariff credit opportunity";
+  const sicNum = parseInt(sic || "0", 10);
+  const isManufacturing = sicNum >= 2000 && sicNum <= 3999;
+  const isWholesale = sicNum >= 5000 && sicNum <= 5199;
+  const isImportHeavy = isManufacturing || isWholesale;
 
+  const hasEpaFacilities = intel.epa_echo?.status === "success" && intel.epa_echo?.data?.facilities > 0;
+  const hasSbirMaterials = intel.sbir_sttr?.status === "success" &&
+    JSON.stringify(intel.sbir_sttr?.data || {}).toLowerCase().match(/manufactur|material|fabricat|hardware|device|physical/);
+
+  let signals = 0;
+  const signalDetails: string[] = [];
+
+  if (isImportHeavy) { signals++; signalDetails.push(`SIC ${sic} (${isManufacturing ? "manufacturing" : "wholesale"} sector)`); }
+  if (hasTradeData) { signals++; signalDetails.push("ITC trade/import activity detected"); }
+  if (hasForeignOps) { signals++; signalDetails.push(`foreign tax credit of ${formatDollar(xbrl?.foreignTaxCredit)}`); }
+  if (hasEpaFacilities) { signals++; signalDetails.push(`${intel.epa_echo?.data?.facilities} EPA-registered manufacturing facilities`); }
+  if (hasSbirMaterials) { signals++; signalDetails.push("SBIR/STTR awards involve materials/manufacturing R&D"); }
+  if (costRatio > 0.5 && isImportHeavy) { signals++; signalDetails.push(`high cost-of-revenue ratio (${(costRatio * 100).toFixed(0)}%) in import-heavy industry`); }
+  if (costRatio > 0.6) { signals++; signalDetails.push(`cost-of-revenue ratio ${(costRatio * 100).toFixed(0)}% (above 60%)`); }
+
+  if (signals >= 3) {
+    const estimatedDuty = costOfRevenue ? Math.round(costOfRevenue * 0.03) : null;
+    const evidence = `Strong tariff/import exposure: ${signalDetails.join("; ")}. Duty drawback programs allow recovery of customs duties paid on imported materials that are subsequently exported or used in exported goods.`;
+    return {
+      status: "likely_eligible",
+      evidence,
+      estimatedValue: estimatedDuty,
+      confidence: 0.65,
+    };
+  }
+
+  if (signals >= 2) {
+    const estimatedDuty = costOfRevenue ? Math.round(costOfRevenue * 0.02) : null;
+    const evidence = `Moderate tariff exposure: ${signalDetails.join("; ")}. Potential duty drawback or tariff credit opportunity worth reviewing.`;
     return {
       status: "potential_opportunity",
       evidence,
       estimatedValue: estimatedDuty,
-      confidence: 0.55,
+      confidence: 0.5,
     };
   }
 
-  if (hasForeignOps && costOfRevenue && costOfRevenue > 1_000_000) {
+  if (signals >= 1) {
     return {
       status: "potential_opportunity",
-      evidence: `Foreign operations detected with ${formatDollar(costOfRevenue)} in cost of revenue. May have tariff exposure worth reviewing`,
+      evidence: `Weak tariff signal: ${signalDetails.join("; ")}. Limited import/tariff indicators but may warrant further review.`,
       estimatedValue: null,
-      confidence: 0.4,
+      confidence: 0.35,
     };
   }
 
   return {
     status: "not_applicable",
-    evidence: "No significant import/tariff indicators detected",
+    evidence: "No import/tariff indicators detected (no manufacturing SIC, no trade data, no foreign operations)",
     estimatedValue: null,
     confidence: 0.5,
   };
@@ -813,6 +864,151 @@ function formatDollar(val: any): string {
   if (num >= 1e6) return `$${(num / 1e6).toFixed(1)}M`;
   if (num >= 1e3) return `$${(num / 1e3).toFixed(0)}K`;
   return `$${num.toFixed(0)}`;
+}
+
+function analyzeWotc(intel: Record<string, SourceResult>): CreditDetermination {
+  const xbrl = intel.sec_xbrl?.data;
+  const employeeCount = xbrl?.employeeCount;
+  if (employeeCount === null || employeeCount === undefined) {
+    return { status: "insufficient_data", evidence: "No employee count data available", estimatedValue: null, confidence: 0 };
+  }
+  if (employeeCount > 50) {
+    const estimated = Math.round(employeeCount * 0.05 * 4800);
+    return {
+      status: "potential_opportunity",
+      evidence: `${employeeCount} employees — estimated 5% qualifying hire rate for WOTC (§51). Potential credit: ${formatDollar(estimated)}`,
+      estimatedValue: estimated,
+      confidence: 0.45,
+    };
+  }
+  return { status: "not_applicable", evidence: `Employee count (${employeeCount}) below threshold for meaningful WOTC opportunity`, estimatedValue: null, confidence: 0.5 };
+}
+
+function analyzeBonusDepreciation(intel: Record<string, SourceResult>): CreditDetermination {
+  const xbrl = intel.sec_xbrl?.data;
+  const capex = xbrl?.capex;
+  const investmentCredit = xbrl?.investmentCredit;
+  if (capex === null || capex === undefined) {
+    return { status: "insufficient_data", evidence: "No capital expenditure data available", estimatedValue: null, confidence: 0 };
+  }
+  if (investmentCredit !== null && investmentCredit > 0) {
+    return { status: "filed", evidence: `Investment/depreciation credit of ${formatDollar(investmentCredit)} detected. Capex: ${formatDollar(capex)}`, estimatedValue: null, confidence: 0.8 };
+  }
+  if (capex > 500000) {
+    const estimated = Math.round(capex * 0.6 * 0.21);
+    return {
+      status: "likely_eligible",
+      evidence: `Capital expenditures of ${formatDollar(capex)} with no accelerated depreciation evidence. Potential §168(k) bonus depreciation benefit: ${formatDollar(estimated)}`,
+      estimatedValue: estimated,
+      confidence: 0.65,
+    };
+  }
+  return { status: "not_applicable", evidence: `Capex (${formatDollar(capex)}) below $500K threshold for significant bonus depreciation`, estimatedValue: null, confidence: 0.5 };
+}
+
+function analyzeSec179(intel: Record<string, SourceResult>): CreditDetermination {
+  const xbrl = intel.sec_xbrl?.data;
+  const capex = xbrl?.capex;
+  if (capex === null || capex === undefined) {
+    return { status: "insufficient_data", evidence: "No capital expenditure data available", estimatedValue: null, confidence: 0 };
+  }
+  if (capex > 100000) {
+    const deductible = Math.min(capex, 1160000);
+    const estimated = Math.round(deductible * 0.21);
+    return {
+      status: "likely_eligible",
+      evidence: `Capital expenditures of ${formatDollar(capex)} qualify for §179 expensing. Deductible amount up to ${formatDollar(deductible)}, estimated tax benefit: ${formatDollar(estimated)}`,
+      estimatedValue: estimated,
+      confidence: 0.6,
+    };
+  }
+  return { status: "not_applicable", evidence: `Capex (${formatDollar(capex)}) below $100K threshold for §179`, estimatedValue: null, confidence: 0.5 };
+}
+
+function analyzeQsbs(intel: Record<string, SourceResult>): CreditDetermination {
+  const xbrl = intel.sec_xbrl?.data;
+  const totalAssets = xbrl?.totalAssets;
+  if (totalAssets === null || totalAssets === undefined) {
+    return { status: "insufficient_data", evidence: "No total assets data available", estimatedValue: null, confidence: 0 };
+  }
+  if (totalAssets < 50000000) {
+    return {
+      status: "potential_opportunity",
+      evidence: `Total assets of ${formatDollar(totalAssets)} (under $50M) — potential Qualified Small Business Stock (§1202) exclusion for investors`,
+      estimatedValue: null,
+      confidence: 0.4,
+    };
+  }
+  return { status: "not_applicable", evidence: `Total assets (${formatDollar(totalAssets)}) exceed $50M QSBS threshold`, estimatedValue: null, confidence: 0.6 };
+}
+
+function analyzeErc(intel: Record<string, SourceResult>): CreditDetermination {
+  const xbrl = intel.sec_xbrl?.data;
+  const employeeCount = xbrl?.employeeCount;
+  if (employeeCount === null || employeeCount === undefined) {
+    return { status: "insufficient_data", evidence: "No employee count data available", estimatedValue: null, confidence: 0 };
+  }
+  if (employeeCount > 10) {
+    const estimated = Math.round(employeeCount * 5000);
+    return {
+      status: "potential_opportunity",
+      evidence: `${employeeCount} employees — may qualify for retroactive Employee Retention Credit (§3134) via amended returns. Estimated: ${formatDollar(estimated)}`,
+      estimatedValue: estimated,
+      confidence: 0.35,
+    };
+  }
+  return { status: "not_applicable", evidence: `Employee count (${employeeCount}) below threshold for ERC`, estimatedValue: null, confidence: 0.5 };
+}
+
+function analyzeOpportunityZones(intel: Record<string, SourceResult>): CreditDetermination {
+  const xbrl = intel.sec_xbrl?.data;
+  const nolCarryforward = xbrl?.nolCarryforward;
+  if (nolCarryforward === null || nolCarryforward === undefined) {
+    return { status: "insufficient_data", evidence: "No NOL carryforward data available", estimatedValue: null, confidence: 0 };
+  }
+  if (nolCarryforward > 1000000) {
+    return {
+      status: "potential_opportunity",
+      evidence: `NOL carryforward of ${formatDollar(nolCarryforward)} — capital gains deferral via Opportunity Zones (§1400Z-2) may apply`,
+      estimatedValue: null,
+      confidence: 0.4,
+    };
+  }
+  return { status: "not_applicable", evidence: `NOL carryforward (${formatDollar(nolCarryforward)}) below $1M threshold for OZ consideration`, estimatedValue: null, confidence: 0.5 };
+}
+
+function analyzePaidLeave(intel: Record<string, SourceResult>): CreditDetermination {
+  const xbrl = intel.sec_xbrl?.data;
+  const employeeCount = xbrl?.employeeCount;
+  if (employeeCount === null || employeeCount === undefined) {
+    return { status: "insufficient_data", evidence: "No employee count data available", estimatedValue: null, confidence: 0 };
+  }
+  if (employeeCount > 50) {
+    return {
+      status: "potential_opportunity",
+      evidence: `${employeeCount} employees — paid family/medical leave credit (§45S) opportunity. Credit equals 12.5-25% of wages paid during leave`,
+      estimatedValue: null,
+      confidence: 0.4,
+    };
+  }
+  return { status: "not_applicable", evidence: `Employee count (${employeeCount}) below threshold for §45S paid leave credit`, estimatedValue: null, confidence: 0.5 };
+}
+
+function analyzeChildcare(intel: Record<string, SourceResult>): CreditDetermination {
+  const xbrl = intel.sec_xbrl?.data;
+  const employeeCount = xbrl?.employeeCount;
+  if (employeeCount === null || employeeCount === undefined) {
+    return { status: "insufficient_data", evidence: "No employee count data available", estimatedValue: null, confidence: 0 };
+  }
+  if (employeeCount > 100) {
+    return {
+      status: "potential_opportunity",
+      evidence: `${employeeCount} employees — employer-provided childcare credit (§45F) opportunity. Up to $150K/year for childcare facility costs`,
+      estimatedValue: null,
+      confidence: 0.35,
+    };
+  }
+  return { status: "not_applicable", evidence: `Employee count (${employeeCount}) below threshold for §45F childcare credit`, estimatedValue: null, confidence: 0.5 };
 }
 
 export async function analyzeBatch(batchId: string): Promise<void> {
@@ -832,7 +1028,7 @@ export async function analyzeBatch(batchId: string): Promise<void> {
 
   (async () => {
     try {
-      console.log(`[DISCOVERY] Analyzing ${scannedCompanies.length} companies for credit eligibility...`);
+      console.log(`[DISCOVERY] Analyzing ${scannedCompanies.length} companies for credit eligibility (10 credits)...`);
 
       for (let i = 0; i < scannedCompanies.length; i++) {
         const co = scannedCompanies[i];
@@ -841,6 +1037,14 @@ export async function analyzeBatch(batchId: string): Promise<void> {
         const analysisResults: Record<string, CreditDetermination> = {
           rd_credit: analyzeRdCredit(intel),
           tariff_credit: analyzeTariffCredit(intel),
+          wotc: analyzeWotc(intel),
+          bonus_depreciation: analyzeBonusDepreciation(intel),
+          sec179: analyzeSec179(intel),
+          qsbs: analyzeQsbs(intel),
+          erc: analyzeErc(intel),
+          opportunity_zones: analyzeOpportunityZones(intel),
+          paid_leave: analyzePaidLeave(intel),
+          childcare: analyzeChildcare(intel),
         };
 
         await db.update(batchCompanies).set({
@@ -853,7 +1057,7 @@ export async function analyzeBatch(batchId: string): Promise<void> {
 
       await db.update(discoveryBatches).set({ status: "complete" }).where(eq(discoveryBatches.id, batchId));
       progress.phase = "idle";
-      console.log(`[DISCOVERY] Analysis complete for ${scannedCompanies.length} companies`);
+      console.log(`[DISCOVERY] Analysis complete for ${scannedCompanies.length} companies (10 credits each)`);
     } catch (e: any) {
       progress.phase = "error";
       progress.error = e.message;

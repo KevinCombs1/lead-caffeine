@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import {
   Database, Target, X, ChevronRight, Link2, ExternalLink,
   TrendingUp, TrendingDown, AlertTriangle, Sparkles, Eye,
   FileText, Plus, Trash2, ChevronDown, ChevronUp, Scan, Sprout,
-  CheckCircle2, XCircle, Circle, Loader2, Factory, Beaker,
+  CheckCircle2, XCircle, Circle, Loader2, Factory, Beaker, KeyRound,
 } from "lucide-react";
 import { DEAL_TAB_CATEGORIES } from "@shared/schema";
 
@@ -93,12 +93,14 @@ const US_STATES: Record<string, { name: string; x: number; y: number }> = {
   DC: { name: "Washington DC", x: 87, y: 42 },
 };
 
-function formatValue(val: number): string {
-  if (val >= 1e12) return `$${(val / 1e12).toFixed(1)}T`;
-  if (val >= 1e9) return `$${(val / 1e9).toFixed(1)}B`;
-  if (val >= 1e6) return `$${(val / 1e6).toFixed(1)}M`;
-  if (val >= 1e3) return `$${(val / 1e3).toFixed(0)}K`;
-  return `$${val.toFixed(0)}`;
+function formatValue(val: number | null | undefined): string {
+  if (val === null || val === undefined || isNaN(Number(val))) return "$0";
+  const num = Number(val);
+  if (num >= 1e12) return `$${(num / 1e12).toFixed(1)}T`;
+  if (num >= 1e9) return `$${(num / 1e9).toFixed(1)}B`;
+  if (num >= 1e6) return `$${(num / 1e6).toFixed(1)}M`;
+  if (num >= 1e3) return `$${(num / 1e3).toFixed(0)}K`;
+  return `$${num.toFixed(0)}`;
 }
 
 function formatDate(d: string | null | undefined): string {
@@ -253,302 +255,6 @@ function StatsBar({ stats, isLoading }: {
   );
 }
 
-function TopOpportunities({ opportunities, onSelect }: {
-  opportunities: any[];
-  onSelect: (cp: any) => void;
-}) {
-  if (!opportunities || opportunities.length === 0) return null;
-
-  return (
-    <div className="qi-panel p-3 rounded-xl relative overflow-hidden" data-testid="top-opportunities">
-      <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
-        style={{ background: "radial-gradient(ellipse at 50% 50%, rgba(139,92,246,0.15) 0%, transparent 70%)" }}
-      />
-      <div className="relative z-10">
-        <div className="flex items-center gap-2 mb-2.5">
-          <Sparkles className="w-3.5 h-3.5 text-violet-400" style={{ animation: "breathe 3s ease-in-out infinite" }} />
-          <h3 className="text-xs font-semibold text-violet-300/80">TOP OPPORTUNITIES</h3>
-          <div className="ml-auto text-[10px] text-muted-foreground/40">{opportunities.length} detected</div>
-        </div>
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-          {opportunities.map((cp: any, i: number) => {
-            const pct = Math.round((cp.probability || 0) * 100);
-            const probColor = pct >= 70 ? "text-emerald-400 border-emerald-500/20" : pct >= 40 ? "text-amber-400 border-amber-500/20" : "text-rose-400 border-rose-500/20";
-            const probGlow = pct >= 70 ? "rgba(16,185,129,0.15)" : pct >= 40 ? "rgba(245,158,11,0.15)" : "rgba(244,63,94,0.15)";
-
-            return (
-              <button
-                key={cp.id}
-                onClick={() => onSelect(cp)}
-                className={`flex-shrink-0 qi-panel rounded-lg p-2.5 min-w-[200px] max-w-[240px] border border-white/5 hover:border-violet-500/20 transition-all duration-300 text-left group qi-stagger-${Math.min(i + 1, 4)}`}
-                style={{
-                  perspective: "800px",
-                  background: `linear-gradient(135deg, ${probGlow}, transparent)`,
-                }}
-                data-testid={`opportunity-card-${cp.id}`}
-              >
-                <div className="text-[11px] font-medium text-foreground/80 truncate mb-1.5 group-hover:text-foreground/95 transition-colors">
-                  {cp.title}
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-xs font-bold font-mono ${probColor}`}>{pct}%</span>
-                  {cp.estimatedValue && (
-                    <span className="text-[10px] text-emerald-400/60">{formatValue(cp.estimatedValue)}</span>
-                  )}
-                  {cp.timeHorizon && (
-                    <span className="text-[10px] text-muted-foreground/40">{cp.timeHorizon}</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 mt-1.5">
-                  {cp.sector && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-muted-foreground/50 truncate max-w-[100px]">{cp.sector}</span>
-                  )}
-                  {cp.state && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400/60 font-mono">{cp.state}</span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ConvergenceCard({ cp, onExpand }: { cp: any; onExpand: (cp: any) => void }) {
-  const pct = Math.round((cp.probability || 0) * 100);
-  const statusColor = cp.status === "high_confidence" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
-    : cp.status === "detected" ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
-    : "text-cyan-400 bg-cyan-500/10 border-cyan-500/20";
-  const meta = cp.metadata || {};
-  const currents = meta.currents || cp.currentsInvolved || [];
-
-  return (
-    <div
-      className="qi-panel rounded-lg p-4 relative overflow-hidden border border-white/5 hover:border-violet-500/15 transition-all duration-300 group"
-      style={{ perspective: "1000px" }}
-      data-testid={`convergence-card-${cp.id}`}
-    >
-      <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
-        style={{
-          background: pct >= 70
-            ? "radial-gradient(ellipse at 30% 30%, rgba(16,185,129,0.15) 0%, transparent 60%)"
-            : "radial-gradient(ellipse at 30% 30%, rgba(245,158,11,0.1) 0%, transparent 60%)",
-        }}
-      />
-      <div className="relative z-10">
-        <div className="flex items-start justify-between mb-2">
-          <div className="flex-1 min-w-0 mr-3">
-            <h4 className="text-sm font-semibold text-foreground/85 group-hover:text-foreground/95 transition-colors">{cp.title}</h4>
-            <Badge variant="outline" className={`text-[9px] mt-1 ${statusColor}`}>
-              {cp.status === "high_confidence" ? "High Confidence" : cp.status === "detected" ? "Detected" : "Emerging"}
-            </Badge>
-          </div>
-          <ProbabilityBar value={cp.probability || 0} large />
-        </div>
-
-        <p className="text-[11px] text-muted-foreground/60 leading-relaxed mb-3 line-clamp-3">{cp.description}</p>
-
-        <div className="flex items-center gap-3 flex-wrap mb-3">
-          {cp.estimatedValue && (
-            <div className="flex items-center gap-1">
-              <DollarSign className="w-3 h-3 text-emerald-400/60" />
-              <span className="text-xs font-bold text-emerald-400/80">{formatValue(cp.estimatedValue)}</span>
-            </div>
-          )}
-          {cp.timeHorizon && (
-            <div className="flex items-center gap-1">
-              <Clock className="w-3 h-3 text-muted-foreground/40" />
-              <span className="text-[11px] text-muted-foreground/60">{cp.timeHorizon}</span>
-            </div>
-          )}
-          {meta.sourceCount && (
-            <div className="flex items-center gap-1">
-              <Database className="w-3 h-3 text-muted-foreground/40" />
-              <span className="text-[11px] text-muted-foreground/60">{meta.sourceCount} sources</span>
-            </div>
-          )}
-          {meta.eventCount && (
-            <div className="flex items-center gap-1">
-              <Activity className="w-3 h-3 text-muted-foreground/40" />
-              <span className="text-[11px] text-muted-foreground/60">{meta.eventCount} events</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {currents.map((c: string) => (
-            <span key={c} className={`text-[9px] px-2 py-0.5 rounded-full border ${CURRENT_COLORS[c] || "text-muted-foreground border-white/10"}`}>
-              {CURRENT_LABELS[c] || c}
-            </span>
-          ))}
-          {cp.sector && (
-            <span className="text-[9px] px-2 py-0.5 rounded bg-white/5 text-muted-foreground/50">{cp.sector}</span>
-          )}
-          {cp.state && (
-            <span className="text-[9px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400/60 font-mono">{cp.state}</span>
-          )}
-          {cp.geography && !cp.state && (
-            <span className="text-[9px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400/60">{cp.geography}</span>
-          )}
-          <button
-            onClick={() => onExpand(cp)}
-            className="ml-auto text-[10px] text-violet-400/60 hover:text-violet-400 transition-colors flex items-center gap-1"
-            data-testid={`button-expand-convergence-${cp.id}`}
-          >
-            <Eye className="w-3 h-3" />
-            Details
-          </button>
-        </div>
-
-        {meta.directions && meta.directions.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-white/5">
-            <div className="text-[10px] text-muted-foreground/40 mb-1">Trend signals:</div>
-            {meta.directions.slice(0, 2).map((d: string, i: number) => (
-              <div key={i} className="text-[10px] text-cyan-400/50 flex items-center gap-1">
-                {d.includes("up") || d.includes("increase") ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                {d}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ConvergenceDetailPanel({ convergenceId, onClose }: { convergenceId: string; onClose: () => void }) {
-  const detailQuery = useQuery<any>({
-    queryKey: ["/api/deals/convergence", convergenceId],
-    enabled: !!convergenceId,
-  });
-
-  const data = detailQuery.data;
-  const cp = data?.convergence;
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end" data-testid="convergence-detail-panel">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-background border-l border-white/10 overflow-y-auto" style={{ animation: "fadeSlideIn 0.3s ease-out" }}>
-        <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-white/5 bg-background/95 backdrop-blur-sm">
-          <h3 className="text-sm font-semibold text-violet-300/90">Convergence Details</h3>
-          <button onClick={onClose} className="p-1 hover:bg-white/5 rounded" data-testid="button-close-convergence-detail">
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
-        </div>
-
-        {detailQuery.isLoading ? (
-          <div className="p-4 space-y-3">
-            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
-          </div>
-        ) : cp ? (
-          <div className="p-4 space-y-4">
-            <div>
-              <h4 className="text-base font-bold text-foreground/90 mb-1">{cp.title}</h4>
-              <ProbabilityBar value={cp.probability || 0} large />
-              <p className="text-xs text-muted-foreground/60 leading-relaxed mt-2">{cp.description}</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              {cp.estimatedValue && (
-                <div className="qi-panel p-2 rounded-lg">
-                  <div className="text-[10px] text-muted-foreground/40">Est. Value</div>
-                  <div className="text-sm font-bold text-emerald-400/80">{formatValue(cp.estimatedValue)}</div>
-                </div>
-              )}
-              {cp.timeHorizon && (
-                <div className="qi-panel p-2 rounded-lg">
-                  <div className="text-[10px] text-muted-foreground/40">Time Horizon</div>
-                  <div className="text-sm font-bold text-amber-400/80">{cp.timeHorizon}</div>
-                </div>
-              )}
-              {cp.sector && (
-                <div className="qi-panel p-2 rounded-lg">
-                  <div className="text-[10px] text-muted-foreground/40">Sector</div>
-                  <div className="text-sm font-bold text-foreground/70">{cp.sector}</div>
-                </div>
-              )}
-              {cp.geography && (
-                <div className="qi-panel p-2 rounded-lg">
-                  <div className="text-[10px] text-muted-foreground/40">Geography</div>
-                  <div className="text-sm font-bold text-foreground/70">{cp.geography}</div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-1.5 flex-wrap">
-              {(cp.currentsInvolved || []).map((c: string) => (
-                <span key={c} className={`text-[10px] px-2 py-1 rounded-full border ${CURRENT_COLORS[c] || ""}`}>
-                  {CURRENT_LABELS[c] || c}
-                </span>
-              ))}
-            </div>
-
-            {data.events && data.events.length > 0 && (
-              <div>
-                <h5 className="text-xs font-semibold text-amber-300/70 mb-2 flex items-center gap-1.5">
-                  <Activity className="w-3 h-3" />
-                  Involved Events ({data.events.length})
-                </h5>
-                <div className="space-y-1 max-h-[200px] overflow-y-auto scrollbar-hide">
-                  {data.events.map((evt: any) => (
-                    <div key={evt.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02] text-[11px]">
-                      <div className={`w-1 h-5 rounded-full ${evt.current === "transactions" ? "bg-amber-500/60" : evt.current === "trends" ? "bg-cyan-500/60" : "bg-violet-500/60"}`} />
-                      <span className="flex-1 truncate text-foreground/70">{evt.title}</span>
-                      {evt.value && <span className="text-emerald-400/60 font-mono">{formatValue(evt.value)}</span>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {data.trends && data.trends.length > 0 && (
-              <div>
-                <h5 className="text-xs font-semibold text-cyan-300/70 mb-2 flex items-center gap-1.5">
-                  <TrendingUp className="w-3 h-3" />
-                  Related Trends ({data.trends.length})
-                </h5>
-                <div className="space-y-1 max-h-[150px] overflow-y-auto scrollbar-hide">
-                  {data.trends.map((t: any) => (
-                    <div key={t.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02] text-[11px]">
-                      <div className="w-1 h-5 rounded-full bg-cyan-500/60" />
-                      <span className="flex-1 truncate text-foreground/70">{t.metric}</span>
-                      <span className={`font-mono ${t.direction === "up" ? "text-emerald-400/60" : "text-rose-400/60"}`}>
-                        {t.direction === "up" ? "+" : ""}{t.value?.toFixed?.(1)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {data.timelines && data.timelines.length > 0 && (
-              <div>
-                <h5 className="text-xs font-semibold text-violet-300/70 mb-2 flex items-center gap-1.5">
-                  <Clock className="w-3 h-3" />
-                  Timeline Events ({data.timelines.length})
-                </h5>
-                <div className="space-y-1 max-h-[150px] overflow-y-auto scrollbar-hide">
-                  {data.timelines.map((tl: any) => (
-                    <div key={tl.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02] text-[11px]">
-                      <div className="w-1 h-5 rounded-full bg-violet-500/60" />
-                      <span className="flex-1 truncate text-foreground/70">{tl.title}</span>
-                      <span className="text-muted-foreground/40">{formatDate(tl.expectedDate)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="p-8 text-center text-muted-foreground/40 text-sm">Convergence point not found</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function EntityPanel({ entityId, onClose }: { entityId: string; onClose: () => void }) {
   const entityQuery = useQuery<any>({
     queryKey: ["/api/deals/entities", entityId],
@@ -655,14 +361,6 @@ const REVENUE_PRESETS = [
   { label: "$500M – $1B", min: 500_000_000, max: 1_000_000_000 },
 ];
 
-function formatDollar(val: number | null | undefined): string {
-  if (val === null || val === undefined || isNaN(Number(val))) return "$0";
-  const num = Number(val);
-  if (num >= 1e9) return `$${(num / 1e9).toFixed(1)}B`;
-  if (num >= 1e6) return `$${(num / 1e6).toFixed(1)}M`;
-  if (num >= 1e3) return `$${(num / 1e3).toFixed(0)}K`;
-  return `$${num.toFixed(0)}`;
-}
 
 function CompanyDiscoveryContent() {
   const [industry, setIndustry] = useState("");
@@ -853,7 +551,7 @@ function CompanyDiscoveryContent() {
                   <div className="text-xs font-medium text-foreground/80 truncate">{co.companyName}</div>
                   <div className="text-[10px] text-muted-foreground/40">{co.sicDescription || co.sic}</div>
                 </div>
-                <div className="text-xs font-mono text-emerald-400/70">{formatDollar(co.revenue)}</div>
+                <div className="text-xs font-mono text-emerald-400/70">{formatValue(co.revenue)}</div>
                 {co.state && <div className="text-[9px] text-amber-400/50 font-mono">{co.state}</div>}
               </div>
             ))}
@@ -1036,6 +734,12 @@ function IntelligencePipelineContent() {
                 {pendingCount > 0 && <span className="text-amber-400/50">{pendingCount} pending</span>}
               </div>
             )}
+            {sources.some((s: any) => s.requiresKey && !s.hasKey) && (
+              <div className="flex items-center gap-1 text-[9px] text-amber-400/60" data-testid="text-key-needed-indicator">
+                <KeyRound className="w-2.5 h-2.5" />
+                <span>= API key needed</span>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1.5" data-testid="source-grid">
             {sources.map((src: any) => {
@@ -1068,6 +772,9 @@ function IntelligencePipelineContent() {
                       isError ? "text-rose-300/60" :
                       "text-muted-foreground/50"
                     }`}>{src.name}</span>
+                    {src.requiresKey && !src.hasKey && (
+                      <KeyRound className="w-2.5 h-2.5 text-amber-400/60 flex-shrink-0 ml-auto" data-testid={`icon-key-needed-${src.id}`} />
+                    )}
                   </div>
                   <div className="flex items-center gap-1 pl-4.5">
                     {result?.responseTimeMs > 0 && (
@@ -1110,17 +817,36 @@ function ResultsContent() {
   const companies = batchDetail?.companies || [];
   const analyzedCompanies = companies.filter((c: any) => c.analysisResults);
 
+  const ALL_CREDITS = [
+    { key: "rd_credit", label: "R&D", section: "§41" },
+    { key: "tariff_credit", label: "Tariff", section: "Duty" },
+    { key: "wotc", label: "WOTC", section: "§51" },
+    { key: "bonus_depreciation", label: "Bonus Depr.", section: "§168k" },
+    { key: "sec179", label: "§179", section: "§179" },
+    { key: "qsbs", label: "QSBS", section: "§1202" },
+    { key: "erc", label: "ERC", section: "§3134" },
+    { key: "opportunity_zones", label: "Opp. Zones", section: "§1400Z" },
+    { key: "paid_leave", label: "Paid Leave", section: "§45S" },
+    { key: "childcare", label: "Childcare", section: "§45F" },
+  ];
+
   const stats = useMemo(() => {
-    if (analyzedCompanies.length === 0) return { total: 0, rdEligible: 0, rdFiled: 0, tariffOpps: 0, totalEstimated: 0 };
-    let rdEligible = 0, rdFiled = 0, tariffOpps = 0, totalEstimated = 0;
-    for (const co of analyzedCompanies) {
-      const rd = co.analysisResults?.rd_credit;
-      const tariff = co.analysisResults?.tariff_credit;
-      if (rd?.status === "likely_eligible") { rdEligible++; totalEstimated += rd.estimatedValue || 0; }
-      if (rd?.status === "filed") rdFiled++;
-      if (tariff?.status === "potential_opportunity") { tariffOpps++; totalEstimated += tariff.estimatedValue || 0; }
+    if (analyzedCompanies.length === 0) return { total: 0, eligible: 0, filed: 0, opportunities: 0, totalEstimated: 0, perCredit: {} as Record<string, number> };
+    let eligible = 0, filed = 0, opportunities = 0, totalEstimated = 0;
+    const perCredit: Record<string, number> = {};
+    for (const credit of ALL_CREDITS) {
+      perCredit[credit.key] = 0;
     }
-    return { total: analyzedCompanies.length, rdEligible, rdFiled, tariffOpps, totalEstimated };
+    for (const co of analyzedCompanies) {
+      for (const credit of ALL_CREDITS) {
+        const result = co.analysisResults?.[credit.key];
+        if (!result) continue;
+        if (result.status === "filed") { filed++; perCredit[credit.key]++; }
+        if (result.status === "likely_eligible") { eligible++; perCredit[credit.key]++; totalEstimated += result.estimatedValue || 0; }
+        if (result.status === "potential_opportunity") { opportunities++; perCredit[credit.key]++; totalEstimated += result.estimatedValue || 0; }
+      }
+    }
+    return { total: analyzedCompanies.length, eligible, filed, opportunities, totalEstimated, perCredit };
   }, [analyzedCompanies]);
 
   return (
@@ -1159,15 +885,15 @@ function ResultsContent() {
                 <div className="text-[9px] text-muted-foreground/40">Analyzed</div>
               </div>
               <div className="qi-panel rounded-lg p-2 text-center border border-amber-500/15">
-                <div className="text-lg font-bold text-amber-400">{stats.rdEligible}</div>
-                <div className="text-[9px] text-amber-300/50">R&D Eligible</div>
+                <div className="text-lg font-bold text-amber-400">{stats.eligible}</div>
+                <div className="text-[9px] text-amber-300/50">Eligible</div>
               </div>
               <div className="qi-panel rounded-lg p-2 text-center border border-cyan-500/15">
-                <div className="text-lg font-bold text-cyan-400">{stats.tariffOpps}</div>
-                <div className="text-[9px] text-cyan-300/50">Tariff Opps</div>
+                <div className="text-lg font-bold text-cyan-400">{stats.opportunities}</div>
+                <div className="text-[9px] text-cyan-300/50">Opportunities</div>
               </div>
               <div className="qi-panel rounded-lg p-2 text-center border border-emerald-500/15">
-                <div className="text-lg font-bold text-emerald-400">{formatDollar(stats.totalEstimated)}</div>
+                <div className="text-lg font-bold text-emerald-400">{formatValue(stats.totalEstimated)}</div>
                 <div className="text-[9px] text-emerald-300/50">Est. Value</div>
               </div>
             </div>
@@ -1178,11 +904,14 @@ function ResultsContent() {
       {selectedBatchId && analyzedCompanies.length > 0 && (
         <div className="space-y-1" data-testid="results-company-list">
           {analyzedCompanies.map((co: any, i: number) => {
-            const rd = co.analysisResults?.rd_credit;
-            const tariff = co.analysisResults?.tariff_credit;
-            const rdStyle = CREDIT_STATUS_STYLES[rd?.status] || CREDIT_STATUS_STYLES.insufficient_data;
-            const tariffStyle = CREDIT_STATUS_STYLES[tariff?.status] || CREDIT_STATUS_STYLES.insufficient_data;
             const isExpanded = expandedCompany === co.id;
+            const creditResults = ALL_CREDITS.map(c => ({
+              ...c,
+              result: co.analysisResults?.[c.key],
+              style: CREDIT_STATUS_STYLES[co.analysisResults?.[c.key]?.status] || CREDIT_STATUS_STYLES.insufficient_data,
+            }));
+            const totalEst = creditResults.reduce((sum, c) => sum + (c.result?.estimatedValue || 0), 0);
+            const activeCredits = creditResults.filter(c => c.result?.status === "filed" || c.result?.status === "likely_eligible" || c.result?.status === "potential_opportunity");
 
             return (
               <div key={co.id} data-testid={`result-row-${i}`}>
@@ -1193,43 +922,51 @@ function ResultsContent() {
                   }`}
                   data-testid={`button-expand-${i}`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <div className="w-5 text-[10px] text-muted-foreground/30 font-mono flex-shrink-0">{i + 1}</div>
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-medium text-foreground/80 truncate">{co.companyName}</div>
                       <div className="text-[10px] text-muted-foreground/40">{co.sicDescription || co.sic}</div>
                     </div>
-                    <div className="text-xs font-mono text-foreground/50 flex-shrink-0">{formatDollar(co.revenue)}</div>
-                    <Badge variant="outline" className={`text-[8px] flex-shrink-0 ${rdStyle.className}`} data-testid={`badge-rd-${i}`}>
-                      R&D: {rdStyle.label}
-                    </Badge>
-                    <Badge variant="outline" className={`text-[8px] flex-shrink-0 ${tariffStyle.className}`} data-testid={`badge-tariff-${i}`}>
-                      Tariff: {tariffStyle.label}
-                    </Badge>
-                    {rd?.estimatedValue && (
-                      <span className="text-[10px] font-mono text-emerald-400/70 flex-shrink-0">{formatDollar(rd.estimatedValue)}</span>
+                    <div className="text-xs font-mono text-foreground/50 flex-shrink-0">{formatValue(co.revenue)}</div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {creditResults.map(c => {
+                        const s = c.result?.status;
+                        const dotColor = s === "filed" ? "bg-emerald-400" : s === "likely_eligible" ? "bg-amber-400" : s === "potential_opportunity" ? "bg-amber-400/60" : s === "not_applicable" ? "bg-muted-foreground/20" : "bg-muted-foreground/10";
+                        return (
+                          <div key={c.key} className="flex flex-col items-center" title={`${c.label}: ${c.style.label}`} data-testid={`dot-${c.key}-${i}`}>
+                            <div className={`w-2 h-2 rounded-full ${dotColor}`} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {totalEst > 0 && (
+                      <span className="text-[10px] font-mono text-emerald-400/70 flex-shrink-0">{formatValue(totalEst)}</span>
                     )}
+                    <Badge variant="outline" className="text-[8px] flex-shrink-0 text-foreground/50 bg-white/5 border-white/10" data-testid={`badge-credits-${i}`}>
+                      {activeCredits.length}/10
+                    </Badge>
                     {isExpanded ? <ChevronUp className="w-3 h-3 text-muted-foreground/30 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 text-muted-foreground/30 flex-shrink-0" />}
                   </div>
                 </button>
                 {isExpanded && (
-                  <div className="ml-8 mr-3 mt-1 mb-2 space-y-2 text-[10px]" data-testid={`evidence-${i}`}>
-                    {rd && (
-                      <div className="qi-panel rounded-lg p-2.5 border border-white/5">
-                        <div className="font-semibold text-amber-300/70 mb-1">R&D Tax Credit (§41)</div>
-                        <div className="text-muted-foreground/60 leading-relaxed">{rd.evidence}</div>
-                        {rd.estimatedValue && <div className="text-emerald-400/70 mt-1 font-mono">Estimated credit: {formatDollar(rd.estimatedValue)}</div>}
-                        <div className="text-muted-foreground/30 mt-0.5">Confidence: {Math.round((rd.confidence || 0) * 100)}%</div>
-                      </div>
-                    )}
-                    {tariff && (
-                      <div className="qi-panel rounded-lg p-2.5 border border-white/5">
-                        <div className="font-semibold text-cyan-300/70 mb-1">Tariff Tax Credits</div>
-                        <div className="text-muted-foreground/60 leading-relaxed">{tariff.evidence}</div>
-                        {tariff.estimatedValue && <div className="text-emerald-400/70 mt-1 font-mono">Estimated value: {formatDollar(tariff.estimatedValue)}</div>}
-                        <div className="text-muted-foreground/30 mt-0.5">Confidence: {Math.round((tariff.confidence || 0) * 100)}%</div>
-                      </div>
-                    )}
+                  <div className="ml-8 mr-3 mt-1 mb-2 space-y-1.5 text-[10px]" data-testid={`evidence-${i}`}>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {creditResults.map(c => {
+                        const result = c.result;
+                        if (!result) return null;
+                        const borderColor = result.status === "filed" ? "border-emerald-500/20" : result.status === "likely_eligible" ? "border-amber-500/20" : result.status === "potential_opportunity" ? "border-amber-500/15" : "border-white/5";
+                        const labelColor = result.status === "filed" ? "text-emerald-300/70" : result.status === "likely_eligible" ? "text-amber-300/70" : result.status === "potential_opportunity" ? "text-amber-300/60" : "text-muted-foreground/40";
+                        return (
+                          <div key={c.key} className={`qi-panel rounded-lg p-2 border ${borderColor}`} data-testid={`credit-cell-${c.key}-${i}`}>
+                            <div className={`font-semibold ${labelColor} mb-0.5 truncate`}>{c.label} ({c.section})</div>
+                            <Badge variant="outline" className={`text-[7px] mb-1 ${c.style.className}`}>{c.style.label}</Badge>
+                            <div className="text-muted-foreground/50 leading-relaxed line-clamp-2">{result.evidence}</div>
+                            {result.estimatedValue ? <div className="text-emerald-400/70 mt-0.5 font-mono">{formatValue(result.estimatedValue)}</div> : null}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1877,7 +1614,6 @@ export default function DealsPage() {
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentFilter, setCurrentFilter] = useState<string | null>(null);
-  const [selectedConvergenceId, setSelectedConvergenceId] = useState<string | null>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [showMarketData, setShowMarketData] = useState(false);
 
@@ -1888,12 +1624,7 @@ export default function DealsPage() {
   const statsQuery = useQuery<any>({ queryKey: ["/api/deals/stats"] });
   const heatmapQuery = useQuery<any[]>({ queryKey: ["/api/deals/heatmap"] });
   const sourcesQuery = useQuery<any[]>({ queryKey: ["/api/deals/sources"] });
-  const topOppsQuery = useQuery<any[]>({ queryKey: ["/api/deals/top-opportunities"] });
   const priorityTargetsQuery = useQuery<any[]>({ queryKey: ["/api/credits/priority-targets"], enabled: true });
-  const convergenceQuery = useQuery<any[]>({
-    queryKey: ["/api/deals/convergence"],
-    enabled: isConvergenceTab,
-  });
 
   const queryString = `?tabCategory=${encodeURIComponent(tabCategory)}${activeSub ? `&subCategory=${encodeURIComponent(activeSub)}` : ""}${selectedState ? `&state=${selectedState}` : ""}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""}${currentFilter ? `&current=${currentFilter}` : ""}&limit=50`;
   const eventsQuery = useQuery<{ events: any[]; total: number }>({
@@ -1961,15 +1692,6 @@ export default function DealsPage() {
   const events = eventsQuery.data?.events || [];
   const totalEvents = eventsQuery.data?.total || 0;
   const convergenceCount = statsQuery.data?.convergenceCount || 0;
-
-  const handleOpportunitySelect = useCallback((cp: any) => {
-    const convergenceTabIndex = TABS.findIndex(t => t.name === "Credit Intelligence");
-    if (convergenceTabIndex >= 0) {
-      setActiveTab(convergenceTabIndex);
-      setActiveSub("Company Discovery");
-    }
-    setSelectedConvergenceId(cp.id);
-  }, []);
 
   return (
     <div className="min-h-screen bg-background relative" data-testid="deals-page">
@@ -2288,13 +2010,6 @@ export default function DealsPage() {
           )}
         </div>
       </div>
-
-      {selectedConvergenceId && (
-        <ConvergenceDetailPanel
-          convergenceId={selectedConvergenceId}
-          onClose={() => setSelectedConvergenceId(null)}
-        />
-      )}
 
       {selectedEntityId && (
         <EntityPanel
