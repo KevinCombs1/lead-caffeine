@@ -41,6 +41,90 @@ const BUILT_IN_FINGERPRINTS: Record<string, Array<{ field: string; operator: str
   paid_leave_45s: [
     { field: "employeeCount", operator: "gt", value: 50, missingIndicator: "no_paid_leave", evidenceTemplate: "${company} with ${employeeCount} employees — paid family/medical leave credit opportunity", valueFormula: "employeeCount * 0.02 * 1000" },
   ],
+  itc: [
+    { field: "capex", operator: "gt", value: 200000, missingIndicator: "no_itc", evidenceTemplate: "${company} has ${capex} in capital expenditures — 30% energy ITC (§48) opportunity on qualified energy property", valueFormula: "capex * 0.30" },
+  ],
+  ptc: [
+    { field: "revenue", operator: "gt", value: 1000000, missingIndicator: "no_ptc", evidenceTemplate: "${company} with ${revenue} revenue in energy sector — production tax credit (§45) opportunity at $0.0275/kWh", valueFormula: "revenue * 0.02" },
+  ],
+  carbon_capture_45q: [
+    { field: "capex", operator: "gt", value: 500000, missingIndicator: "no_45q", evidenceTemplate: "${company} has ${capex} in capital expenditures — carbon capture credit (§45Q) opportunity at $85/ton", valueFormula: "capex * 0.15" },
+  ],
+  hydrogen_45v: [
+    { field: "capex", operator: "gt", value: 500000, missingIndicator: "no_45v", evidenceTemplate: "${company} has ${capex} in capital expenditures — clean hydrogen production credit (§45V) up to $3/kg", valueFormula: "capex * 0.10" },
+  ],
+  nuclear_45u: [
+    { field: "revenue", operator: "gt", value: 5000000, missingIndicator: "no_45u", evidenceTemplate: "${company} with ${revenue} revenue — zero-emission nuclear power credit (§45U) at $0.015/kWh", valueFormula: "revenue * 0.015" },
+  ],
+  adv_mfg_45x: [
+    { field: "capex", operator: "gt", value: 200000, missingIndicator: "no_45x", evidenceTemplate: "${company} has ${capex} in manufacturing capex — advanced manufacturing production credit (§45X) opportunity", valueFormula: "capex * 0.20" },
+  ],
+  adv_energy_48c: [
+    { field: "capex", operator: "gt", value: 300000, missingIndicator: "no_48c", evidenceTemplate: "${company} has ${capex} in capital expenditures — qualifying advanced energy project credit (§48C) at 30%", valueFormula: "capex * 0.30" },
+  ],
+  biodiesel: [
+    { field: "revenue", operator: "gt", value: 1000000, missingIndicator: "no_biodiesel", evidenceTemplate: "${company} with ${revenue} revenue — biodiesel/alternative fuel credit (§40A) at $1.00/gallon", valueFormula: "revenue * 0.01" },
+  ],
+  "45l": [
+    { field: "revenue", operator: "gt", value: 500000, missingIndicator: "no_45l", evidenceTemplate: "${company} with ${revenue} revenue in construction — new energy efficient home credit (§45L) $2,500-$5,000/unit", valueFormula: "revenue * 0.005" },
+  ],
+  "179d": [
+    { field: "ppeNet", operator: "gt", value: 1000000, missingIndicator: "no_179d", evidenceTemplate: "${company} has ${ppeNet} in PP&E — commercial building energy deduction (§179D) up to $5.36/sqft", valueFormula: "ppeNet * 0.005" },
+  ],
+  historic_rehab: [
+    { field: "capex", operator: "gt", value: 500000, missingIndicator: "no_rehab", evidenceTemplate: "${company} has ${capex} in capital expenditures — historic rehabilitation credit (§47) at 20% of qualified costs", valueFormula: "capex * 0.20" },
+  ],
+  nmtc: [
+    { field: "totalAssets", operator: "gt", value: 5000000, missingIndicator: "no_nmtc", evidenceTemplate: "${company} has ${totalAssets} in total assets — New Markets Tax Credit (§45D) 39% over 7 years", valueFormula: "totalAssets * 0.005" },
+  ],
+  lihtc: [
+    { field: "totalAssets", operator: "gt", value: 10000000, missingIndicator: "no_lihtc", evidenceTemplate: "${company} has ${totalAssets} in total assets — Low-Income Housing Tax Credit (§42) opportunity", valueFormula: "totalAssets * 0.004" },
+  ],
+  like_kind_1031: [
+    { field: "ppeNet", operator: "gt", value: 2000000, missingIndicator: "no_1031", evidenceTemplate: "${company} has ${ppeNet} in PP&E — like-kind exchange (§1031) tax deferral opportunity", valueFormula: "ppeNet * 0.05 * 0.21" },
+  ],
+  cost_segregation: [
+    { field: "ppeNet", operator: "gt", value: 1000000, missingIndicator: "no_cost_seg", evidenceTemplate: "${company} has ${ppeNet} in PP&E — cost segregation study could accelerate depreciation deductions", valueFormula: "ppeNet * 0.25 * 0.21" },
+  ],
+  tip_credit: [
+    { field: "employeeCount", operator: "gt", value: 10, missingIndicator: "no_tip_credit", evidenceTemplate: "${company} has ${employeeCount} employees — employer FICA tip credit (§45B) on tips exceeding minimum wage", valueFormula: "employeeCount * 0.3 * 2000" },
+  ],
+  indian_employment: [
+    { field: "employeeCount", operator: "gt", value: 20, missingIndicator: "no_indian_emp", evidenceTemplate: "${company} has ${employeeCount} employees — Indian Employment Credit (§45A) 20% of qualified wages", valueFormula: "employeeCount * 0.02 * 5000" },
+  ],
+  military_spouse_45aa: [
+    { field: "employeeCount", operator: "gt", value: 25, missingIndicator: "no_mil_spouse", evidenceTemplate: "${company} has ${employeeCount} employees — Military Spouse Hiring Credit (§45AA) $500/qualifying hire", valueFormula: "employeeCount * 0.01 * 500" },
+  ],
+  sbhctc: [
+    { field: "employeeCount", operator: "lt", value: 25, missingIndicator: "no_sbhctc", evidenceTemplate: "${company} has ${employeeCount} employees (<25 FTEs) — Small Business Health Care Credit (§45R) up to 50% of premiums", valueFormula: "employeeCount * 1200" },
+  ],
+  disabled_access: [
+    { field: "employeeCount", operator: "gt", value: 5, missingIndicator: "no_ada", evidenceTemplate: "${company} has ${employeeCount} employees — Disabled Access Credit (§44) up to $5,000/year for ADA improvements", valueFormula: "4000" },
+  ],
+  clean_vehicle_30d: [
+    { field: "employeeCount", operator: "gt", value: 20, missingIndicator: "no_ev", evidenceTemplate: "${company} has ${employeeCount} employees — Clean Vehicle Credit (§30D) $7,500 per qualifying vehicle", valueFormula: "Math.min(employeeCount * 0.05, 20) * 7500" },
+  ],
+  commercial_ev_45w: [
+    { field: "employeeCount", operator: "gt", value: 10, missingIndicator: "no_cev", evidenceTemplate: "${company} has ${employeeCount} employees — Commercial Clean Vehicle Credit (§45W) up to $40,000/vehicle", valueFormula: "Math.min(employeeCount * 0.03, 10) * 15000" },
+  ],
+  ev_refueling_30c: [
+    { field: "ppeNet", operator: "gt", value: 500000, missingIndicator: "no_evse", evidenceTemplate: "${company} has ${ppeNet} in PP&E — EV Refueling Infrastructure Credit (§30C) 30% up to $100K/location", valueFormula: "25000" },
+  ],
+  saf_40b: [
+    { field: "revenue", operator: "gt", value: 5000000, missingIndicator: "no_saf", evidenceTemplate: "${company} with ${revenue} revenue — Sustainable Aviation Fuel Credit (§40B) $1.25-$1.75/gallon", valueFormula: "revenue * 0.002" },
+  ],
+  mine_rescue: [
+    { field: "employeeCount", operator: "gt", value: 10, missingIndicator: "no_mine_rescue", evidenceTemplate: "${company} has ${employeeCount} employees — Mine Rescue Team Training Credit (§45N) $10,000/team member", valueFormula: "employeeCount * 0.1 * 10000" },
+  ],
+  orphan_drug: [
+    { field: "rdExpense", operator: "gt", value: 500000, missingIndicator: "no_orphan", evidenceTemplate: "${company} has R&D expense — Orphan Drug Credit (§45C) 25% of clinical testing for rare diseases", valueFormula: "rdExpense * 0.25" },
+  ],
+  qbi_199a: [
+    { field: "revenue", operator: "gt", value: 100000, missingIndicator: "no_qbi", evidenceTemplate: "${company} with ${revenue} revenue — Qualified Business Income deduction (§199A) up to 20% of QBI", valueFormula: "revenue * 0.20 * 0.21" },
+  ],
+  chips_act: [
+    { field: "capex", operator: "gt", value: 1000000, missingIndicator: "no_chips", evidenceTemplate: "${company} has ${capex} in capital expenditures — CHIPS Act credit (§48D) 25% of qualified semiconductor investment", valueFormula: "capex * 0.25" },
+  ],
 };
 
 export async function seedCreditRegistry(): Promise<number> {
@@ -99,13 +183,42 @@ function extractKeywords(credit: typeof TAX_CREDIT_UNIVERSE[0]): string[] {
   if (name.includes("vehicle") || name.includes("ev")) keywords.push("electric vehicle", "EV", "fleet", "transportation");
   if (name.includes("housing") || name.includes("real estate")) keywords.push("housing", "real estate", "property", "construction");
   if (name.includes("semiconductor") || name.includes("chips")) keywords.push("semiconductor", "chip", "fabrication", "manufacturing");
-  if (name.includes("hydrogen")) keywords.push("hydrogen", "clean fuel", "emissions");
-  if (name.includes("carbon")) keywords.push("carbon", "emissions", "capture", "sequestration");
-  if (name.includes("nuclear")) keywords.push("nuclear", "zero-emission", "baseload");
+  if (name.includes("hydrogen")) keywords.push("hydrogen", "clean fuel", "emissions", "electrolysis");
+  if (name.includes("carbon")) keywords.push("carbon", "emissions", "capture", "sequestration", "CCS", "direct air capture");
+  if (name.includes("nuclear")) keywords.push("nuclear", "zero-emission", "baseload", "reactor");
   if (section.includes("§45s") || name.includes("leave")) keywords.push("paid leave", "family leave", "medical leave");
   if (section.includes("§51") || name.includes("opportunity")) keywords.push("veteran", "SNAP", "targeted group");
-  if (section.includes("§1202")) keywords.push("small business stock", "QSBS", "C-corp", "startup");
-  if (section.includes("§199a")) keywords.push("pass-through", "QBI", "S-corp");
+  if (section.includes("§1202")) keywords.push("small business stock", "QSBS", "C-corp", "startup", "qualified small business");
+  if (section.includes("§199a")) keywords.push("pass-through", "QBI", "S-corp", "partnership", "qualified business income");
+
+  const id = credit.id;
+  if (id === "biodiesel") keywords.push("biodiesel", "ethanol", "renewable fuel", "alternative fuel", "renewable diesel");
+  if (id === "historic_rehab") keywords.push("historic", "rehabilitation", "preservation", "landmark", "certified historic structure");
+  if (id === "nmtc") keywords.push("community development", "low-income", "CDE", "CDFI", "New Markets");
+  if (id === "lihtc") keywords.push("affordable housing", "LIHTC", "low-income housing", "Section 8", "tax credit syndication");
+  if (id === "orphan_drug") keywords.push("orphan drug", "rare disease", "clinical trial", "FDA designation", "orphan designation");
+  if (id === "tip_credit") keywords.push("tip", "tipped employee", "FICA", "gratuity", "restaurant", "hospitality");
+  if (id === "indian_employment") keywords.push("tribal", "Indian reservation", "Native American", "tribal member", "BIA");
+  if (id === "mine_rescue") keywords.push("mine rescue", "underground mining", "MSHA", "rescue team");
+  if (id === "cost_segregation") keywords.push("cost segregation", "asset reclassification", "building component", "accelerated depreciation");
+  if (id === "disabled_access") keywords.push("ADA", "accessibility", "disability", "accommodation", "barrier removal");
+  if (id === "sbhctc") keywords.push("small employer", "health insurance", "SHOP marketplace", "health care premium");
+  if (id === "ev_refueling_30c") keywords.push("EV charging", "charging station", "EVSE", "hydrogen fueling", "refueling infrastructure");
+  if (id === "military_spouse_45aa") keywords.push("military spouse", "active duty", "PCS", "military family");
+  if (id === "commercial_ev_45w") keywords.push("commercial vehicle", "fleet electrification", "delivery van", "truck EV", "commercial fleet");
+  if (id === "like_kind_1031") keywords.push("1031 exchange", "like-kind", "property swap", "tax-deferred exchange", "investment property");
+  if (id === "adv_mfg_45x") keywords.push("domestic manufacturing", "reshoring", "battery cell", "solar component", "critical mineral");
+  if (id === "adv_energy_48c") keywords.push("clean energy manufacturing", "advanced energy", "re-equipping", "retooling");
+  if (id === "saf_40b") keywords.push("sustainable aviation fuel", "SAF", "jet fuel", "aviation biofuel");
+  if (id === "45l") keywords.push("energy efficient home", "ENERGY STAR", "Zero Energy Ready", "dwelling unit", "homebuilder");
+  if (id === "179d") keywords.push("commercial building", "energy deduction", "HVAC", "building envelope", "lighting system");
+  if (id === "carbon_capture_45q") keywords.push("carbon sequestration", "geological storage", "enhanced oil recovery", "DAC");
+  if (id === "hydrogen_45v") keywords.push("clean hydrogen", "green hydrogen", "hydrogen production", "lifecycle emissions");
+  if (id === "nuclear_45u") keywords.push("nuclear power", "zero-emission electricity", "nuclear generation");
+  if (id === "clean_vehicle_30d") keywords.push("plug-in hybrid", "battery electric", "EV purchase", "clean car");
+  if (id === "chips_act") keywords.push("semiconductor fab", "chip manufacturing", "advanced packaging", "CHIPS incentive");
+  if (id === "itc") keywords.push("investment tax credit", "solar ITC", "battery storage", "geothermal");
+  if (id === "ptc") keywords.push("production tax credit", "wind PTC", "renewable electricity", "kWh");
 
   return [...new Set(keywords)];
 }
@@ -182,7 +295,7 @@ async function scanXbrlLeads(registry: TaxCreditRegistryEntry[]): Promise<{ scan
   const leadsWithEnrichment = leads.filter(l => {
     if (leadsWithCreditAnalysis.some(la => la.id === l.id)) return false;
     const enrichment = (l.enrichmentData || {}) as any;
-    return enrichment.revenue || enrichment.rdExpense || enrichment.totalAssets || enrichment.employeeCount || enrichment.capex;
+    return enrichment.revenue || enrichment.rdExpense || enrichment.totalAssets || enrichment.employeeCount || enrichment.capex || enrichment.ppeNet || enrichment.nolCarryforward;
   });
 
   const allScannableLeads = [...leadsWithCreditAnalysis, ...leadsWithEnrichment];
@@ -308,7 +421,9 @@ function applyFingerprints(creditId: string, company: string, taxPosition: any):
         .replace("${employeeCount}", String(taxPosition.employeeCount || 0))
         .replace("${capex}", formatDollar(taxPosition.capex))
         .replace("${nolCarryforward}", formatDollar(taxPosition.nolCarryforward))
-        .replace("${totalAssets}", formatDollar(taxPosition.totalAssets));
+        .replace("${totalAssets}", formatDollar(taxPosition.totalAssets))
+        .replace("${revenue}", formatDollar(taxPosition.revenue))
+        .replace("${ppeNet}", formatDollar(taxPosition.ppeNet));
 
       let estimatedValue: number | null = null;
       if (rule.valueFormula) {
@@ -318,7 +433,9 @@ function applyFingerprints(creditId: string, company: string, taxPosition: any):
           const capex = taxPosition.capex || 0;
           const nolCarryforward = taxPosition.nolCarryforward || 0;
           const totalAssets = taxPosition.totalAssets || 0;
-          estimatedValue = safeEvalFormula(rule.valueFormula, { rdExpense, employeeCount, capex, nolCarryforward, totalAssets });
+          const revenue = taxPosition.revenue || 0;
+          const ppeNet = taxPosition.ppeNet || 0;
+          estimatedValue = safeEvalFormula(rule.valueFormula, { rdExpense, employeeCount, capex, nolCarryforward, totalAssets, revenue, ppeNet });
         } catch {}
       }
 
@@ -347,17 +464,17 @@ const CREDIT_HEURISTIC_VALUES: Record<string, number> = {
   nmtc: 150000,
   lihtc: 350000,
   opportunity_zones: 120000,
-  sbhctc: 15000,
-  disabled_access: 4000,
-  orphan_drug: 500000,
+  sbhctc: 12000,
+  disabled_access: 4500,
+  orphan_drug: 750000,
   biodiesel: 60000,
   carbon_capture_45q: 250000,
   clean_vehicle_30d: 22500,
-  chips_act: 1000000,
-  childcare: 50000,
-  tip_credit: 18000,
+  chips_act: 2500000,
+  childcare: 75000,
+  tip_credit: 35000,
   indian_employment: 12000,
-  mine_rescue: 8000,
+  mine_rescue: 10000,
   hydrogen_45v: 200000,
   nuclear_45u: 150000,
   adv_mfg_45x: 300000,
@@ -365,7 +482,7 @@ const CREDIT_HEURISTIC_VALUES: Record<string, number> = {
   commercial_ev_45w: 30000,
   saf_40b: 75000,
   ev_refueling_30c: 25000,
-  military_spouse_45aa: 5000,
+  military_spouse_45aa: 3000,
   qbi_199a: 80000,
   qsbs_1202: 95000,
   like_kind_1031: 150000,
@@ -456,15 +573,36 @@ function extractEventSignals(events: any[]): Set<string> {
   for (const e of events) {
     const title = (e.title || "").toLowerCase();
     const type = (e.eventType || "").toLowerCase();
-    if (title.includes("patent") || type.includes("patent")) signals.add("patent");
-    if (title.includes("contract") || type.includes("contract") || type.includes("award")) signals.add("government_contract");
-    if (title.includes("recall") || type.includes("recall")) signals.add("recall");
-    if (title.includes("filing") || type.includes("filing") || type.includes("10-k")) signals.add("sec_filing");
-    if (title.includes("drug") || title.includes("fda") || type.includes("approval")) signals.add("fda_activity");
-    if (title.includes("energy") || title.includes("solar") || title.includes("wind")) signals.add("energy");
-    if (title.includes("hiring") || title.includes("employee") || title.includes("workforce")) signals.add("employment");
-    if (title.includes("real estate") || title.includes("property") || title.includes("construction")) signals.add("real_estate");
-    if (title.includes("manufacturing") || title.includes("factory") || title.includes("plant")) signals.add("manufacturing");
+    const text = title + " " + type;
+    if (text.includes("patent")) signals.add("patent");
+    if (text.includes("contract") || type.includes("award")) signals.add("government_contract");
+    if (text.includes("recall")) signals.add("recall");
+    if (text.includes("filing") || text.includes("10-k")) signals.add("sec_filing");
+    if (text.includes("drug") || text.includes("fda") || type.includes("approval")) signals.add("fda_activity");
+    if (text.includes("energy") || text.includes("solar") || text.includes("wind") || text.includes("renewable")) signals.add("energy");
+    if (text.includes("hiring") || text.includes("employee") || text.includes("workforce") || text.includes("staffing")) signals.add("employment");
+    if (text.includes("real estate") || text.includes("property") || text.includes("construction")) signals.add("real_estate");
+    if (text.includes("manufacturing") || text.includes("factory") || text.includes("plant")) signals.add("manufacturing");
+    if (text.includes("fuel") || text.includes("biodiesel") || text.includes("ethanol") || text.includes("diesel")) signals.add("fuel");
+    if (text.includes("carbon") || text.includes("emission") || text.includes("capture") || text.includes("sequestration")) signals.add("carbon");
+    if (text.includes("hydrogen") || text.includes("clean fuel")) signals.add("hydrogen");
+    if (text.includes("vehicle") || text.includes("fleet") || text.includes("ev ") || text.includes("charging") || text.includes("electric car")) signals.add("vehicle");
+    if (text.includes("aviation") || text.includes("airline") || text.includes("jet fuel")) signals.add("aviation");
+    if (text.includes("semiconductor") || text.includes("chip") || text.includes("fab") || text.includes("wafer")) signals.add("semiconductor");
+    if (text.includes("mine") || text.includes("mining") || text.includes("excavation")) signals.add("mining");
+    if (text.includes("housing") || text.includes("affordable") || text.includes("residential")) signals.add("housing");
+    if (text.includes("clinical trial") || text.includes("orphan") || text.includes("rare disease")) signals.add("clinical");
+    if (text.includes("historic") || text.includes("rehabilitation") || text.includes("preservation")) signals.add("historic");
+    if (text.includes("childcare") || text.includes("child care") || text.includes("daycare")) signals.add("childcare");
+    if (text.includes("tip") || text.includes("tipped") || text.includes("gratuity")) signals.add("tipped_labor");
+    if (text.includes("veteran") || text.includes("military spouse")) signals.add("military");
+    if (text.includes("reservation") || text.includes("tribal") || text.includes("indian")) signals.add("tribal");
+    if (text.includes("nuclear") || text.includes("reactor")) signals.add("nuclear");
+    if (text.includes("disability") || text.includes("accessibility") || text.includes("ada")) signals.add("accessibility");
+    if (text.includes("exchange") || text.includes("1031")) signals.add("property_exchange");
+    if (text.includes("community development") || text.includes("cdfi") || text.includes("cde")) signals.add("community_investment");
+    if (text.includes("startup") || text.includes("seed") || text.includes("series a") || text.includes("c-corp")) signals.add("startup");
+    if (text.includes("pass-through") || text.includes("s-corp") || text.includes("partnership")) signals.add("pass_through");
   }
   return signals;
 }
@@ -477,18 +615,38 @@ function matchEventToCredit(creditId: string, signals: Set<string>): string | nu
     erc: ["employment"],
     itc: ["energy"],
     ptc: ["energy"],
-    chips_act: ["manufacturing"],
+    chips_act: ["manufacturing", "semiconductor"],
     adv_mfg_45x: ["manufacturing"],
     adv_energy_48c: ["energy", "manufacturing"],
-    orphan_drug: ["fda_activity"],
+    orphan_drug: ["fda_activity", "clinical"],
     "179d": ["real_estate", "energy"],
-    historic_rehab: ["real_estate"],
-    nmtc: ["real_estate"],
+    historic_rehab: ["real_estate", "historic"],
+    nmtc: ["real_estate", "community_investment"],
     opportunity_zones: ["real_estate"],
     bonus_depreciation_168k: ["manufacturing", "real_estate"],
     sec179_expensing: ["manufacturing"],
-    childcare: ["employment"],
+    childcare: ["employment", "childcare"],
     paid_leave_45s: ["employment"],
+    "45l": ["housing", "energy"],
+    lihtc: ["housing", "community_investment"],
+    sbhctc: ["employment"],
+    disabled_access: ["accessibility"],
+    biodiesel: ["fuel", "energy"],
+    carbon_capture_45q: ["carbon", "energy"],
+    clean_vehicle_30d: ["vehicle"],
+    commercial_ev_45w: ["vehicle"],
+    hydrogen_45v: ["hydrogen", "energy"],
+    nuclear_45u: ["nuclear", "energy"],
+    saf_40b: ["aviation", "fuel"],
+    ev_refueling_30c: ["vehicle", "energy"],
+    military_spouse_45aa: ["military", "employment"],
+    qbi_199a: ["pass_through", "startup"],
+    qsbs_1202: ["startup"],
+    like_kind_1031: ["property_exchange", "real_estate"],
+    cost_segregation: ["real_estate", "manufacturing"],
+    tip_credit: ["tipped_labor", "employment"],
+    indian_employment: ["tribal", "employment"],
+    mine_rescue: ["mining"],
   };
 
   const relevantSignals = map[creditId];
@@ -863,6 +1021,32 @@ function safeEvalFormula(formula: string, vars: Record<string, number>): number 
     "totalAssets * 0.05 * 0.238": (v) => v.totalAssets * 0.05 * 0.238,
     "Math.min(employeeCount * 50, 150000)": (v) => Math.min(v.employeeCount * 50, 150000),
     "employeeCount * 0.02 * 1000": (v) => v.employeeCount * 0.02 * 1000,
+    "capex * 0.30": (v) => v.capex * 0.30,
+    "revenue * 0.02": (v) => v.revenue * 0.02,
+    "capex * 0.15": (v) => v.capex * 0.15,
+    "capex * 0.10": (v) => v.capex * 0.10,
+    "revenue * 0.015": (v) => v.revenue * 0.015,
+    "capex * 0.20": (v) => v.capex * 0.20,
+    "revenue * 0.01": (v) => v.revenue * 0.01,
+    "revenue * 0.005": (v) => v.revenue * 0.005,
+    "ppeNet * 0.005": (v) => v.ppeNet * 0.005,
+    "totalAssets * 0.005": (v) => v.totalAssets * 0.005,
+    "totalAssets * 0.004": (v) => v.totalAssets * 0.004,
+    "ppeNet * 0.05 * 0.21": (v) => v.ppeNet * 0.05 * 0.21,
+    "ppeNet * 0.25 * 0.21": (v) => v.ppeNet * 0.25 * 0.21,
+    "employeeCount * 0.3 * 2000": (v) => v.employeeCount * 0.3 * 2000,
+    "employeeCount * 0.02 * 5000": (v) => v.employeeCount * 0.02 * 5000,
+    "employeeCount * 0.01 * 500": (v) => v.employeeCount * 0.01 * 500,
+    "employeeCount * 1200": (v) => v.employeeCount * 1200,
+    "4000": () => 4000,
+    "Math.min(employeeCount * 0.05, 20) * 7500": (v) => Math.min(v.employeeCount * 0.05, 20) * 7500,
+    "Math.min(employeeCount * 0.03, 10) * 15000": (v) => Math.min(v.employeeCount * 0.03, 10) * 15000,
+    "25000": () => 25000,
+    "revenue * 0.002": (v) => v.revenue * 0.002,
+    "employeeCount * 0.1 * 10000": (v) => v.employeeCount * 0.1 * 10000,
+    "rdExpense * 0.25": (v) => v.rdExpense * 0.25,
+    "revenue * 0.20 * 0.21": (v) => v.revenue * 0.20 * 0.21,
+    "capex * 0.25": (v) => v.capex * 0.25,
   };
   const fn = FORMULAS[formula];
   if (!fn) return null;
