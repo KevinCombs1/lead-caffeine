@@ -25,11 +25,11 @@ export default function Login({ onLogin }: { onLogin: (password: string) => Prom
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <Card className="w-full max-w-sm border-amber-500/10">
+      <Card className="w-full max-w-sm border-primary/10">
         <CardContent className="pt-6 space-y-6">
           <div className="text-center space-y-2">
-            <div className="w-12 h-12 rounded-xl bg-amber-400/8 border border-amber-400/15 flex items-center justify-center mx-auto">
-              <Sun className="w-6 h-6 text-amber-300/70" />
+            <div className="w-12 h-12 rounded-xl bg-primary/8 border border-primary/15 flex items-center justify-center mx-auto">
+              <Sun className="w-6 h-6 text-primary/70" />
             </div>
             <h1 className="text-lg font-semibold text-foreground/90" data-testid="text-login-title">Light Engine</h1>
             <p className="text-xs text-muted-foreground">Tax credit intelligence platform</p>
