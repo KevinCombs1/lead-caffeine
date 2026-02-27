@@ -9,14 +9,16 @@ import LightEngine from "@/pages/light";
 import ShapesPage from "@/pages/shapes";
 import DealsPage from "@/pages/deals";
 import NotFound from "@/pages/not-found";
-import { Loader2, Sun, LogOut, Box, Radio } from "lucide-react";
+import { Loader2, Sun, LogOut, Box, Radio, Palette } from "lucide-react";
+import { useTheme } from "@/hooks/use-theme";
 import { Link, useLocation } from "wouter";
 
 function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   const [location] = useLocation();
+  const { theme, cycleTheme } = useTheme();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" style={{ filter: theme.hueRotate !== 0 ? `hue-rotate(${theme.hueRotate}deg)` : undefined }}>
       <div className="flex items-center justify-between px-4 py-2 border-b border-amber-500/8 bg-card/30">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
@@ -52,14 +54,29 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
             </Link>
           </div>
         </div>
-        <button
-          onClick={onLogout}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-          data-testid="button-logout"
-        >
-          <LogOut className="w-3 h-3" />
-          Logout
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={cycleTheme}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            data-testid="button-theme-cycle"
+            title={`Theme: ${theme.label}`}
+            style={{ filter: theme.hueRotate !== 0 ? `hue-rotate(${-theme.hueRotate}deg)` : undefined }}
+          >
+            <span
+              className="w-2.5 h-2.5 rounded-full border border-white/20"
+              style={{ backgroundColor: theme.dotColor }}
+            />
+            <Palette className="w-3 h-3" />
+          </button>
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            data-testid="button-logout"
+          >
+            <LogOut className="w-3 h-3" />
+            Logout
+          </button>
+        </div>
       </div>
       <Switch>
         <Route path="/" component={LightEngine} />

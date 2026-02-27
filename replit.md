@@ -20,6 +20,15 @@ The Light Engine's architecture is divided into `shared`, `server`, and `client`
 ### UI/UX Decisions
 The application uses a dark mode default with a cyan "command center" aesthetic. The primary accent color is `hsl(192, 90%, 50%)`. An amber/emerald/yellow palette is used for credit, form, and cycle indicators. D.A.T.A. Cloudware branding is consistent across the header and login pages. The entire website, except for text, renders in 4D space, providing a unique and interactive user experience where interactions feel like adjusting a facet of a tesseract.
 
+**Theme Switcher**: 6 color themes selectable via a button in the top-right nav bar (next to Logout). Themes cycle on click and persist to localStorage (key: `data-theme`). Implementation uses CSS `filter: hue-rotate()` on the main app wrapper to shift all hardcoded amber/cyan accent colors uniformly. The theme button counter-rotates itself so its colored indicator dot shows the true target color.
+- **Command** (default, 0°) — amber/gold accents
+- **Arctic** (185°) — ice-blue accents
+- **Emerald** (120°) — green/mint accents
+- **Crimson** (-25°) — rose/red accents
+- **Nebula** (230°) — violet/purple accents
+- **Solar** (15°) — bright orange accents
+- Files: `client/src/hooks/use-theme.ts`, `client/src/App.tsx`, `client/src/index.css` (qi-panel/animation glows use `--theme-glow-rgb` CSS variable)
+
 ### Technical Implementations
 - **Bloom Discovery**: Utilizes multi-source SEC EDGAR sweeps (SIC Industry, Form D, EFTS Filing Search) with optional XBRL gating for financial data analysis and R&D credit scoring. It also incorporates 8-K event signals to identify credit opportunities.
 - **Credit X-Ray**: Performs a per-company financial scan extracting 76+ XBRL tax concepts across 12 categories to provide credit analysis, health scores, tax position summaries, and estimated unclaimed value.
