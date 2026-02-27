@@ -1462,16 +1462,6 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/deals/top-opportunities", requireAuth, async (_req: Request, res: Response) => {
-    try {
-      const { getTopOpportunities } = await import("./deal-intelligence");
-      const opportunities = await getTopOpportunities(5);
-      res.json(opportunities);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
   app.get("/api/deals/convergence/:id", requireAuth, async (req: Request, res: Response) => {
     try {
       const { getConvergenceWithDetails } = await import("./deal-intelligence");

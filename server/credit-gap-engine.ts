@@ -27,19 +27,19 @@ const BUILT_IN_FINGERPRINTS: Record<string, Array<{ field: string; operator: str
     { field: "capex", operator: "gt", value: 100000, missingIndicator: "no_depreciation", evidenceTemplate: "${company} has qualifying equipment spend but no §179 expensing detected", valueFormula: "Math.min(capex, 1160000) * 0.21" },
   ],
   opportunity_zones: [
-    { field: "nolCarryforward", operator: "gt", value: 1000000, missingIndicator: "no_oz", evidenceTemplate: "${company} has ${nolCarryforward} in NOL carryforwards — capital gains deferral via OZ may apply" },
+    { field: "nolCarryforward", operator: "gt", value: 1000000, missingIndicator: "no_oz", evidenceTemplate: "${company} has ${nolCarryforward} in NOL carryforwards — capital gains deferral via OZ may apply", valueFormula: "nolCarryforward * 0.15" },
   ],
   qsbs_1202: [
-    { field: "totalAssets", operator: "lt", value: 50000000, missingIndicator: "no_qsbs", evidenceTemplate: "${company} under $50M total assets — potential QSBS exclusion for investors" },
+    { field: "totalAssets", operator: "lt", value: 50000000, missingIndicator: "no_qsbs", evidenceTemplate: "${company} under $50M total assets — potential QSBS exclusion for investors", valueFormula: "totalAssets * 0.05 * 0.238" },
   ],
   erc: [
     { field: "employeeCount", operator: "gt", value: 10, missingIndicator: "no_erc", evidenceTemplate: "${company} with ${employeeCount} employees may still qualify for retroactive ERC via amended returns", valueFormula: "employeeCount * 5000" },
   ],
   childcare: [
-    { field: "employeeCount", operator: "gt", value: 100, missingIndicator: "no_childcare", evidenceTemplate: "${company} has ${employeeCount} employees — employer-provided childcare credit (§45F) opportunity" },
+    { field: "employeeCount", operator: "gt", value: 100, missingIndicator: "no_childcare", evidenceTemplate: "${company} has ${employeeCount} employees — employer-provided childcare credit (§45F) opportunity", valueFormula: "Math.min(employeeCount * 50, 150000)" },
   ],
   paid_leave_45s: [
-    { field: "employeeCount", operator: "gt", value: 50, missingIndicator: "no_paid_leave", evidenceTemplate: "${company} with ${employeeCount} employees — paid family/medical leave credit opportunity" },
+    { field: "employeeCount", operator: "gt", value: 50, missingIndicator: "no_paid_leave", evidenceTemplate: "${company} with ${employeeCount} employees — paid family/medical leave credit opportunity", valueFormula: "employeeCount * 0.02 * 1000" },
   ],
 };
 
@@ -61,12 +61,25 @@ export async function seedCreditRegistry(): Promise<number> {
       applicableIndustries: credit.applicableCategories,
       eligibilityKeywords: extractKeywords(credit),
       fingerprints: BUILT_IN_FINGERPRINTS[credit.id] || null,
-      status: "active",
+      status: credit.status || "active",
+      sunsetDate: credit.sunsetDate ? new Date(credit.sunsetDate) : null,
     });
     seeded++;
   }
 
+  let updated = 0;
+  for (const credit of TAX_CREDIT_UNIVERSE) {
+    if (!existingIds.has(credit.id)) continue;
+    const newStatus = credit.status || "active";
+    const newSunsetDate = credit.sunsetDate ? new Date(credit.sunsetDate) : null;
+    await db.update(taxCreditRegistry)
+      .set({ status: newStatus, sunsetDate: newSunsetDate })
+      .where(eq(taxCreditRegistry.id, credit.id));
+    updated++;
+  }
+
   if (seeded > 0) console.log(`[CREDIT-GAP] Seeded ${seeded} credits into registry`);
+  if (updated > 0) console.log(`[CREDIT-GAP] Updated status/sunset for ${updated} existing credits`);
   return seeded;
 }
 
@@ -124,6 +137,18 @@ export async function runGapScan(): Promise<{ scanned: number; gaps: number }> {
 
     const totalScanned = xbrlResults.scanned + entityResults.scanned;
     const totalGaps = xbrlResults.gaps + entityResults.gaps + customResults.upgraded;
+
+    const zeroGaps = await db.select({ id: creditGapAnalysis.id, creditId: creditGapAnalysis.creditId })
+      .from(creditGapAnalysis)
+      .where(sql`(estimated_unclaimed_value IS NULL OR estimated_unclaimed_value = 0) AND gap_status IN ('confirmed_unclaimed', 'likely_unclaimed', 'estimated_eligible')`);
+    let backfilled = 0;
+    for (const g of zeroGaps) {
+      const hv = CREDIT_HEURISTIC_VALUES[g.creditId] || 25000;
+      const est = Math.round(hv * 0.5);
+      await db.update(creditGapAnalysis).set({ estimatedUnclaimedValue: est }).where(eq(creditGapAnalysis.id, g.id));
+      backfilled++;
+    }
+    if (backfilled > 0) console.log(`[CREDIT-GAP] Backfilled ${backfilled} gaps with heuristic values`);
 
     console.log(`[CREDIT-GAP] Scan complete: ${totalScanned} companies, ${totalGaps} gaps found (${Date.now() - start}ms)`);
     return { scanned: totalScanned, gaps: totalGaps };
@@ -291,7 +316,9 @@ function applyFingerprints(creditId: string, company: string, taxPosition: any):
           const rdExpense = taxPosition.rdExpenseAmount || taxPosition.rdExpense || 0;
           const employeeCount = taxPosition.employeeCount || 0;
           const capex = taxPosition.capex || 0;
-          estimatedValue = safeEvalFormula(rule.valueFormula, { rdExpense, employeeCount, capex });
+          const nolCarryforward = taxPosition.nolCarryforward || 0;
+          const totalAssets = taxPosition.totalAssets || 0;
+          estimatedValue = safeEvalFormula(rule.valueFormula, { rdExpense, employeeCount, capex, nolCarryforward, totalAssets });
         } catch {}
       }
 
@@ -305,6 +332,51 @@ function applyFingerprints(creditId: string, company: string, taxPosition: any):
   }
 
   return null;
+}
+
+const CREDIT_HEURISTIC_VALUES: Record<string, number> = {
+  rd_41: 125000,
+  rd_payroll_offset: 75000,
+  wotc: 24000,
+  erc: 50000,
+  itc: 180000,
+  ptc: 95000,
+  "45l": 25000,
+  "179d": 85000,
+  historic_rehab: 200000,
+  nmtc: 150000,
+  lihtc: 350000,
+  opportunity_zones: 120000,
+  sbhctc: 15000,
+  disabled_access: 4000,
+  orphan_drug: 500000,
+  biodiesel: 60000,
+  carbon_capture_45q: 250000,
+  clean_vehicle_30d: 22500,
+  chips_act: 1000000,
+  childcare: 50000,
+  tip_credit: 18000,
+  indian_employment: 12000,
+  mine_rescue: 8000,
+  hydrogen_45v: 200000,
+  nuclear_45u: 150000,
+  adv_mfg_45x: 300000,
+  adv_energy_48c: 350000,
+  commercial_ev_45w: 30000,
+  saf_40b: 75000,
+  ev_refueling_30c: 25000,
+  military_spouse_45aa: 5000,
+  qbi_199a: 80000,
+  qsbs_1202: 95000,
+  like_kind_1031: 150000,
+  bonus_depreciation_168k: 100000,
+  sec179_expensing: 60000,
+  paid_leave_45s: 15000,
+};
+
+function estimateEntityGapValue(creditId: string, matchStrength: number): number {
+  const baseValue = CREDIT_HEURISTIC_VALUES[creditId] || 25000;
+  return Math.round(baseValue * matchStrength);
 }
 
 async function scanEntities(registry: TaxCreditRegistryEntry[]): Promise<{ scanned: number; gaps: number }> {
@@ -346,11 +418,14 @@ async function scanEntities(registry: TaxCreditRegistryEntry[]): Promise<{ scann
       if (!industryMatch && !keywordMatch && !eventTypeMatch) continue;
 
       const matchReasons: string[] = [];
-      if (industryMatch) matchReasons.push(`industry:${entityIndustry}`);
-      if (keywordMatch) matchReasons.push("keyword_match");
-      if (eventTypeMatch) matchReasons.push(`event:${eventTypeMatch}`);
+      let matchStrength = 0.3;
+      if (industryMatch) { matchReasons.push(`industry:${entityIndustry}`); matchStrength += 0.2; }
+      if (keywordMatch) { matchReasons.push("keyword_match"); matchStrength += 0.3; }
+      if (eventTypeMatch) { matchReasons.push(`event:${eventTypeMatch}`); matchStrength += 0.2; }
+      matchStrength = Math.min(matchStrength, 1.0);
 
       const evidence = `${entity.name} in ${entityIndustry || "unknown"} industry — ${matchReasons.join(", ")} suggests ${credit.name} eligibility`;
+      const estimatedValue = estimateEntityGapValue(credit.id, matchStrength);
 
       await upsertGap({
         creditId: credit.id,
@@ -362,7 +437,7 @@ async function scanEntities(registry: TaxCreditRegistryEntry[]): Promise<{ scann
         entityId: entity.id,
         gapStatus: "estimated_eligible",
         confidence: industryMatch ? "estimated_by_industry" : "inferred",
-        estimatedUnclaimedValue: null,
+        estimatedUnclaimedValue: estimatedValue,
         evidence,
         fingerprintsMatched: matchReasons,
         legislativeTrigger: null,
@@ -456,6 +531,7 @@ async function applyCustomRules(): Promise<{ upgraded: number }> {
       }
 
       if (allMatch) {
+        const heuristicValue = CREDIT_HEURISTIC_VALUES[rule.creditId] || 25000;
         await upsertGap({
           creditId: rule.creditId,
           companyName: lead.company || "Unknown",
@@ -466,7 +542,7 @@ async function applyCustomRules(): Promise<{ upgraded: number }> {
           entityId: null,
           gapStatus: "likely_unclaimed",
           confidence: "inferred",
-          estimatedUnclaimedValue: null,
+          estimatedUnclaimedValue: Math.round(heuristicValue * 0.7),
           evidence: `Custom rule "${rule.ruleName}" matched for ${lead.company}`,
           fingerprintsMatched: [`custom_rule:${rule.id}`],
           legislativeTrigger: null,
@@ -570,6 +646,7 @@ export async function mapLegislativeChanges(): Promise<number> {
 export async function getGapMatrix(): Promise<{
   matrix: Array<{
     creditId: string; creditName: string; section: string; neglectLevel: string;
+    status: string; sunsetDate: Date | null;
     gapCount: number; totalUnclaimed: number; topIndustries: string[];
     confidenceBreakdown: { verified: number; inferred: number; estimated: number };
     legislativeAlerts: number;
@@ -621,6 +698,8 @@ export async function getGapMatrix(): Promise<{
       creditName: credit.name,
       section: credit.section,
       neglectLevel: credit.neglectLevel,
+      status: credit.status || "active",
+      sunsetDate: credit.sunsetDate || null,
       gapCount: creditGaps.length,
       totalUnclaimed: Math.round(totalUnclaimed),
       topIndustries,
@@ -780,6 +859,10 @@ function safeEvalFormula(formula: string, vars: Record<string, number>): number 
     "capex * 0.6 * 0.21": (v) => v.capex * 0.6 * 0.21,
     "Math.min(capex, 1160000) * 0.21": (v) => Math.min(v.capex, 1160000) * 0.21,
     "employeeCount * 5000": (v) => v.employeeCount * 5000,
+    "nolCarryforward * 0.15": (v) => v.nolCarryforward * 0.15,
+    "totalAssets * 0.05 * 0.238": (v) => v.totalAssets * 0.05 * 0.238,
+    "Math.min(employeeCount * 50, 150000)": (v) => Math.min(v.employeeCount * 50, 150000),
+    "employeeCount * 0.02 * 1000": (v) => v.employeeCount * 0.02 * 1000,
   };
   const fn = FORMULAS[formula];
   if (!fn) return null;

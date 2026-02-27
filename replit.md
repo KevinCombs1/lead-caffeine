@@ -38,7 +38,7 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
     - Data quality: MD5 dedup hash, in-memory dedup set (50K cap), source health monitoring, entity cache eviction (5K cap)
     - Deepened: Treasury (3→6), FDIC (2→3), OpenFEMA (2→4), openFDA (4→7), NHTSA (3→5), World Bank (4→10), BLS (4→12), Census (2→3), SEC EDGAR (3→5 with 13F + Form 4)
     - New sources: USGS Earthquakes (2 endpoints), CoinGecko Crypto (top 20 coins)
-  - **17 total sources**, **~200+ data streams** across config-driven + legacy + custom fetchers
+  - **18 total sources** (including World Bank), **121+ data streams** across config-driven + legacy + custom fetchers
   - Background scheduler: 5-min check intervals, per-source intervals (CoinGecko 30min, Exchange 24hr, others 6-24hr)
   - **Deal Identifier Intelligence Layer** (convergence detection engine):
     - `server/deal-intelligence.ts` — convergence detection, probability scoring, insight generation, entity intelligence
@@ -47,11 +47,13 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
     - **Concurrency-safe**: Mutex lock prevents overlapping runs; upsert logic wrapped in DB transaction preserves stable convergence point IDs across detection cycles (no delete-all + re-insert)
     - Runs automatically every 30 minutes + 60s after startup
     - Manual trigger: POST `/api/deals/detect-convergences`
-    - API routes: GET `/api/deals/top-opportunities`, GET `/api/deals/convergence/:id`, GET `/api/deals/entities`, GET `/api/deals/entities/:id`
-    - Frontend: Top Opportunities bar, Convergence Radar tab with expandable detail panel, Entity Intelligence slide-out panel, enhanced event rows with entity links
+    - API routes: GET `/api/deals/convergence/:id`, GET `/api/deals/entities`, GET `/api/deals/entities/:id`
+    - Frontend: Convergence Radar tab with expandable detail panel, Entity Intelligence slide-out panel, enhanced event rows with entity links
   - **Credit Intelligence Layer** (Gap Flagger + Legislative Triggers):
     - `server/credit-gap-engine.ts` — core gap detection engine scanning ALL entities
-    - `server/credit-universe.ts` — 38 tax credit definitions with applicableCategories, neglectLevel, section
+    - `server/credit-universe.ts` — 38 tax credit definitions with applicableCategories, neglectLevel, section, status (active/sunset/phasing_out), sunsetDate
+    - Sunset credits: ERC (§3134, retroactive only), SAF (§40B, period ending), Bonus Depreciation (§168k, phasing out 2027)
+    - Heuristic value estimation: 32 credit-specific industry-median values + match-strength scaling for entity intelligence gaps
     - Three detection layers: (1) XBRL-verified from fiscalLeads creditAnalysis, (2) Entity Intelligence from deal_entities + SIC/industry matching, (3) Custom fingerprint rules
     - Upsert keyed on `(creditId, companyName)` — stable IDs, confidence never downgrades
     - Legislative mapping: Congress.gov + Federal Register events auto-linked to affected credits
@@ -68,8 +70,10 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
       - Color-coded 10-dot matrix per company (green=filed, amber=eligible, dim=opportunity, gray=N/A)
       - Expandable 5-column evidence grid showing all 10 credits with status, evidence text, and estimated values
     - Tariff analysis uses 7 signals: SIC industry classification, ITC trade data, foreign tax credit, EPA ECHO facilities, SBIR materials, cost-of-revenue ratio, import-heavy industry flag
+    - ITC Trade uses proper SIC→HTS category mapping table (22 entries covering all manufacturing SIC ranges → correct HTS chapters)
     - Intelligence sources with API key awareness: SAM.gov, FEC, Congress.gov check for env vars (SAM_GOV_API_KEY, FEC_API_KEY, CONGRESS_API_KEY) with DEMO_KEY fallback; UI shows amber key indicator for unconfigured sources
-    - FRED uses FRED_API_KEY env var with DEMO_KEY fallback; ITC Trade validates SIC→HTS mapping; OpenCorporates has rate limiting + 403/429 handling
+    - FRED uses FRED_API_KEY env var with DEMO_KEY fallback; OpenCorporates has rate limiting + 403/429 handling
+  - **Source Health Monitoring**: tracks all 18 sources with healthy/degraded/failing/stale classification; stale = sources not yet fetched this session
     - API routes: POST/GET `/api/discovery/batches`, GET `/api/discovery/batches/:id`, GET `/api/discovery/status`, GET `/api/discovery/sources`, GET `/api/discovery/industries`, POST `/api/discovery/batches/:id/scan`, POST `/api/discovery/batches/:id/analyze`
     - Frontend: 3 sub-tabs with live progress, source indicator grid, expandable company results with credit status badges
     - Scheduled: seeds registry + legislative mapping + gap scan every 30 minutes + 90s after startup
@@ -79,7 +83,7 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
     - Rate limiting: 130ms delay between SEC EDGAR requests + automatic retry with backoff on 429/503 responses
     - Dedup: checks existing DB CIKs + names AND in-run CIK + name dedup to prevent duplicates across SIC codes
     - Fast XBRL scan: extracts 8 key financial fields (revenue, R&D, assets, employees, tax rate, NOL, capex, PP&E) per company
-    - Company size classification: mid_size ($10M-$1B revenue), large (>$1B), micro (<$10M)
+    - Company size classification: mid_size ($10M-$1B revenue), large (>$1B), micro (<$10M); fallback heuristics: employee count → capex → SIC industry tier
     - Feeds directly into Gap Flagger — enriched companies get "inferred" confidence instead of "estimated_by_industry"
     - Priority Targets: excludes states/governments/crypto, sorts mid-size above large-cap when values are similar
     - Gap Matrix: shows pipeline stats (total companies, industries, size breakdown)
@@ -94,15 +98,15 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
 - **USASpending.gov**: Federal contracts, grants, and awards.
 - **Federal Register**: Regulatory actions and rules.
 - **USPTO PatentsView**: Patent grants and technology classifications.
-- **FRED (Federal Reserve)**: Macroeconomic data (5 series).
+- **FRED (Federal Reserve)**: Macroeconomic data (13 series — DGS10, T10Y2Y, MORTGAGE30US, PAYEMS, INDPRO, RSAFS, PERMIT, UMCSENT, DEXUSEU, UNRATE, CPIAUCSL, GDP, FEDFUNDS).
 - **Congress.gov**: Legislative information and bills.
 - **Treasury Fiscal Data**: 6 endpoints — national debt, exchange rates, interest rates, monthly statements, savings bonds, net cost.
 - **FDIC BankFind**: 3 endpoints — failures, financials, institutions.
 - **OpenFEMA**: 4 endpoints — disasters, PA grants, mitigation grants, disaster summaries.
 - **openFDA**: 7 endpoints — drug/food recalls, 510k, PMA, drug approvals, device/drug adverse events.
 - **NHTSA**: 5 manufacturer endpoints — Ford, Tesla, Toyota, Chevrolet, Honda recalls.
-- **World Bank**: 10 indicators across 10 economies — GDP, inflation, unemployment, FDI, trade, govt debt, market cap, lending rates, ease of business, official FX rates.
-- **BLS**: 12 labor series — unemployment, CPI, hourly earnings, JOLTS, PPI, import prices, employment cost, weekly hours, employment level, nonfarm payrolls, labor participation, real hourly earnings.
+- **World Bank**: 10 indicators across 10 economies — GDP, inflation, unemployment, FDI, trade, govt debt, market cap, lending rates, ease of business, official FX rates. Also fetched via config-driven framework (8 endpoints).
+- **BLS**: 16 labor series — unemployment, CPI, hourly earnings, JOLTS, PPI, import prices, employment cost, weekly hours, employment level, nonfarm payrolls, labor participation, real hourly earnings, PPI manufacturing, quits rate, hires rate, motor vehicle PPI.
 - **Census Bureau**: 3 endpoints — county business patterns, exports, imports.
 - **ExchangeRate-API**: 20 major currency pairs.
 - **USGS Earthquake Hazards**: 2 endpoints — global M4.5+ and US M2.5-4.5.

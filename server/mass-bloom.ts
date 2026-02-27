@@ -193,16 +193,45 @@ function extractLatestValue(facts: any, tags: string[]): number | null {
   return null;
 }
 
-function classifySize(revenue: number | null, totalAssets: number | null): "mid_size" | "large" | "micro" | "unknown" {
-  if (revenue !== null) {
+function getSicTier(sic: string): number | null {
+  for (const entry of Object.values(SIC_INDUSTRIES)) {
+    if (entry.codes.includes(sic)) return entry.tier;
+  }
+  return null;
+}
+
+function classifySize(
+  revenue: number | null,
+  totalAssets: number | null,
+  employeeCount: number | null = null,
+  capex: number | null = null,
+  sic: string | null = null,
+): "mid_size" | "large" | "micro" | "unknown" {
+  if (revenue !== null && revenue > 0) {
     if (revenue >= 10_000_000 && revenue <= 1_000_000_000) return "mid_size";
     if (revenue > 1_000_000_000) return "large";
-    if (revenue < 10_000_000 && revenue > 0) return "micro";
+    if (revenue < 10_000_000) return "micro";
   }
-  if (totalAssets !== null) {
+  if (totalAssets !== null && totalAssets > 0) {
     if (totalAssets >= 5_000_000 && totalAssets <= 500_000_000) return "mid_size";
     if (totalAssets > 500_000_000) return "large";
-    if (totalAssets < 5_000_000 && totalAssets > 0) return "micro";
+    if (totalAssets < 5_000_000) return "micro";
+  }
+  if (employeeCount !== null && employeeCount > 0) {
+    if (employeeCount > 5000) return "large";
+    if (employeeCount >= 50) return "mid_size";
+    return "micro";
+  }
+  if (capex !== null && capex > 0) {
+    if (capex > 50_000_000) return "large";
+    if (capex >= 1_000_000) return "mid_size";
+    return "micro";
+  }
+  if (sic) {
+    const tier = getSicTier(sic);
+    if (tier === 1) return "mid_size";
+    if (tier === 2) return "mid_size";
+    if (tier === 3) return "micro";
   }
   return "unknown";
 }
@@ -224,7 +253,7 @@ async function fastXbrlScan(cik: string): Promise<FastXbrlResult | null> {
     const capex = extractLatestValue(facts, XBRL_TAGS.capex);
     const ppeNet = extractLatestValue(facts, XBRL_TAGS.ppeNet);
 
-    const companySize = classifySize(revenue, totalAssets);
+    const companySize = classifySize(revenue, totalAssets, employeeCount, capex);
 
     return { revenue, rdExpense, totalAssets, employeeCount, effectiveTaxRate, nolCarryforward, capex, ppeNet, companySize };
   } catch (e: any) {
@@ -302,7 +331,7 @@ export async function runMassBloom(options?: { maxSicCodes?: number; xbrlBatchSi
 
     console.log(`[MASS-BLOOM] SIC sweep complete: ${progress.companiesFound} total found, ${newCompanies.length} new, ${progress.duplicatesSkipped} duplicates`);
 
-    const savedLeadIds: Array<{ id: string; cik: string }> = [];
+    const savedLeadIds: Array<{ id: string; cik: string; sic: string }> = [];
     for (let i = 0; i < newCompanies.length; i++) {
       const co = newCompanies[i];
       try {
@@ -316,7 +345,7 @@ export async function runMassBloom(options?: { maxSicCodes?: number; xbrlBatchSi
           enrichmentData: { cik: co.cik, source: "mass_bloom" },
         };
         const [created] = await db.insert(fiscalLeads).values(lead).returning();
-        savedLeadIds.push({ id: created.id, cik: co.cik });
+        savedLeadIds.push({ id: created.id, cik: co.cik, sic: co.sic });
         progress.companiesNew++;
       } catch (e: any) {
         if (!e.message?.includes("duplicate")) {
@@ -331,7 +360,7 @@ export async function runMassBloom(options?: { maxSicCodes?: number; xbrlBatchSi
       console.log(`[MASS-BLOOM] Starting fast XBRL scan for ${savedLeadIds.length} companies...`);
       for (let i = 0; i < savedLeadIds.length; i += xbrlBatchSize) {
         const batch = savedLeadIds.slice(i, i + xbrlBatchSize);
-        for (const { id, cik } of batch) {
+        for (const { id, cik, sic } of batch) {
           progress.xbrlScanned++;
           const xbrl = await fastXbrlScan(cik);
           if (xbrl && (xbrl.revenue !== null || xbrl.totalAssets !== null || xbrl.rdExpense !== null)) {
@@ -349,7 +378,19 @@ export async function runMassBloom(options?: { maxSicCodes?: number; xbrlBatchSi
             else if (xbrl.companySize === "micro") progress.sizeBreakdown.micro++;
             else progress.sizeBreakdown.unknown++;
           } else {
-            progress.sizeBreakdown.unknown++;
+            const sicFallbackSize = classifySize(null, null, null, null, sic);
+            if (sicFallbackSize === "mid_size") progress.sizeBreakdown.midSize++;
+            else if (sicFallbackSize === "large") progress.sizeBreakdown.large++;
+            else if (sicFallbackSize === "micro") progress.sizeBreakdown.micro++;
+            else progress.sizeBreakdown.unknown++;
+
+            if (sicFallbackSize !== "unknown") {
+              const enrichment: any = { cik, source: "mass_bloom", companySize: sicFallbackSize, sizeMethod: "sic_tier" };
+              await db.update(fiscalLeads).set({
+                enrichmentData: enrichment,
+                updatedAt: new Date(),
+              }).where(eq(fiscalLeads.id, id));
+            }
           }
 
           if (progress.xbrlScanned % 50 === 0) {

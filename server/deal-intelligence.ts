@@ -308,12 +308,6 @@ function determineTimeHorizon(c: ConvergenceCandidate): string {
   return "Next 90 days";
 }
 
-export async function getTopOpportunities(limit: number = 5): Promise<ConvergencePoint[]> {
-  return db.select().from(convergencePoints)
-    .orderBy(desc(convergencePoints.probability))
-    .limit(limit);
-}
-
 export async function getConvergenceById(id: string): Promise<ConvergencePoint | null> {
   const [cp] = await db.select().from(convergencePoints).where(eq(convergencePoints.id, id));
   return cp || null;

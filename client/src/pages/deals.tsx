@@ -1235,7 +1235,21 @@ function GapMatrixContent({ onViewXRay }: { onViewXRay?: (leadId: string) => voi
                 <div className="col-span-4 flex items-center gap-2 min-w-0">
                   {isExpanded ? <ChevronUp className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />}
                   <div className="min-w-0">
-                    <div className="text-xs font-medium text-foreground/80 truncate">{row.creditName}</div>
+                    <div className="text-xs font-medium text-foreground/80 truncate flex items-center gap-1.5 flex-wrap">
+                      {row.creditName}
+                      {row.status === "sunset" && (
+                        <Badge variant="outline" className="text-[8px] text-rose-400 border-rose-500/20 bg-rose-500/10 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-sunset-${row.creditId}`}>
+                          <AlertTriangle className="w-2.5 h-2.5 mr-0.5" />
+                          Sunset
+                        </Badge>
+                      )}
+                      {row.status === "phasing_out" && (
+                        <Badge variant="outline" className="text-[8px] text-amber-400 border-amber-500/20 bg-amber-500/10 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-phasing-out-${row.creditId}`}>
+                          <Clock className="w-2.5 h-2.5 mr-0.5" />
+                          Phasing Out
+                        </Badge>
+                      )}
+                    </div>
                     <div className="text-[10px] text-muted-foreground/40">{row.section}</div>
                   </div>
                 </div>

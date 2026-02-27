@@ -323,6 +323,40 @@ export const INTELLIGENCE_SOURCES: IntelligenceSource[] = [
   { id: "opencorporates", name: "OpenCorporates", category: "Corporate" },
 ];
 
+const SIC_TO_HTS_MAP: Array<{ sicMin: number; sicMax: number; htsChapters: string[]; label: string }> = [
+  { sicMin: 2000, sicMax: 2099, htsChapters: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24"], label: "Food Manufacturing" },
+  { sicMin: 2100, sicMax: 2199, htsChapters: ["24"], label: "Tobacco Products" },
+  { sicMin: 2200, sicMax: 2299, htsChapters: ["50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63"], label: "Textiles" },
+  { sicMin: 2300, sicMax: 2399, htsChapters: ["61", "62", "63", "64", "65"], label: "Apparel" },
+  { sicMin: 2400, sicMax: 2499, htsChapters: ["44", "45", "46"], label: "Lumber & Wood Products" },
+  { sicMin: 2500, sicMax: 2599, htsChapters: ["94"], label: "Furniture & Fixtures" },
+  { sicMin: 2600, sicMax: 2699, htsChapters: ["47", "48", "49"], label: "Paper & Allied Products" },
+  { sicMin: 2700, sicMax: 2799, htsChapters: ["49"], label: "Printing & Publishing" },
+  { sicMin: 2800, sicMax: 2899, htsChapters: ["28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38"], label: "Chemicals" },
+  { sicMin: 2900, sicMax: 2999, htsChapters: ["27"], label: "Petroleum Refining" },
+  { sicMin: 3000, sicMax: 3099, htsChapters: ["39", "40"], label: "Rubber & Plastics" },
+  { sicMin: 3100, sicMax: 3199, htsChapters: ["41", "42", "43", "64"], label: "Leather Products" },
+  { sicMin: 3200, sicMax: 3299, htsChapters: ["68", "69", "70"], label: "Stone, Clay, Glass" },
+  { sicMin: 3300, sicMax: 3399, htsChapters: ["72", "73", "74", "75", "76", "78", "79", "80", "81"], label: "Primary Metals" },
+  { sicMin: 3400, sicMax: 3499, htsChapters: ["73", "82", "83"], label: "Fabricated Metals" },
+  { sicMin: 3500, sicMax: 3599, htsChapters: ["84"], label: "Industrial Machinery" },
+  { sicMin: 3600, sicMax: 3699, htsChapters: ["84", "85"], label: "Electronics" },
+  { sicMin: 3700, sicMax: 3799, htsChapters: ["86", "87", "88", "89"], label: "Transportation Equipment" },
+  { sicMin: 3800, sicMax: 3899, htsChapters: ["90", "91"], label: "Instruments" },
+  { sicMin: 3900, sicMax: 3999, htsChapters: ["66", "67", "95", "96"], label: "Miscellaneous Manufacturing" },
+  { sicMin: 5000, sicMax: 5099, htsChapters: ["72", "73", "84", "85"], label: "Durable Goods Wholesale" },
+  { sicMin: 5100, sicMax: 5199, htsChapters: ["28", "29", "30", "48"], label: "Nondurable Goods Wholesale" },
+];
+
+function mapSicToHts(sicNum: number): string[] | null {
+  for (const entry of SIC_TO_HTS_MAP) {
+    if (sicNum >= entry.sicMin && sicNum <= entry.sicMax) {
+      return entry.htsChapters;
+    }
+  }
+  return null;
+}
+
 interface SourceResult {
   status: "success" | "no_data" | "error";
   data: any;
@@ -601,14 +635,23 @@ async function querySource(sourceId: string, companyName: string, cik: string | 
         if (!isManufacturing && !isWholesale) {
           return { status: "no_data", data: { reason: "SIC code not in import-heavy industry (manufacturing/wholesale)", sic }, responseTimeMs: Date.now() - start };
         }
-        const htsBroad = sic.substring(0, 2);
+        const htsChapters = mapSicToHts(sicNum);
+        if (!htsChapters || htsChapters.length === 0) {
+          return { status: "no_data", data: { reason: "No HTS mapping for SIC code", sic }, responseTimeMs: Date.now() - start };
+        }
         try {
-          const res = await apiFetch(`https://dataweb.usitc.gov/api/v2/trade/by_hts?hts=${htsBroad}&year=2023&flow=IMP`);
-          if (!res.ok) return { status: "no_data", data: { reason: "ITC API returned non-OK", sic, htsUsed: htsBroad }, responseTimeMs: Date.now() - start };
-          data = await res.json();
-          if (!data || (Array.isArray(data) && data.length === 0)) return { status: "no_data", data: { reason: "No trade data for HTS prefix", sic, htsUsed: htsBroad }, responseTimeMs: Date.now() - start };
-          data = { tradeData: Array.isArray(data) ? data.slice(0, 5) : data, sic, htsUsed: htsBroad, industryType: isManufacturing ? "manufacturing" : "wholesale" };
-        } catch { return { status: "no_data", data: { reason: "ITC API error", sic, htsUsed: htsBroad }, responseTimeMs: Date.now() - start }; }
+          let allTradeData: any[] = [];
+          const htsUsed = htsChapters.join(",");
+          for (const hts of htsChapters.slice(0, 3)) {
+            const res = await apiFetch(`https://dataweb.usitc.gov/api/v2/trade/by_hts?hts=${hts}&year=2023&flow=IMP`);
+            if (!res.ok) continue;
+            const chunk = await res.json();
+            if (chunk && Array.isArray(chunk)) allTradeData = allTradeData.concat(chunk);
+            else if (chunk) allTradeData.push(chunk);
+          }
+          if (allTradeData.length === 0) return { status: "no_data", data: { reason: "No trade data for mapped HTS chapters", sic, htsUsed }, responseTimeMs: Date.now() - start };
+          data = { tradeData: allTradeData.slice(0, 5), sic, htsUsed, industryType: isManufacturing ? "manufacturing" : "wholesale" };
+        } catch { return { status: "no_data", data: { reason: "ITC API error", sic }, responseTimeMs: Date.now() - start }; }
         break;
       }
       case "congress_gov": {

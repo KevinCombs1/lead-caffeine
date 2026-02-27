@@ -25,10 +25,23 @@ function recordSourceHealth(slug: string, success: boolean, fetchMs: number, err
   sourceHealth.set(slug, h);
 }
 
-export function getSourceHealth(): Record<string, { successes: number; failures: number; lastError?: string; avgFetchMs: number; successRate: number }> {
+export function getSourceHealth(): Record<string, { successes: number; failures: number; lastError?: string; avgFetchMs: number; successRate: number; status: string }> {
+  const allSlugs = new Set<string>([
+    ...Object.keys(LEGACY_FETCH_MAP),
+    ...CONFIG_SOURCES.filter(c => c.endpoints.length > 0).map(c => c.slug),
+    ...Object.keys(CUSTOM_FETCH_MAP),
+    ...SOURCE_REGISTRY.map(s => s.slug),
+  ]);
   const result: Record<string, any> = {};
-  for (const [slug, h] of sourceHealth.entries()) {
-    result[slug] = { ...h, successRate: h.fetchCount > 0 ? h.successes / h.fetchCount : 0 };
+  for (const slug of allSlugs) {
+    const h = sourceHealth.get(slug);
+    if (!h || h.fetchCount === 0) {
+      result[slug] = { successes: 0, failures: 0, avgFetchMs: 0, successRate: 0, fetchCount: 0, status: "stale" };
+    } else {
+      const rate = h.successes / h.fetchCount;
+      const status = rate >= 0.8 ? "healthy" : rate >= 0.5 ? "degraded" : "failing";
+      result[slug] = { ...h, successRate: rate, status };
+    }
   }
   return result;
 }
@@ -139,6 +152,7 @@ const SOURCE_REGISTRY: InsertDealSource[] = [
   { name: "BLS (Bureau of Labor Statistics)", slug: "bls-labor", baseUrl: "https://api.bls.gov/publicAPI/v1", dataCategory: "labor_statistics", currents: [DEAL_CURRENTS.TRENDS], rateLimitMs: 300, status: "active" },
   { name: "Census Bureau", slug: "census-bureau", baseUrl: "https://api.census.gov", dataCategory: "economic_census", currents: [DEAL_CURRENTS.TRENDS, DEAL_CURRENTS.TRANSACTIONS], rateLimitMs: 500, status: "active" },
   { name: "CoinGecko Crypto", slug: "coingecko", baseUrl: "https://api.coingecko.com/api/v3", dataCategory: "crypto_markets", currents: [DEAL_CURRENTS.TRENDS, DEAL_CURRENTS.TRANSACTIONS], rateLimitMs: 2000, status: "active" },
+  { name: "World Bank", slug: "world-bank", baseUrl: "https://api.worldbank.org/v2", dataCategory: "global_indicators", currents: [DEAL_CURRENTS.TRENDS], rateLimitMs: 300, status: "active" },
 ];
 
 const CONFIG_SOURCES: SourceConfig[] = [
@@ -740,6 +754,7 @@ async function fetchBLS(): Promise<{ fetched: number; stored: number }> {
     "WPUFD49104", "EIUIR", "CIUIR0000000000I",
     "CES0500000003", "LNS12000000", "CES0000000001",
     "LNS11300000", "CES0500000011",
+    "PCUOMFG--OMFG--", "JTU00000000QUL", "JTU00000000HIL", "PCU3361203361201",
   ];
   const seriesNames: Record<string, { name: string; tab: string; sub: string }> = {
     "LNS14000000": { name: "Unemployment Rate", tab: "Labor & Human Capital", sub: "Layoffs & Restructuring" },
@@ -754,6 +769,10 @@ async function fetchBLS(): Promise<{ fetched: number; stored: number }> {
     "CES0000000001": { name: "Total Nonfarm Payrolls", tab: "Labor & Human Capital", sub: "Mass Hiring" },
     "LNS11300000": { name: "Labor Force Participation Rate", tab: "Labor & Human Capital", sub: "Executive Moves" },
     "CES0500000011": { name: "Real Average Hourly Earnings", tab: "Labor & Human Capital", sub: "Mass Hiring" },
+    "PCUOMFG--OMFG--": { name: "PPI Manufacturing", tab: "Capital Markets", sub: "Secondary Offerings" },
+    "JTU00000000QUL": { name: "JOLTS Quits Rate", tab: "Labor & Human Capital", sub: "Layoffs & Restructuring" },
+    "JTU00000000HIL": { name: "JOLTS Hires Rate", tab: "Labor & Human Capital", sub: "Mass Hiring" },
+    "PCU3361203361201": { name: "PPI Motor Vehicle Parts", tab: "Capital Markets", sub: "Secondary Offerings" },
   };
 
   try {
@@ -1090,6 +1109,14 @@ export async function fetchFred(): Promise<{ fetched: number; stored: number }> 
     { id: "FEDFUNDS", name: "Federal Funds Rate", metric: "fed_funds_rate" },
     { id: "CPIAUCSL", name: "Consumer Price Index", metric: "cpi" },
     { id: "HOUST", name: "Housing Starts", metric: "housing_starts" },
+    { id: "T10Y2Y", name: "Treasury Yield Curve (10Y-2Y)", metric: "yield_curve" },
+    { id: "MORTGAGE30US", name: "30-Year Mortgage Rate", metric: "mortgage_30yr" },
+    { id: "PAYEMS", name: "Total Nonfarm Payrolls", metric: "payrolls" },
+    { id: "INDPRO", name: "Industrial Production Index", metric: "industrial_production" },
+    { id: "RSAFS", name: "Advance Retail Sales", metric: "retail_sales" },
+    { id: "PERMIT", name: "Building Permits", metric: "building_permits" },
+    { id: "UMCSENT", name: "Consumer Sentiment", metric: "consumer_sentiment" },
+    { id: "DEXUSEU", name: "USD/EUR Exchange Rate", metric: "usd_eur" },
   ];
   for (const s of series) {
     try {
@@ -1316,7 +1343,7 @@ export async function getConvergencePoints(): Promise<ConvergencePoint[]> {
 export async function getDealStats(): Promise<{
   totalEvents: number; totalValue: number; activeSources: number; convergenceCount: number;
   eventsByTab: Record<string, number>; eventsByCurrent: Record<string, number>;
-  totalStreams: number; sourceHealthSummary: { healthy: number; degraded: number; failing: number };
+  totalStreams: number; sourceHealthSummary: { healthy: number; degraded: number; failing: number; stale: number };
   creditsTracked: number; totalGaps: number; totalUnclaimedValue: number; companiesScanned: number;
 }> {
   const [eventStats] = await db.select({ total: sql<number>`count(*)::int`, totalValue: sql<number>`coalesce(sum(value), 0)` }).from(dealEvents);
@@ -1341,19 +1368,29 @@ export async function getDealStats(): Promise<{
 
   let totalStreams = 0;
   for (const c of CONFIG_SOURCES) totalStreams += c.endpoints.length || 0;
-  totalStreams += 5 + 1 + 1 + 1 + 5 + 1 + 12 + 3 + 20 + 20;
+  totalStreams += 5 + 1 + 1 + 1 + 13 + 1 + 16 + 3 + 20 + 20 + 3;
 
-  let healthy = 0, degraded = 0, failing = 0;
-  for (const [, h] of sourceHealth.entries()) {
-    const rate = h.fetchCount > 0 ? h.successes / h.fetchCount : 1;
-    if (rate >= 0.8) healthy++; else if (rate >= 0.5) degraded++; else failing++;
+  const allSourceSlugs = new Set<string>([
+    ...Object.keys(LEGACY_FETCH_MAP),
+    ...CONFIG_SOURCES.filter(c => c.endpoints.length > 0).map(c => c.slug),
+    ...Object.keys(CUSTOM_FETCH_MAP),
+  ]);
+  let healthy = 0, degraded = 0, failing = 0, stale = 0;
+  for (const slug of allSourceSlugs) {
+    const h = sourceHealth.get(slug);
+    if (!h || h.fetchCount === 0) {
+      stale++;
+    } else {
+      const rate = h.successes / h.fetchCount;
+      if (rate >= 0.8) healthy++; else if (rate >= 0.5) degraded++; else failing++;
+    }
   }
 
   return {
     totalEvents: eventStats.total, totalValue: Number(eventStats.totalValue),
     activeSources: sourceCount.count, convergenceCount: cpCount.count,
     eventsByTab, eventsByCurrent, totalStreams,
-    sourceHealthSummary: { healthy, degraded, failing },
+    sourceHealthSummary: { healthy, degraded, failing, stale },
     creditsTracked: gapStats.creditsTracked || 38,
     totalGaps: gapStats.totalGaps || 0,
     totalUnclaimedValue: Number(gapStats.totalUnclaimed) || 0,

@@ -10,6 +10,9 @@ export interface TaxCredit {
   maxValue: string;
   applicableCategories: string[];
   neglectLevel: "high" | "medium" | "low";
+  status: "active" | "sunset" | "phasing_out";
+  sunsetDate?: string;
+  sunsetNote?: string;
 }
 
 export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
@@ -32,6 +35,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Cannabis & Hemp Tech", "Advanced Cybersecurity",
     ],
     neglectLevel: "low",
+    status: "active",
   },
   {
     id: "wotc",
@@ -52,6 +56,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "PropTech & ConTech", "Alternative Protein & Food Science", "Cannabis & Hemp Tech",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "erc",
@@ -74,6 +79,8 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Cannabis & Hemp Tech", "Advanced Cybersecurity",
     ],
     neglectLevel: "high",
+    status: "sunset",
+    sunsetNote: "Retroactive claims via amended returns only",
   },
   {
     id: "itc",
@@ -89,6 +96,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Climate Tech & Carbon", "Fusion & Advanced Energy", "Electric Aviation",
     ],
     neglectLevel: "medium",
+    status: "active",
   },
   {
     id: "ptc",
@@ -102,6 +110,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Climate Tech & Carbon", "Fusion & Advanced Energy",
     ],
     neglectLevel: "medium",
+    status: "active",
   },
   {
     id: "45l",
@@ -114,6 +123,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "PropTech & ConTech",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "179d",
@@ -130,6 +140,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "PropTech & ConTech",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "historic_rehab",
@@ -142,6 +153,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Legal Services", "Accounting & Tax Services", "Consulting & Advisory", "Professional & Business Services",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "nmtc",
@@ -156,6 +168,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Education & Social Services", "Manufacturing — Heavy Industry",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "lihtc",
@@ -167,6 +180,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Construction & Real Estate", "Banking & Lending", "Investment & Hedge Funds", "Financial Services",
     ],
     neglectLevel: "low",
+    status: "active",
   },
   {
     id: "opportunity_zones",
@@ -182,6 +196,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Legal Services", "Accounting & Tax Services", "Consulting & Advisory", "Professional & Business Services",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "sbhctc",
@@ -195,6 +210,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Legal Services", "Accounting & Tax Services", "Consulting & Advisory", "Professional & Business Services",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "disabled_access",
@@ -210,6 +226,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Construction & Real Estate", "Education & Social Services",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "orphan_drug",
@@ -222,6 +239,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Frontier Biotech",
     ],
     neglectLevel: "medium",
+    status: "active",
   },
   {
     id: "biodiesel",
@@ -237,6 +255,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Climate Tech & Carbon", "Electric Aviation",
     ],
     neglectLevel: "medium",
+    status: "active",
   },
   {
     id: "carbon_capture_45q",
@@ -250,6 +269,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Climate Tech & Carbon", "Fusion & Advanced Energy",
     ],
     neglectLevel: "medium",
+    status: "active",
   },
   {
     id: "clean_vehicle_30d",
@@ -265,6 +285,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Electric Aviation", "Supply Chain Tech",
     ],
     neglectLevel: "medium",
+    status: "active",
   },
   {
     id: "chips_act",
@@ -278,6 +299,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Next-Gen Computing", "Advanced Manufacturing",
     ],
     neglectLevel: "low",
+    status: "active",
   },
   {
     id: "childcare",
@@ -293,6 +315,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Retail", "Wholesale & Distribution", "Hospitality & Entertainment", "Education & Social Services",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "tip_credit",
@@ -305,6 +328,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Personal & Consumer Services",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "indian_employment",
@@ -318,6 +342,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Retail", "Wholesale & Distribution", "Government & Public Administration",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "mine_rescue",
@@ -329,6 +354,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Mining & Natural Resources",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "hydrogen_45v",
@@ -342,6 +368,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Climate Tech & Carbon", "Fusion & Advanced Energy",
     ],
     neglectLevel: "medium",
+    status: "active",
   },
   {
     id: "nuclear_45u",
@@ -354,6 +381,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Fusion & Advanced Energy",
     ],
     neglectLevel: "low",
+    status: "active",
   },
   {
     id: "adv_mfg_45x",
@@ -367,6 +395,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Advanced Manufacturing", "Supply Chain Tech", "PropTech & ConTech",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "adv_energy_48c",
@@ -381,6 +410,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Climate Tech & Carbon", "Fusion & Advanced Energy", "Advanced Manufacturing",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "commercial_ev_45w",
@@ -395,6 +425,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Agriculture & Farming", "Food & Beverage Processing", "Personal & Consumer Services",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "saf_40b",
@@ -408,6 +439,8 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Electric Aviation", "Climate Tech & Carbon",
     ],
     neglectLevel: "high",
+    status: "sunset",
+    sunsetNote: "Credit period ending; transitioning to §45Z Clean Fuel Production Credit",
   },
   {
     id: "ev_refueling_30c",
@@ -422,6 +455,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Banking & Lending", "Investment & Hedge Funds", "Insurance", "Financial Services",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "military_spouse_45aa",
@@ -436,6 +470,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Personal & Consumer Services", "Education & Social Services",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "qbi_199a",
@@ -453,6 +488,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Manufacturing — Machinery & Equipment",
     ],
     neglectLevel: "medium",
+    status: "active",
   },
   {
     id: "qsbs_1202",
@@ -469,6 +505,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Frontier Biotech", "Space & Commercial Space", "Next-Gen Computing",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "like_kind_1031",
@@ -481,6 +518,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Construction & Real Estate",
     ],
     neglectLevel: "medium",
+    status: "active",
   },
   {
     id: "bonus_depreciation_168k",
@@ -499,6 +537,9 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Advanced Manufacturing", "Space & Commercial Space", "Supply Chain Tech",
     ],
     neglectLevel: "medium",
+    status: "phasing_out",
+    sunsetDate: "2027-01-01",
+    sunsetNote: "Declining 20% annually — 40% in 2025, 20% in 2026, 0% after 2026",
   },
   {
     id: "sec179_expensing",
@@ -516,6 +557,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Advanced Manufacturing", "Supply Chain Tech",
     ],
     neglectLevel: "medium",
+    status: "active",
   },
   {
     id: "cost_segregation",
@@ -532,6 +574,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Manufacturing — Heavy Industry",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "paid_leave_45s",
@@ -548,6 +591,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Education & Social Services",
     ],
     neglectLevel: "high",
+    status: "active",
   },
   {
     id: "rd_payroll_offset",
@@ -563,6 +607,7 @@ export const TAX_CREDIT_UNIVERSE: TaxCredit[] = [
       "Climate Tech & Carbon", "Space & Commercial Space",
     ],
     neglectLevel: "high",
+    status: "active",
   },
 ];
 
@@ -1019,6 +1064,7 @@ export function analyzeCompanyCreditPosition(
       maxValue: "Varies",
       applicableCategories: [],
       neglectLevel: "low",
+      status: "active",
     };
     creditAnalysis.push(analyzeForeignCredit(creditXRay, foreignTc));
   }
