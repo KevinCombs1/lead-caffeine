@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Switch } from "@/components/ui/switch";
@@ -397,6 +399,7 @@ export default function LightEngine() {
   const [securityDomain, setSecurityDomain] = useState<string | null>(null);
   const [showCashews, setShowCashews] = useState(false);
   const [bloomIndustry, setBloomIndustry] = useState<string>("");
+  const [bloomIndustryOpen, setBloomIndustryOpen] = useState(false);
   const [bloomState, setBloomState] = useState<string>("");
   const [bloomCount, setBloomCount] = useState<string>("100");
   const [bloomXbrlGate, setBloomXbrlGate] = useState(true);
@@ -971,6 +974,15 @@ export default function LightEngine() {
 
   const agg = deltaQuery.data?.aggregate;
   const tree = industryQuery.data;
+
+  const bloomIndustryLabel = useMemo(() => {
+    if (!bloomIndustry || !tree) return "";
+    for (const cat of tree.categories) {
+      const found = tree.industries[cat]?.find(ind => ind.key === bloomIndustry);
+      if (found) return found.label;
+    }
+    return bloomIndustry;
+  }, [bloomIndustry, tree]);
 
   if (deltaQuery.isLoading) {
     return (
@@ -1773,28 +1785,52 @@ export default function LightEngine() {
           <div className="flex items-center gap-2 flex-wrap">
             <Flower2 className="w-3.5 h-3.5 text-amber-300/40 shrink-0" />
             <span className="text-xs text-amber-200/40 shrink-0">Bloom more:</span>
-            <div className="w-44">
-              <Select value={bloomIndustry} onValueChange={setBloomIndustry} data-testid="select-bloom-industry">
-                <SelectTrigger className="h-7 text-xs bg-transparent text-amber-200/50 border-amber-500/10 border-dashed">
-                  <SelectValue placeholder="Industry..." />
-                </SelectTrigger>
-                <SelectContent className="max-h-[320px]">
-                  {tree?.categories.map(cat => {
-                    const subs = tree.industries[cat] || [];
-                    return (
-                      <SelectGroup key={cat}>
-                        <SelectLabel className="text-[10px] font-semibold text-amber-300/50 uppercase tracking-wider px-2 py-1">{cat}</SelectLabel>
-                        {subs.map(ind => (
-                          <SelectItem key={ind.key} value={ind.key} className="pl-4 text-xs">
-                            {ind.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
+            <Popover open={bloomIndustryOpen} onOpenChange={setBloomIndustryOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  role="combobox"
+                  aria-expanded={bloomIndustryOpen}
+                  aria-label="Select industry"
+                  data-testid="combobox-bloom-industry"
+                  className="w-44 h-7 px-2 text-xs text-left bg-transparent border border-amber-500/10 border-dashed rounded-md truncate flex items-center justify-between gap-1 transition-colors"
+                >
+                  <span className={bloomIndustryLabel ? "text-amber-200/50 truncate" : "text-amber-400/20 truncate"}>
+                    {bloomIndustryLabel || "Industry..."}
+                  </span>
+                  <ChevronDown className={`w-3 h-3 text-amber-400/25 shrink-0 transition-transform ${bloomIndustryOpen ? "rotate-180" : ""}`} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-0 border-amber-500/15" align="start">
+                <Command>
+                  <CommandInput placeholder="Search industries..." className="h-8 text-xs" data-testid="input-search-bloom-industry" />
+                  <CommandList className="max-h-[280px]">
+                    <CommandEmpty className="py-4 text-xs text-amber-400/30">No industries found</CommandEmpty>
+                    {tree?.categories.map(cat => {
+                      const subs = tree.industries[cat] || [];
+                      return (
+                        <CommandGroup key={cat} heading={cat}>
+                          {subs.map(ind => (
+                            <CommandItem
+                              key={ind.key}
+                              value={`${ind.label} ${cat}`}
+                              onSelect={() => {
+                                setBloomIndustry(ind.key);
+                                setBloomIndustryOpen(false);
+                              }}
+                              className="text-xs cursor-pointer"
+                              data-testid={`combobox-item-${ind.key}`}
+                            >
+                              {ind.label}
+                              {bloomIndustry === ind.key && <CheckCircle className="w-3 h-3 ml-auto text-amber-400/50" />}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      );
+                    })}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             <Input placeholder="ST" value={bloomState} onChange={e => setBloomState(e.target.value)}
               className="w-12 h-7 text-[11px] bg-transparent border-amber-500/8 border-dashed placeholder:text-amber-400/15 uppercase"
               maxLength={2} data-testid="input-bloom-state" />
