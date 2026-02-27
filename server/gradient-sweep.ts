@@ -1142,9 +1142,13 @@ export async function deployGradient(
   const sicSearchDepth = Math.min(params.count * 8, 1000);
   const sicMatches = await findCompaniesBySIC(industryConfig.codes, sicSearchDepth);
 
+  const activeCIKs = new Set(allCompanies.map(c => c.cik));
+  const activeMatches = sicMatches.filter(m => activeCIKs.has(m.cik));
+  console.log(`[MASS-BLOOM] Active-filer filter: ${sicMatches.length} → ${activeMatches.length} (dropped ${sicMatches.length - activeMatches.length} inactive)`);
+
   const candidateCIKs: { cik: string; ticker: string; title: string }[] = [];
 
-  for (const match of sicMatches) {
+  for (const match of activeMatches) {
     if (targetState && match.state?.toUpperCase() !== targetState) continue;
     const tickerMatch = allCompanies.find(c => c.cik === match.cik);
     candidateCIKs.push({
@@ -1156,7 +1160,7 @@ export async function deployGradient(
   }
 
   if (candidateCIKs.length < params.count * 3) {
-    for (const match of sicMatches) {
+    for (const match of activeMatches) {
       if (!candidateCIKs.find(c => c.cik === match.cik)) {
         const tickerMatch = allCompanies.find(c => c.cik === match.cik);
         candidateCIKs.push({

@@ -1178,8 +1178,12 @@ export async function registerRoutes(
       const allCompanies = await loadAllCompanies();
       console.log(`[BLOOM] Loaded ${allCompanies.length} ticker entries`);
 
+      const activeCIKs = new Set(allCompanies.map(c => c.cik));
+      const beforeFilter = allCandidates.length;
+      let candidates = allCandidates.filter(c => c.source !== "sic" || activeCIKs.has(c.cik));
+      console.log(`[BLOOM] Active-filer filter (SIC only): ${beforeFilter} → ${candidates.length} (dropped ${beforeFilter - candidates.length} inactive)`);
+
       const targetState = state?.toUpperCase();
-      let candidates = allCandidates;
       if (targetState) {
         candidates = candidates.filter(c => c.state?.toUpperCase() === targetState);
         console.log(`[BLOOM] After state filter (${targetState}): ${candidates.length} candidates`);
