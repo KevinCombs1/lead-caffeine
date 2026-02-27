@@ -1207,7 +1207,28 @@ function startScheduler() {
     }
   }, 5 * 60 * 1000);
 
-  console.log(`[SCHEDULER] Background fetch scheduler started (5-minute check interval)`);
+  let convergenceRunCount = 0;
+  setInterval(async () => {
+    convergenceRunCount++;
+    try {
+      const { detectConvergences } = await import("./deal-intelligence");
+      const count = await detectConvergences();
+      if (count > 0) console.log(`[SCHEDULER] Convergence detection: ${count} points identified`);
+    } catch (err: any) {
+      console.error(`[SCHEDULER] Convergence detection error:`, err.message);
+    }
+  }, 30 * 60 * 1000);
+
+  setTimeout(async () => {
+    try {
+      const { detectConvergences } = await import("./deal-intelligence");
+      await detectConvergences();
+    } catch (err: any) {
+      console.error(`[SCHEDULER] Initial convergence detection error:`, err.message);
+    }
+  }, 60 * 1000);
+
+  console.log(`[SCHEDULER] Background fetch scheduler started (5-minute check interval, 30-minute convergence detection)`);
 }
 
 export async function getEvents(filters?: {

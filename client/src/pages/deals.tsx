@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,8 @@ import {
   Search, RefreshCw, Activity,
   Zap, Globe, Building2, Shield, Landmark, Cpu, Banknote, Users,
   Radio, BarChart3, Layers, Filter, Clock, DollarSign,
-  Database, Target,
+  Database, Target, X, ChevronRight, Link2, ExternalLink,
+  TrendingUp, TrendingDown, AlertTriangle, Sparkles, Eye,
 } from "lucide-react";
 import { DEAL_TAB_CATEGORIES } from "@shared/schema";
 
@@ -103,15 +104,22 @@ function formatDate(d: string | null | undefined): string {
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function ProbabilityBar({ value }: { value: number }) {
+function ProbabilityBar({ value, large }: { value: number; large?: boolean }) {
   const pct = Math.round(value * 100);
-  const color = pct >= 80 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-rose-500";
+  const color = pct >= 70 ? "bg-emerald-500" : pct >= 40 ? "bg-amber-500" : "bg-rose-500";
+  const glowColor = pct >= 70 ? "rgba(16,185,129,0.4)" : pct >= 40 ? "rgba(245,158,11,0.4)" : "rgba(244,63,94,0.4)";
   return (
-    <div className="flex items-center gap-2" data-testid="probability-bar">
-      <div className="w-16 h-1.5 bg-white/5 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full qi-bar ${color}`} style={{ width: `${pct}%` }} />
+    <div className={`flex items-center gap-2 ${large ? "" : ""}`} data-testid="probability-bar">
+      <div className={`${large ? "w-24 h-2.5" : "w-16 h-1.5"} bg-white/5 rounded-full overflow-hidden`}>
+        <div
+          className={`h-full rounded-full qi-bar ${color}`}
+          style={{
+            width: `${pct}%`,
+            boxShadow: large ? `0 0 8px ${glowColor}` : "none",
+          }}
+        />
       </div>
-      <span className="text-[11px] text-muted-foreground font-mono">{pct}%</span>
+      <span className={`font-mono ${large ? "text-sm font-bold" : "text-[11px]"} text-muted-foreground`}>{pct}%</span>
     </div>
   );
 }
@@ -243,6 +251,455 @@ function StatsBar({ stats, isLoading }: {
   );
 }
 
+function TopOpportunities({ opportunities, onSelect }: {
+  opportunities: any[];
+  onSelect: (cp: any) => void;
+}) {
+  if (!opportunities || opportunities.length === 0) return null;
+
+  return (
+    <div className="qi-panel p-3 rounded-xl relative overflow-hidden" data-testid="top-opportunities">
+      <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
+        style={{ background: "radial-gradient(ellipse at 50% 50%, rgba(139,92,246,0.15) 0%, transparent 70%)" }}
+      />
+      <div className="relative z-10">
+        <div className="flex items-center gap-2 mb-2.5">
+          <Sparkles className="w-3.5 h-3.5 text-violet-400" style={{ animation: "breathe 3s ease-in-out infinite" }} />
+          <h3 className="text-xs font-semibold text-violet-300/80">TOP OPPORTUNITIES</h3>
+          <div className="ml-auto text-[10px] text-muted-foreground/40">{opportunities.length} detected</div>
+        </div>
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+          {opportunities.map((cp: any, i: number) => {
+            const pct = Math.round((cp.probability || 0) * 100);
+            const probColor = pct >= 70 ? "text-emerald-400 border-emerald-500/20" : pct >= 40 ? "text-amber-400 border-amber-500/20" : "text-rose-400 border-rose-500/20";
+            const probGlow = pct >= 70 ? "rgba(16,185,129,0.15)" : pct >= 40 ? "rgba(245,158,11,0.15)" : "rgba(244,63,94,0.15)";
+
+            return (
+              <button
+                key={cp.id}
+                onClick={() => onSelect(cp)}
+                className={`flex-shrink-0 qi-panel rounded-lg p-2.5 min-w-[200px] max-w-[240px] border border-white/5 hover:border-violet-500/20 transition-all duration-300 text-left group qi-stagger-${Math.min(i + 1, 4)}`}
+                style={{
+                  perspective: "800px",
+                  background: `linear-gradient(135deg, ${probGlow}, transparent)`,
+                }}
+                data-testid={`opportunity-card-${cp.id}`}
+              >
+                <div className="text-[11px] font-medium text-foreground/80 truncate mb-1.5 group-hover:text-foreground/95 transition-colors">
+                  {cp.title}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-xs font-bold font-mono ${probColor}`}>{pct}%</span>
+                  {cp.estimatedValue && (
+                    <span className="text-[10px] text-emerald-400/60">{formatValue(cp.estimatedValue)}</span>
+                  )}
+                  {cp.timeHorizon && (
+                    <span className="text-[10px] text-muted-foreground/40">{cp.timeHorizon}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 mt-1.5">
+                  {cp.sector && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-muted-foreground/50 truncate max-w-[100px]">{cp.sector}</span>
+                  )}
+                  {cp.state && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400/60 font-mono">{cp.state}</span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConvergenceCard({ cp, onExpand }: { cp: any; onExpand: (cp: any) => void }) {
+  const pct = Math.round((cp.probability || 0) * 100);
+  const statusColor = cp.status === "high_confidence" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+    : cp.status === "detected" ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
+    : "text-cyan-400 bg-cyan-500/10 border-cyan-500/20";
+  const meta = cp.metadata || {};
+  const currents = meta.currents || cp.currentsInvolved || [];
+
+  return (
+    <div
+      className="qi-panel rounded-lg p-4 relative overflow-hidden border border-white/5 hover:border-violet-500/15 transition-all duration-300 group"
+      style={{ perspective: "1000px" }}
+      data-testid={`convergence-card-${cp.id}`}
+    >
+      <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
+        style={{
+          background: pct >= 70
+            ? "radial-gradient(ellipse at 30% 30%, rgba(16,185,129,0.15) 0%, transparent 60%)"
+            : "radial-gradient(ellipse at 30% 30%, rgba(245,158,11,0.1) 0%, transparent 60%)",
+        }}
+      />
+      <div className="relative z-10">
+        <div className="flex items-start justify-between mb-2">
+          <div className="flex-1 min-w-0 mr-3">
+            <h4 className="text-sm font-semibold text-foreground/85 group-hover:text-foreground/95 transition-colors">{cp.title}</h4>
+            <Badge variant="outline" className={`text-[9px] mt-1 ${statusColor}`}>
+              {cp.status === "high_confidence" ? "High Confidence" : cp.status === "detected" ? "Detected" : "Emerging"}
+            </Badge>
+          </div>
+          <ProbabilityBar value={cp.probability || 0} large />
+        </div>
+
+        <p className="text-[11px] text-muted-foreground/60 leading-relaxed mb-3 line-clamp-3">{cp.description}</p>
+
+        <div className="flex items-center gap-3 flex-wrap mb-3">
+          {cp.estimatedValue && (
+            <div className="flex items-center gap-1">
+              <DollarSign className="w-3 h-3 text-emerald-400/60" />
+              <span className="text-xs font-bold text-emerald-400/80">{formatValue(cp.estimatedValue)}</span>
+            </div>
+          )}
+          {cp.timeHorizon && (
+            <div className="flex items-center gap-1">
+              <Clock className="w-3 h-3 text-muted-foreground/40" />
+              <span className="text-[11px] text-muted-foreground/60">{cp.timeHorizon}</span>
+            </div>
+          )}
+          {meta.sourceCount && (
+            <div className="flex items-center gap-1">
+              <Database className="w-3 h-3 text-muted-foreground/40" />
+              <span className="text-[11px] text-muted-foreground/60">{meta.sourceCount} sources</span>
+            </div>
+          )}
+          {meta.eventCount && (
+            <div className="flex items-center gap-1">
+              <Activity className="w-3 h-3 text-muted-foreground/40" />
+              <span className="text-[11px] text-muted-foreground/60">{meta.eventCount} events</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {currents.map((c: string) => (
+            <span key={c} className={`text-[9px] px-2 py-0.5 rounded-full border ${CURRENT_COLORS[c] || "text-muted-foreground border-white/10"}`}>
+              {CURRENT_LABELS[c] || c}
+            </span>
+          ))}
+          {cp.sector && (
+            <span className="text-[9px] px-2 py-0.5 rounded bg-white/5 text-muted-foreground/50">{cp.sector}</span>
+          )}
+          {cp.state && (
+            <span className="text-[9px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400/60 font-mono">{cp.state}</span>
+          )}
+          {cp.geography && !cp.state && (
+            <span className="text-[9px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400/60">{cp.geography}</span>
+          )}
+          <button
+            onClick={() => onExpand(cp)}
+            className="ml-auto text-[10px] text-violet-400/60 hover:text-violet-400 transition-colors flex items-center gap-1"
+            data-testid={`button-expand-convergence-${cp.id}`}
+          >
+            <Eye className="w-3 h-3" />
+            Details
+          </button>
+        </div>
+
+        {meta.directions && meta.directions.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-white/5">
+            <div className="text-[10px] text-muted-foreground/40 mb-1">Trend signals:</div>
+            {meta.directions.slice(0, 2).map((d: string, i: number) => (
+              <div key={i} className="text-[10px] text-cyan-400/50 flex items-center gap-1">
+                {d.includes("up") || d.includes("increase") ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                {d}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConvergenceDetailPanel({ convergenceId, onClose }: { convergenceId: string; onClose: () => void }) {
+  const detailQuery = useQuery<any>({
+    queryKey: ["/api/deals/convergence", convergenceId],
+    enabled: !!convergenceId,
+  });
+
+  const data = detailQuery.data;
+  const cp = data?.convergence;
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" data-testid="convergence-detail-panel">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-background border-l border-white/10 overflow-y-auto" style={{ animation: "fadeSlideIn 0.3s ease-out" }}>
+        <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-white/5 bg-background/95 backdrop-blur-sm">
+          <h3 className="text-sm font-semibold text-violet-300/90">Convergence Details</h3>
+          <button onClick={onClose} className="p-1 hover:bg-white/5 rounded" data-testid="button-close-convergence-detail">
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        {detailQuery.isLoading ? (
+          <div className="p-4 space-y-3">
+            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
+          </div>
+        ) : cp ? (
+          <div className="p-4 space-y-4">
+            <div>
+              <h4 className="text-base font-bold text-foreground/90 mb-1">{cp.title}</h4>
+              <ProbabilityBar value={cp.probability || 0} large />
+              <p className="text-xs text-muted-foreground/60 leading-relaxed mt-2">{cp.description}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {cp.estimatedValue && (
+                <div className="qi-panel p-2 rounded-lg">
+                  <div className="text-[10px] text-muted-foreground/40">Est. Value</div>
+                  <div className="text-sm font-bold text-emerald-400/80">{formatValue(cp.estimatedValue)}</div>
+                </div>
+              )}
+              {cp.timeHorizon && (
+                <div className="qi-panel p-2 rounded-lg">
+                  <div className="text-[10px] text-muted-foreground/40">Time Horizon</div>
+                  <div className="text-sm font-bold text-amber-400/80">{cp.timeHorizon}</div>
+                </div>
+              )}
+              {cp.sector && (
+                <div className="qi-panel p-2 rounded-lg">
+                  <div className="text-[10px] text-muted-foreground/40">Sector</div>
+                  <div className="text-sm font-bold text-foreground/70">{cp.sector}</div>
+                </div>
+              )}
+              {cp.geography && (
+                <div className="qi-panel p-2 rounded-lg">
+                  <div className="text-[10px] text-muted-foreground/40">Geography</div>
+                  <div className="text-sm font-bold text-foreground/70">{cp.geography}</div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-1.5 flex-wrap">
+              {(cp.currentsInvolved || []).map((c: string) => (
+                <span key={c} className={`text-[10px] px-2 py-1 rounded-full border ${CURRENT_COLORS[c] || ""}`}>
+                  {CURRENT_LABELS[c] || c}
+                </span>
+              ))}
+            </div>
+
+            {data.events && data.events.length > 0 && (
+              <div>
+                <h5 className="text-xs font-semibold text-amber-300/70 mb-2 flex items-center gap-1.5">
+                  <Activity className="w-3 h-3" />
+                  Involved Events ({data.events.length})
+                </h5>
+                <div className="space-y-1 max-h-[200px] overflow-y-auto scrollbar-hide">
+                  {data.events.map((evt: any) => (
+                    <div key={evt.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02] text-[11px]">
+                      <div className={`w-1 h-5 rounded-full ${evt.current === "transactions" ? "bg-amber-500/60" : evt.current === "trends" ? "bg-cyan-500/60" : "bg-violet-500/60"}`} />
+                      <span className="flex-1 truncate text-foreground/70">{evt.title}</span>
+                      {evt.value && <span className="text-emerald-400/60 font-mono">{formatValue(evt.value)}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {data.trends && data.trends.length > 0 && (
+              <div>
+                <h5 className="text-xs font-semibold text-cyan-300/70 mb-2 flex items-center gap-1.5">
+                  <TrendingUp className="w-3 h-3" />
+                  Related Trends ({data.trends.length})
+                </h5>
+                <div className="space-y-1 max-h-[150px] overflow-y-auto scrollbar-hide">
+                  {data.trends.map((t: any) => (
+                    <div key={t.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02] text-[11px]">
+                      <div className="w-1 h-5 rounded-full bg-cyan-500/60" />
+                      <span className="flex-1 truncate text-foreground/70">{t.metric}</span>
+                      <span className={`font-mono ${t.direction === "up" ? "text-emerald-400/60" : "text-rose-400/60"}`}>
+                        {t.direction === "up" ? "+" : ""}{t.value?.toFixed?.(1)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {data.timelines && data.timelines.length > 0 && (
+              <div>
+                <h5 className="text-xs font-semibold text-violet-300/70 mb-2 flex items-center gap-1.5">
+                  <Clock className="w-3 h-3" />
+                  Timeline Events ({data.timelines.length})
+                </h5>
+                <div className="space-y-1 max-h-[150px] overflow-y-auto scrollbar-hide">
+                  {data.timelines.map((tl: any) => (
+                    <div key={tl.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02] text-[11px]">
+                      <div className="w-1 h-5 rounded-full bg-violet-500/60" />
+                      <span className="flex-1 truncate text-foreground/70">{tl.title}</span>
+                      <span className="text-muted-foreground/40">{formatDate(tl.expectedDate)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-muted-foreground/40 text-sm">Convergence point not found</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EntityPanel({ entityId, onClose }: { entityId: string; onClose: () => void }) {
+  const entityQuery = useQuery<any>({
+    queryKey: ["/api/deals/entities", entityId],
+    enabled: !!entityId,
+  });
+
+  const data = entityQuery.data;
+  const entity = data?.entity;
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" data-testid="entity-panel">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-background border-l border-white/10 overflow-y-auto" style={{ animation: "fadeSlideIn 0.3s ease-out" }}>
+        <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-white/5 bg-background/95 backdrop-blur-sm">
+          <h3 className="text-sm font-semibold text-amber-300/90">Entity Intelligence</h3>
+          <button onClick={onClose} className="p-1 hover:bg-white/5 rounded" data-testid="button-close-entity-panel">
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        {entityQuery.isLoading ? (
+          <div className="p-4 space-y-3">
+            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
+          </div>
+        ) : entity ? (
+          <div className="p-4 space-y-4">
+            <div>
+              <h4 className="text-base font-bold text-foreground/90">{entity.name}</h4>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <Badge variant="outline" className="text-[10px] border-amber-500/20 text-amber-300/70">{entity.entityType}</Badge>
+                {entity.sector && <Badge variant="outline" className="text-[10px] border-cyan-500/20 text-cyan-300/70">{entity.sector}</Badge>}
+                {entity.state && <Badge variant="outline" className="text-[10px] border-white/10 text-muted-foreground/60 font-mono">{entity.state}</Badge>}
+              </div>
+            </div>
+
+            {data.sourceNames && data.sourceNames.length > 0 && (
+              <div className="qi-panel p-2 rounded-lg">
+                <div className="text-[10px] text-muted-foreground/40 mb-1">Cross-Source Corroboration</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-violet-400/80">{data.sourceNames.length} sources</span>
+                  <span className="text-[10px] text-muted-foreground/40">|</span>
+                  <span className="text-[10px] text-muted-foreground/50">{data.sourceNames.join(", ")}</span>
+                </div>
+              </div>
+            )}
+
+            {data.events && data.events.length > 0 && (
+              <div>
+                <h5 className="text-xs font-semibold text-amber-300/70 mb-2">All Events ({data.events.length})</h5>
+                <div className="space-y-1 max-h-[250px] overflow-y-auto scrollbar-hide">
+                  {data.events.map((evt: any) => (
+                    <div key={evt.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02] text-[11px]">
+                      <div className={`w-1 h-5 rounded-full ${evt.current === "transactions" ? "bg-amber-500/60" : evt.current === "trends" ? "bg-cyan-500/60" : "bg-violet-500/60"}`} />
+                      <span className="flex-1 truncate text-foreground/70">{evt.title}</span>
+                      {evt.value && <span className="text-emerald-400/60 font-mono">{formatValue(evt.value)}</span>}
+                      <span className="text-muted-foreground/30">{formatDate(evt.eventDate)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {data.relatedTrends && data.relatedTrends.length > 0 && (
+              <div>
+                <h5 className="text-xs font-semibold text-cyan-300/70 mb-2">Sector Trends ({data.relatedTrends.length})</h5>
+                <div className="space-y-1 max-h-[150px] overflow-y-auto scrollbar-hide">
+                  {data.relatedTrends.map((t: any) => (
+                    <div key={t.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02] text-[11px]">
+                      <div className="w-1 h-5 rounded-full bg-cyan-500/60" />
+                      <span className="flex-1 truncate text-foreground/70">{t.metric}</span>
+                      <span className="text-muted-foreground/40">{t.direction}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {data.relatedTimelines && data.relatedTimelines.length > 0 && (
+              <div>
+                <h5 className="text-xs font-semibold text-violet-300/70 mb-2">Upcoming Timelines ({data.relatedTimelines.length})</h5>
+                <div className="space-y-1 max-h-[150px] overflow-y-auto scrollbar-hide">
+                  {data.relatedTimelines.map((tl: any) => (
+                    <div key={tl.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/[0.02] text-[11px]">
+                      <div className="w-1 h-5 rounded-full bg-violet-500/60" />
+                      <span className="flex-1 truncate text-foreground/70">{tl.title}</span>
+                      <span className="text-muted-foreground/40">{formatDate(tl.expectedDate)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-muted-foreground/40 text-sm">Entity not found</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConvergenceRadarContent({ convergences, isLoading, onExpandConvergence, activeSub }: {
+  convergences: any[];
+  isLoading: boolean;
+  onExpandConvergence: (cp: any) => void;
+  activeSub: string | null;
+}) {
+  const filtered = useMemo(() => {
+    if (!convergences) return [];
+    if (!activeSub) return convergences;
+    if (activeSub === "Cross-Sector Patterns") {
+      return convergences.filter((cp: any) => (cp.currentsInvolved?.length || 0) >= 2 || (cp.metadata?.sourceCount || 0) >= 3);
+    }
+    if (activeSub === "Prediction Models") {
+      return convergences.filter((cp: any) => cp.probability >= 0.4);
+    }
+    if (activeSub === "Timeline Projections") {
+      return convergences.filter((cp: any) => (cp.involvedTimelineIds?.length || 0) > 0 || cp.timeHorizon);
+    }
+    return convergences;
+  }, [convergences, activeSub]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-32 rounded-lg" />)}
+      </div>
+    );
+  }
+
+  if (filtered.length === 0) {
+    return (
+      <div className="text-center py-12 relative" data-testid="convergence-empty">
+        <div className="w-24 h-24 mx-auto mb-4 opacity-[0.15] rounded-full"
+          style={{
+            background: "radial-gradient(circle, rgba(139,92,246,0.3) 0%, rgba(245,158,11,0.1) 40%, transparent 70%)",
+            animation: "coreGlow 4s ease-in-out infinite",
+          }}
+        />
+        <p className="text-sm text-muted-foreground/40">No convergence points detected yet</p>
+        <p className="text-[11px] text-muted-foreground/30 mt-1">Compile data first, then convergences auto-detect every 30 minutes</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="convergence-list">
+      {filtered.map((cp: any) => (
+        <ConvergenceCard key={cp.id} cp={cp} onExpand={onExpandConvergence} />
+      ))}
+    </div>
+  );
+}
+
 const TABS = Object.values(DEAL_TAB_CATEGORIES);
 
 export default function DealsPage() {
@@ -252,18 +709,26 @@ export default function DealsPage() {
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentFilter, setCurrentFilter] = useState<string | null>(null);
+  const [selectedConvergenceId, setSelectedConvergenceId] = useState<string | null>(null);
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
 
   const tabCategory = TABS[activeTab]?.name;
   const subCategories = TABS[activeTab]?.subs || [];
-  const activeShapeKey = TAB_SHAPES[tabCategory] || "orthoplex";
+  const isConvergenceTab = tabCategory === "Convergence Radar";
 
   const statsQuery = useQuery<any>({ queryKey: ["/api/deals/stats"] });
   const heatmapQuery = useQuery<any[]>({ queryKey: ["/api/deals/heatmap"] });
   const sourcesQuery = useQuery<any[]>({ queryKey: ["/api/deals/sources"] });
+  const topOppsQuery = useQuery<any[]>({ queryKey: ["/api/deals/top-opportunities"] });
+  const convergenceQuery = useQuery<any[]>({
+    queryKey: ["/api/deals/convergence"],
+    enabled: isConvergenceTab,
+  });
 
   const queryString = `?tabCategory=${encodeURIComponent(tabCategory)}${activeSub ? `&subCategory=${encodeURIComponent(activeSub)}` : ""}${selectedState ? `&state=${selectedState}` : ""}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""}${currentFilter ? `&current=${currentFilter}` : ""}&limit=50`;
   const eventsQuery = useQuery<{ events: any[]; total: number }>({
     queryKey: [`/api/deals/events${queryString}`],
+    enabled: !isConvergenceTab,
   });
 
   const fetchAllMutation = useMutation({
@@ -289,6 +754,23 @@ export default function DealsPage() {
     },
   });
 
+  const detectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/deals/detect-convergences");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Convergence Detection Complete",
+        description: `Detected ${data.detected} convergence points.`,
+      });
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/deals") });
+    },
+    onError: (err: any) => {
+      toast({ title: "Detection Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const fetchSourceMutation = useMutation({
     mutationFn: async (slug: string) => {
       const res = await apiRequest("POST", `/api/deals/fetch/${slug}`);
@@ -308,6 +790,16 @@ export default function DealsPage() {
 
   const events = eventsQuery.data?.events || [];
   const totalEvents = eventsQuery.data?.total || 0;
+  const convergenceCount = statsQuery.data?.convergenceCount || 0;
+
+  const handleOpportunitySelect = useCallback((cp: any) => {
+    const convergenceTabIndex = TABS.findIndex(t => t.name === "Convergence Radar");
+    if (convergenceTabIndex >= 0) {
+      setActiveTab(convergenceTabIndex);
+      setActiveSub(null);
+    }
+    setSelectedConvergenceId(cp.id);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background relative" data-testid="deals-page">
@@ -338,6 +830,21 @@ export default function DealsPage() {
             <Button
               variant="outline"
               size="sm"
+              onClick={() => detectMutation.mutate()}
+              disabled={detectMutation.isPending}
+              className="h-8 text-[11px] border-violet-500/20 text-violet-300/70 hover:bg-violet-500/10 qi-button transition-all"
+              data-testid="button-detect-convergences"
+            >
+              {detectMutation.isPending ? (
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Target className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              Detect
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => fetchAllMutation.mutate()}
               disabled={fetchAllMutation.isPending}
               className="h-8 text-[11px] border-amber-500/20 text-amber-300/70 hover:bg-amber-500/10 qi-button transition-all"
@@ -348,10 +855,15 @@ export default function DealsPage() {
               ) : (
                 <Zap className="w-3.5 h-3.5 mr-1.5" />
               )}
-              Compile All Data
+              Compile All
             </Button>
           </div>
         </div>
+
+        <TopOpportunities
+          opportunities={topOppsQuery.data || []}
+          onSelect={handleOpportunitySelect}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2">
@@ -427,8 +939,11 @@ export default function DealsPage() {
           <div className="flex items-center gap-0.5 px-2 pt-2 overflow-x-auto scrollbar-hide border-b border-white/5 relative z-10">
             {TABS.map((tab, i) => {
               const Icon = TAB_ICONS[tab.name] || Activity;
-              const count = statsQuery.data?.eventsByTab?.[tab.name] || 0;
+              const count = tab.name === "Convergence Radar"
+                ? convergenceCount
+                : (statsQuery.data?.eventsByTab?.[tab.name] || 0);
               const isActive = activeTab === i;
+              const isRadar = tab.name === "Convergence Radar";
               return (
                 <button
                   key={tab.name}
@@ -447,11 +962,15 @@ export default function DealsPage() {
                   }}
                   data-testid={`tab-${tab.name.toLowerCase().replace(/\s+/g, "-")}`}
                 >
-                  <Icon className="w-3 h-3" />
+                  <Icon className={`w-3 h-3 ${isRadar && convergenceCount > 0 && !isActive ? "text-violet-400" : ""}`}
+                    style={isRadar && convergenceCount > 0 && !isActive ? { animation: "breathe 3s ease-in-out infinite" } : {}}
+                  />
                   {tab.name}
                   {count > 0 && (
                     <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] ${
-                      isActive ? "bg-amber-500/20 text-amber-300" : "bg-white/5 text-muted-foreground/40"
+                      isActive ? "bg-amber-500/20 text-amber-300"
+                      : isRadar ? "bg-violet-500/20 text-violet-300"
+                      : "bg-white/5 text-muted-foreground/40"
                     }`}>
                       {count}
                     </span>
@@ -489,11 +1008,21 @@ export default function DealsPage() {
                 </Badge>
               )}
               <div className="ml-auto text-[11px] text-muted-foreground/40">
-                {totalEvents} events
+                {isConvergenceTab
+                  ? `${convergenceQuery.data?.length || 0} convergences`
+                  : `${totalEvents} events`
+                }
               </div>
             </div>
 
-            {eventsQuery.isLoading ? (
+            {isConvergenceTab ? (
+              <ConvergenceRadarContent
+                convergences={convergenceQuery.data || []}
+                isLoading={convergenceQuery.isLoading}
+                onExpandConvergence={(cp) => setSelectedConvergenceId(cp.id)}
+                activeSub={activeSub}
+              />
+            ) : eventsQuery.isLoading ? (
               <div className="space-y-2" data-testid="events-loading">
                 {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
               </div>
@@ -506,7 +1035,7 @@ export default function DealsPage() {
                   }}
                 />
                 <p className="text-sm text-muted-foreground/40">No events compiled yet</p>
-                <p className="text-[11px] text-muted-foreground/30 mt-1">Click "Compile All Data" to fetch from all sources</p>
+                <p className="text-[11px] text-muted-foreground/30 mt-1">Click "Compile All" to fetch from all sources</p>
               </div>
             ) : (
               <div className="space-y-1" data-testid="events-list">
@@ -534,6 +1063,16 @@ export default function DealsPage() {
                         <span className="text-[10px] text-muted-foreground/40">{evt.eventType}</span>
                         {evt.subCategory && (
                           <span className="text-[10px] text-cyan-400/40">{evt.subCategory}</span>
+                        )}
+                        {evt.entityId && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedEntityId(evt.entityId); }}
+                            className="text-[10px] text-violet-400/50 hover:text-violet-400 flex items-center gap-0.5 transition-colors"
+                            data-testid={`button-entity-${evt.entityId}`}
+                          >
+                            <Building2 className="w-2.5 h-2.5" />
+                            Entity
+                          </button>
                         )}
                       </div>
                     </div>
@@ -565,6 +1104,20 @@ export default function DealsPage() {
           </div>
         </div>
       </div>
+
+      {selectedConvergenceId && (
+        <ConvergenceDetailPanel
+          convergenceId={selectedConvergenceId}
+          onClose={() => setSelectedConvergenceId(null)}
+        />
+      )}
+
+      {selectedEntityId && (
+        <EntityPanel
+          entityId={selectedEntityId}
+          onClose={() => setSelectedEntityId(null)}
+        />
+      )}
     </div>
   );
 }

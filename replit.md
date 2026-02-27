@@ -32,8 +32,16 @@ The application uses a dark mode default with a cyan "command center" aesthetic.
     - Data quality: MD5 dedup hash, in-memory dedup set (50K cap), source health monitoring, entity cache eviction (5K cap)
     - Deepened: Treasury (3→6), FDIC (2→3), OpenFEMA (2→4), openFDA (4→7), NHTSA (3→5), World Bank (4→10), BLS (4→12), Census (2→3), SEC EDGAR (3→5 with 13F + Form 4)
     - New sources: USGS Earthquakes (2 endpoints), CoinGecko Crypto (top 20 coins)
-  - **18 total sources**, **~200+ data streams** across config-driven + legacy + custom fetchers
+  - **17 total sources**, **~200+ data streams** across config-driven + legacy + custom fetchers
   - Background scheduler: 5-min check intervals, per-source intervals (CoinGecko 30min, Exchange 24hr, others 6-24hr)
+  - **Deal Identifier Intelligence Layer** (convergence detection engine):
+    - `server/deal-intelligence.ts` — convergence detection, probability scoring, insight generation, entity intelligence
+    - `detectConvergences()` — groups events/trends/timelines by state+sector, scores probability based on current diversity, source count, event count, value magnitude, recency, and cross-current reinforcement
+    - **Concurrency-safe**: Mutex lock prevents overlapping runs; upsert logic wrapped in DB transaction preserves stable convergence point IDs across detection cycles (no delete-all + re-insert)
+    - Runs automatically every 30 minutes + 60s after startup
+    - Manual trigger: POST `/api/deals/detect-convergences`
+    - API routes: GET `/api/deals/top-opportunities`, GET `/api/deals/convergence/:id`, GET `/api/deals/entities`, GET `/api/deals/entities/:id`
+    - Frontend: Top Opportunities bar, Convergence Radar tab with expandable detail panel, Entity Intelligence slide-out panel, enhanced event rows with entity links
 
 ## External Dependencies
 - **PostgreSQL**: Primary database for data storage.

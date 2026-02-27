@@ -1462,5 +1462,59 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/deals/top-opportunities", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getTopOpportunities } = await import("./deal-intelligence");
+      const opportunities = await getTopOpportunities(5);
+      res.json(opportunities);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/deals/convergence/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { getConvergenceWithDetails } = await import("./deal-intelligence");
+      const details = await getConvergenceWithDetails(req.params.id);
+      if (!details) return res.status(404).json({ error: "Convergence point not found" });
+      res.json(details);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/deals/detect-convergences", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { detectConvergences } = await import("./deal-intelligence");
+      const count = await detectConvergences();
+      res.json({ detected: count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/deals/entities", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { listEntities } = await import("./deal-intelligence");
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const result = await listEntities(limit, offset);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/deals/entities/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { getEntityWithDetails } = await import("./deal-intelligence");
+      const details = await getEntityWithDetails(req.params.id);
+      if (!details) return res.status(404).json({ error: "Entity not found" });
+      res.json(details);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return httpServer;
 }
