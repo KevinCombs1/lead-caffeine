@@ -131,9 +131,11 @@ function HeatMap({ stateData, selectedState, onSelectState }: {
 
   return (
     <div className="qi-panel p-4 rounded-xl relative overflow-hidden" style={{ perspective: "1200px" }} data-testid="heatmap-container">
-      <div className="absolute inset-0 pointer-events-none opacity-[0.07]">
-        <Shape4DCanvas shapeKey="tesseract" autoRotate={true} scale={2.5} opacity={0.4} className="w-full h-full" showControls={false} />
-      </div>
+      <div className="absolute inset-0 pointer-events-none opacity-[0.04]"
+        style={{
+          background: "radial-gradient(ellipse at 30% 40%, rgba(245,158,11,0.08) 0%, transparent 60%), radial-gradient(ellipse at 70% 60%, rgba(6,182,212,0.06) 0%, transparent 50%)",
+        }}
+      />
 
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-3">
@@ -312,7 +314,7 @@ export default function DealsPage() {
       <div className="relative z-10 p-4 space-y-4">
         <div className="flex items-center justify-between relative">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 relative" style={{ perspective: "600px" }}>
+            <div className="w-12 h-12 relative" style={{ perspective: "600px", animation: "coreGlow 4s ease-in-out infinite" }}>
               <Shape4DCanvas shapeKey="orthoplex" autoRotate={true} scale={1.2} opacity={0.7} className="w-full h-full" showControls={false} />
             </div>
             <div>
@@ -338,8 +340,7 @@ export default function DealsPage() {
               size="sm"
               onClick={() => fetchAllMutation.mutate()}
               disabled={fetchAllMutation.isPending}
-              className="h-8 text-[11px] border-amber-500/20 text-amber-300/70 hover:bg-amber-500/10 hover:shadow-[0_0_12px_rgba(245,158,11,0.15)] transition-all"
-              style={{ perspective: "800px" }}
+              className="h-8 text-[11px] border-amber-500/20 text-amber-300/70 hover:bg-amber-500/10 qi-button transition-all"
               data-testid="button-compile-all"
             >
               {fetchAllMutation.isPending ? (
@@ -403,7 +404,7 @@ export default function DealsPage() {
                     <button
                       onClick={() => fetchSourceMutation.mutate(src.slug)}
                       disabled={fetchSourceMutation.isPending}
-                      className="text-[10px] text-amber-400/50 hover:text-amber-400 hover:shadow-[0_0_6px_rgba(245,158,11,0.2)] transition-all px-1.5 py-0.5 rounded"
+                      className="text-[10px] text-amber-400/50 hover:text-amber-400 qi-button transition-all px-1.5 py-0.5 rounded"
                       data-testid={`button-fetch-${src.slug}`}
                     >
                       Fetch
@@ -416,9 +417,12 @@ export default function DealsPage() {
         </div>
 
         <div className="qi-panel rounded-xl overflow-hidden relative" data-testid="tabs-container" style={{ perspective: "1200px" }}>
-          <div className="absolute top-2 right-2 w-16 h-16 pointer-events-none opacity-[0.08] z-0 transition-all duration-500">
-            <Shape4DCanvas key={activeShapeKey} shapeKey={activeShapeKey} autoRotate={true} scale={1} opacity={0.5} className="w-full h-full" showControls={false} />
-          </div>
+          <div className="absolute top-2 right-2 w-16 h-16 pointer-events-none opacity-[0.06] z-0 transition-all duration-500 rounded-full"
+            style={{
+              background: "radial-gradient(circle, rgba(245,158,11,0.3) 0%, transparent 70%)",
+              animation: "coreGlow 5s ease-in-out infinite",
+            }}
+          />
 
           <div className="flex items-center gap-0.5 px-2 pt-2 overflow-x-auto scrollbar-hide border-b border-white/5 relative z-10">
             {TABS.map((tab, i) => {
@@ -429,9 +433,9 @@ export default function DealsPage() {
                 <button
                   key={tab.name}
                   onClick={() => { setActiveTab(i); setActiveSub(null); }}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-[11px] font-medium whitespace-nowrap transition-all duration-300 ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-[11px] font-medium whitespace-nowrap transition-all duration-300 qi-button ${
                     isActive
-                      ? "text-amber-300/90 bg-amber-500/8 border-b-2 border-amber-500/40"
+                      ? "text-amber-300/90 bg-amber-500/8 border-b-2 border-amber-500/40 qi-glow-click"
                       : "text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-white/3"
                   }`}
                   style={{
@@ -457,7 +461,7 @@ export default function DealsPage() {
             })}
           </div>
 
-          <div className="p-3 relative z-10">
+          <div key={tabCategory} className="p-3 relative z-10 qi-shift">
             <div className="flex items-center gap-2 mb-3">
               <Filter className="w-3 h-3 text-muted-foreground/40" />
               {subCategories.map((sub) => (
@@ -495,9 +499,12 @@ export default function DealsPage() {
               </div>
             ) : events.length === 0 ? (
               <div className="text-center py-12 relative" data-testid="events-empty">
-                <div className="w-24 h-24 mx-auto mb-4 opacity-[0.15]">
-                  <Shape4DCanvas shapeKey="hypercone" autoRotate={true} scale={1.5} opacity={0.5} className="w-full h-full" showControls={false} />
-                </div>
+                <div className="w-24 h-24 mx-auto mb-4 opacity-[0.15] rounded-full"
+                  style={{
+                    background: "radial-gradient(circle, rgba(139,92,246,0.3) 0%, rgba(245,158,11,0.1) 40%, transparent 70%)",
+                    animation: "coreGlow 4s ease-in-out infinite",
+                  }}
+                />
                 <p className="text-sm text-muted-foreground/40">No events compiled yet</p>
                 <p className="text-[11px] text-muted-foreground/30 mt-1">Click "Compile All Data" to fetch from all sources</p>
               </div>

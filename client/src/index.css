@@ -287,3 +287,122 @@
     inset: -1px;
   }
 }
+
+@keyframes tesseractPulse {
+  0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 rgba(245, 158, 11, 0); }
+  50% { transform: scale(1.02); opacity: 0.95; box-shadow: 0 0 18px rgba(245, 158, 11, 0.08); }
+}
+
+@keyframes dimensionShift {
+  0%, 100% { transform: perspective(800px) rotateX(0deg); }
+  40% { transform: perspective(800px) rotateX(2deg); }
+}
+
+@keyframes glowRipple {
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.25); }
+  50% { box-shadow: 0 0 8px 2px rgba(245, 158, 11, 0.15); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes coreGlow {
+  0%, 100% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.04), inset 0 0 20px rgba(245, 158, 11, 0.02); }
+  50% { box-shadow: 0 0 35px rgba(245, 158, 11, 0.08), inset 0 0 30px rgba(245, 158, 11, 0.04); }
+}
+
+@keyframes barFill {
+  from { width: 0%; opacity: 0.5; }
+  to { opacity: 1; }
+}
+
+@keyframes breathe {
+  0%, 100% { border-color: rgba(245, 158, 11, 0.06); }
+  50% { border-color: rgba(245, 158, 11, 0.12); }
+}
+
+@layer utilities {
+  .qi-panel {
+    position: relative;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.03) 0%,
+      rgba(255, 255, 255, 0.01) 100%
+    );
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow:
+      0 2px 16px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    transform: translateZ(0);
+    will-change: transform, box-shadow;
+    animation: breathe 6s ease-in-out infinite;
+  }
+
+  .qi-panel:hover {
+    border-color: rgba(245, 158, 11, 0.12);
+    box-shadow:
+      0 4px 24px rgba(0, 0, 0, 0.25),
+      0 0 12px rgba(245, 158, 11, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .qi-button {
+    position: relative;
+    perspective: 800px;
+    transform: translateZ(0);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform, box-shadow;
+  }
+
+  .qi-button:hover {
+    transform: perspective(800px) rotateX(1.5deg) rotateY(-0.5deg) scale(1.02);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.1);
+  }
+
+  .qi-button:active {
+    transform: perspective(800px) rotateX(0deg) scale(0.98);
+    box-shadow: 0 1px 4px rgba(245, 158, 11, 0.06);
+  }
+
+  .qi-bar {
+    animation: barFill 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.12) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+  }
+
+  .qi-active {
+    animation: tesseractPulse 3s ease-in-out infinite;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.1);
+  }
+
+  .qi-glow-click {
+    animation: glowRipple 0.5s ease-out;
+  }
+
+  .qi-shift {
+    animation: dimensionShift 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .qi-stagger-1 { animation: fadeSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) 0.05s both; }
+  .qi-stagger-2 { animation: fadeSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) 0.1s both; }
+  .qi-stagger-3 { animation: fadeSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) 0.15s both; }
+  .qi-stagger-4 { animation: fadeSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) 0.2s both; }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
