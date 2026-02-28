@@ -1,10 +1,10 @@
 import { useRef } from "react";
 import { motion } from "framer-motion";
 import {
-  X, GripHorizontal, Flower2, Radar, Search, Send, BarChart3, Radio,
-  Sun, Zap, Rocket, PauseCircle, Copy, Pencil, ArrowRight,
+  X, GripHorizontal, Flower2, Send, ArrowRight,
+  Sun, Zap, Rocket, PauseCircle, Copy, Pencil,
   ShieldCheck, User, Mail, Phone, Building2, Briefcase,
-  TreePine, Landmark, Sparkles, TrendingUp, DollarSign, XCircle, ChevronDown,
+  TreePine, Landmark, Search, Leaf,
 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
@@ -57,200 +57,67 @@ export function HowToGuide({ onClose }: HowToGuideProps) {
 
         <div className="px-4 py-3 border-b border-amber-500/8 shrink-0">
           <p className="text-[11px] text-amber-300/40 leading-relaxed">
-            The Light Engine follows a natural workflow. You can jump to any step, but the recommended path is:
+            The Light Engine has two jobs: find companies, then reach out to them.
           </p>
-          <div className="flex items-center gap-1.5 mt-2 text-[10px] text-amber-400/30 font-medium">
-            <span className="text-amber-300/50">Bloom</span> <ArrowRight className="w-2.5 h-2.5" />
-            <span className="text-amber-300/50">X-Ray</span> <ArrowRight className="w-2.5 h-2.5" />
-            <span className="text-amber-300/50">Forms</span> <ArrowRight className="w-2.5 h-2.5" />
-            <span className="text-amber-300/50">Outreach</span> <ArrowRight className="w-2.5 h-2.5" />
-            <span className="text-amber-300/50">Intel</span> <ArrowRight className="w-2.5 h-2.5" />
-            <span className="text-amber-300/50">Manage</span>
+          <div className="flex items-center gap-2 mt-2 text-[10px] font-medium">
+            <span className="px-2 py-0.5 rounded-full bg-cyan-400/10 text-cyan-300/60 border border-cyan-400/10">Discovery</span>
+            <ArrowRight className="w-3 h-3 text-amber-400/20" />
+            <span className="px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-300/60 border border-amber-400/10">Bloom</span>
           </div>
+          <p className="text-[10px] text-amber-400/20 mt-1.5">All scanning, X-Ray, credit analysis, gap matrix, and intelligence enrichment are Phase 2: Credit Scanner.</p>
         </div>
 
         <div className="overflow-y-auto flex-1 px-4 py-1 scrollbar-thin">
           <Accordion type="multiple" className="w-full">
 
-            <AccordionItem value="step1" className="border-amber-500/8">
+            <div className="pt-3 pb-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-400/40">Part 1 — Company Discovery</p>
+            </div>
+
+            <AccordionItem value="discovery-search" className="border-amber-500/8">
               <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
                 <span className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-amber-400/10 text-amber-300/60 text-[10px] font-bold flex items-center justify-center shrink-0">1</span>
-                  <Flower2 className="w-3.5 h-3.5 text-amber-400/50" /> Bloom — Find Companies
+                  <Flower2 className="w-3.5 h-3.5 text-cyan-400/50" /> Search Controls
                 </span>
               </AccordionTrigger>
               <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
-                <p>Bloom discovers companies from SEC EDGAR that may have unclaimed tax credits. Configure your search, then hit Bloom.</p>
+                <p>Configure how you want to find companies, then hit the discovery button to pull them from SEC EDGAR.</p>
 
                 <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Controls:</p>
+                  <p className="text-amber-200/50 font-medium">Inputs:</p>
                   <p><strong className="text-amber-200/50">Industry dropdown</strong> — Searchable combobox with 475 sub-industries across 27 categories. Type to filter instantly.</p>
                   <p><strong className="text-amber-200/50">ST input</strong> — Optional 2-letter state code (e.g., CA, TX) to narrow geographically.</p>
-                  <p><strong className="text-amber-200/50">Count input</strong> — Number of new companies to find. Default 10, max 500.</p>
+                  <p><strong className="text-amber-200/50">Count input</strong> — How many companies to find. Default 10. Quick buttons for 100, 250, 500.</p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Source toggles:</p>
-                  <p><Btn icon={<span className="text-[9px]">SIC</span>} label="SIC Industry" /> Searches SEC by industry classification codes. Results are pre-filtered against ~13k active public filers.</p>
+                  <p className="text-amber-200/50 font-medium">Source toggles (pick one or more):</p>
+                  <p><Btn icon={<span className="text-[9px]">SIC</span>} label="SIC Industry" /> Searches by industry classification codes. Pre-filtered against ~13k active public filers to avoid dead companies.</p>
                   <p><Btn icon={<span className="text-[9px]">D</span>} label="Form D" /> Searches recent Form D filings — companies actively raising capital.</p>
-                  <p><Btn icon={<span className="text-[9px]">EFTS</span>} label="Filing Search" /> Full-text search of recent SEC filings. Use the query input to search for specific terms like "R&D tax credit".</p>
+                  <p><Btn icon={<span className="text-[9px]">EFTS</span>} label="Filing Search" /> Full-text search of recent SEC filings. Pair with the query input below.</p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Switches:</p>
-                  <p><strong className="text-amber-200/50">XBRL Gate</strong> — When ON, only keeps companies with structured financial data (needed for X-Ray). Turn OFF for broader discovery.</p>
+                  <p className="text-amber-200/50 font-medium">Options:</p>
+                  <p><strong className="text-amber-200/50">XBRL Gate</strong> — When ON, only keeps companies with structured financial data. Turn OFF for broader discovery.</p>
+                  <p><strong className="text-amber-200/50">EFTS Query</strong> — Appears when Filing Search is active. Enter search terms like "R&D tax credit" or "net operating loss".</p>
                 </div>
 
-                <p><Btn icon={<Flower2 className="w-2.5 h-2.5" />} label="Bloom" /> Starts the discovery process. Progress streams in real-time.</p>
+                <p><Btn icon={<Flower2 className="w-2.5 h-2.5" />} label="Bloom" /> Starts the discovery process. Progress streams in real-time as companies are found and filtered.</p>
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="step2" className="border-amber-500/8">
+            <AccordionItem value="discovery-table" className="border-amber-500/8">
               <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
                 <span className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-amber-400/10 text-amber-300/60 text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
-                  <Radar className="w-3.5 h-3.5 text-amber-400/50" /> X-Ray — Analyze Financials
+                  <Search className="w-3.5 h-3.5 text-cyan-400/50" /> Table Filtering & Sorting
                 </span>
               </AccordionTrigger>
               <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
-                <p>Credit X-Ray scans a company's SEC filings using 76 XBRL tax concepts to uncover unclaimed credits.</p>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Buttons:</p>
-                  <p><Btn icon={<Radar className="w-2.5 h-2.5" />} label="Re-X-Ray" /> On each lead row — runs or refreshes the XBRL analysis for that company.</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">What it produces:</p>
-                  <p><strong className="text-amber-200/50">Credit Health Score</strong> (0-100) — How well the company uses available credits. Color-coded gauge: red = desert (0-20), orange = underexplored (21-40), yellow = partial (41-60), green = well-managed (61-80), blue = fully optimized (81-100).</p>
-                  <p><strong className="text-amber-200/50">Estimated Unclaimed Value</strong> — Dollar amount of credits they're likely leaving on the table.</p>
-                  <p><strong className="text-amber-200/50">Tax Position Summary</strong> — Effective rate vs. statutory rate, NOL carryforwards, R&D intensity.</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Badges:</p>
-                  <p><strong className="text-amber-200/50">"Living"</strong> — Lead has been x-rayed and has XBRL data.</p>
-                  <p><strong className="text-amber-200/50">"Dormant"</strong> — Lead has no XBRL data yet (needs x-ray or doesn't file structured data).</p>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="step3" className="border-amber-500/8">
-              <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
-                <span className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-amber-400/10 text-amber-300/60 text-[10px] font-bold flex items-center justify-center shrink-0">3</span>
-                  <Search className="w-3.5 h-3.5 text-amber-400/50" /> Forms — Find Contact Points
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
-                <p>Crawls a company's website to find contact forms, demo pages, and other submission endpoints.</p>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">What it finds:</p>
-                  <p><strong className="text-amber-200/50">Form count badges</strong> — Shown on each lead card. More forms = more outreach options.</p>
-                  <p><strong className="text-amber-200/50">Form classifications</strong> — Labels like Contact, Investor, Demo, Support, Newsletter.</p>
-                  <p><strong className="text-amber-200/50">Field inventory</strong> — Lists every input field (name, email, phone, message, etc.) and hidden fields.</p>
-                </div>
-
-                <p>Expand any lead card to see all discovered forms with their URLs, methods, and field details.</p>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="step4" className="border-amber-500/8">
-              <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
-                <span className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-amber-400/10 text-amber-300/60 text-[10px] font-bold flex items-center justify-center shrink-0">4</span>
-                  <Send className="w-3.5 h-3.5 text-amber-400/50" /> Outreach — Send Messages
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
-                <p>Submit gentle outreach messages through discovered contact forms. Always starts in safe mode.</p>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Sender Profile (set these first):</p>
-                  <p><Ic><User className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Name</strong> — Your full name.</p>
-                  <p><Ic><Mail className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Email</strong> — Reply-to email address.</p>
-                  <p><Ic><Phone className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Phone</strong> — Contact number.</p>
-                  <p><Ic><Building2 className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Company</strong> — Your company name.</p>
-                  <p><Ic><Briefcase className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Title</strong> — Your role/title.</p>
-                  <p className="text-amber-400/25 text-[10px]">These persist in your browser and auto-fill form fields.</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Batch controls:</p>
-                  <p><strong className="text-amber-200/50">Dry Run switch</strong> — ON by default. Simulates submissions without sending. Toggle OFF to go live.</p>
-                  <p><Btn icon={<Rocket className="w-2.5 h-2.5" />} label="Submit All" /> Sends to all leads with forms (or dry-runs them).</p>
-                  <p><Btn icon={<PauseCircle className="w-2.5 h-2.5" />} label="Stop" /> Aborts a batch mid-run.</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Per-form buttons (inside expanded lead):</p>
-                  <p><Ic><Copy className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Copy URL</strong> — Copies the form's action URL to clipboard.</p>
-                  <p><Ic><Pencil className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Compose</strong> — Opens a dialog to customize field values before sending.</p>
-                  <p><Ic><Rocket className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Send Single</strong> — Submits just this one form.</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Other actions:</p>
-                  <p><Btn icon={<Zap className="w-2.5 h-2.5" />} label="Quantum Forward" /> Saves a summary of all forms for a lead as one outreach record.</p>
-                  <p><Ic><ArrowRight className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Advance</strong> — Moves pipeline stage: Composed → Pushed → Exchanged → Received.</p>
-                  <p><Ic><ShieldCheck className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Defense Check</strong> — Scans a domain for WAF, honeypots, and bot detection before you approach.</p>
-                  <p><strong className="text-amber-200/50">Graceful Skip</strong> — The system automatically detects honeypots and bot defenses before submitting. If defenses are found, the form is skipped with a toast notification.</p>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="step5" className="border-amber-500/8">
-              <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
-                <span className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-amber-400/10 text-amber-300/60 text-[10px] font-bold flex items-center justify-center shrink-0">5</span>
-                  <BarChart3 className="w-3.5 h-3.5 text-amber-400/50" /> Intel — Analyze Your Pipeline
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
-                <p>The Quantum Intel Dashboard shows aggregate analytics across all your leads.</p>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Opening it:</p>
-                  <p><Btn icon={<BarChart3 className="w-2.5 h-2.5" />} label="Dashboard" /> Toggle button with <Ic><ChevronDown className="w-2.5 h-2.5 text-amber-400/50" /></Ic> — expands or collapses the entire intel panel.</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">What's inside:</p>
-                  <p><strong className="text-amber-200/50">Unclaimed Value</strong> — Big hero number showing total estimated credits your leads are missing.</p>
-                  <p><strong className="text-amber-200/50">Financial Dimensions</strong> — Revenue Pool, R&D Spend, Employee count, NOL Pool summaries.</p>
-                  <p><Ic><Sparkles className="w-2.5 h-2.5 text-amber-400/50" /></Ic><Ic><TrendingUp className="w-2.5 h-2.5 text-amber-400/50" /></Ic><Ic><DollarSign className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Priority Vectors</strong> — Click to filter leads by high-value segments (e.g., "High R&D, zero credits").</p>
-                  <p><strong className="text-amber-200/50">Top Leads</strong> — Shortcut buttons that jump to specific high-value companies.</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Intelligence Tabs:</p>
-                  <p><strong className="text-amber-200/50">Overview</strong> — Credit Health tiers, Tax Rate tiers, Revenue tiers. Click any bar to filter the table.</p>
-                  <p><strong className="text-amber-200/50">Clusters</strong> — Groups leads by opportunity patterns.</p>
-                  <p><strong className="text-amber-200/50">Legislative</strong> — Shows geographic and statutory impacts on credits.</p>
-                  <p><strong className="text-amber-200/50">Cross-Ref</strong> — Cross-references leads across multiple dimensions.</p>
-                </div>
+                <p>Once you've discovered companies, use the table controls to find the ones you want to target.</p>
 
                 <div className="space-y-1.5">
                   <p className="text-amber-200/50 font-medium">Filters:</p>
-                  <p><strong className="text-amber-200/50">Active filter badges</strong> — Appear when filters are applied. Click <Ic><XCircle className="w-2.5 h-2.5 text-amber-400/50" /></Ic> on any badge to remove it.</p>
-                  <p><strong className="text-amber-200/50">Clear All</strong> — Resets every active filter at once.</p>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="step6" className="border-amber-500/8">
-              <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
-                <span className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-amber-400/10 text-amber-300/60 text-[10px] font-bold flex items-center justify-center shrink-0">6</span>
-                  <Radio className="w-3.5 h-3.5 text-amber-400/50" /> Table — Sort, Filter & Manage
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
-                <p>The main lead list. Every company you've bloomed appears here.</p>
-
-                <div className="space-y-1.5">
-                  <p className="text-amber-200/50 font-medium">Filtering:</p>
                   <p><Ic><Search className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Search</strong> — Type to filter by company name or domain.</p>
                   <p><Ic><TreePine className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Industry Category</strong> — Dropdown to filter by sector.</p>
                   <p><strong className="text-amber-200/50">Sub-Industry</strong> — Narrows further within a selected category.</p>
@@ -260,20 +127,107 @@ export function HowToGuide({ onClose }: HowToGuideProps) {
 
                 <div className="space-y-1.5">
                   <p className="text-amber-200/50 font-medium">Sort buttons:</p>
-                  <p><strong className="text-amber-200/50">Forms</strong> — By discovered form count.</p>
-                  <p><strong className="text-amber-200/50">Ads</strong> — By ad network count.</p>
-                  <p><strong className="text-amber-200/50">Credits</strong> — By applicable credit count.</p>
-                  <p><strong className="text-amber-200/50">Health</strong> — By Credit Health Score.</p>
-                  <p><strong className="text-amber-200/50">Unclaimed</strong> — By estimated unclaimed value.</p>
-                  <p><strong className="text-amber-200/50">Name</strong> — Alphabetical by company name.</p>
+                  <p><strong className="text-amber-200/50">Forms</strong> — By discovered form count. <strong className="text-amber-200/50">Ads</strong> — By ad network count. <strong className="text-amber-200/50">Credits</strong> — By applicable credit count.</p>
+                  <p><strong className="text-amber-200/50">Health</strong> — By Credit Health Score. <strong className="text-amber-200/50">Unclaimed</strong> — By estimated unclaimed value. <strong className="text-amber-200/50">Name</strong> — Alphabetical.</p>
                 </div>
 
                 <div className="space-y-1.5">
                   <p className="text-amber-200/50 font-medium">Lead cards:</p>
-                  <p><strong className="text-amber-200/50">Click to expand</strong> — Opens full details: tax position, credit analysis, discovered forms, outreach history.</p>
-                  <p><strong className="text-amber-200/50">Pipeline badges</strong> — Show outreach stage: Composed → Pushed → Exchanged → Received.</p>
+                  <p><strong className="text-amber-200/50">Click to expand</strong> — Opens full details: company info, discovered forms, outreach history.</p>
                   <p><strong className="text-amber-200/50">Source badges</strong> — Show where the lead came from (SIC, Form D, EFTS).</p>
                   <p><Ic><Sun className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Refresh</strong> — Reloads all lead data from the server.</p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <div className="pt-4 pb-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/40">Part 2 — Bloom Engine</p>
+            </div>
+
+            <AccordionItem value="bloom-profile" className="border-amber-500/8">
+              <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
+                <span className="flex items-center gap-2">
+                  <User className="w-3.5 h-3.5 text-amber-400/50" /> Sender Profile
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
+                <p>Set your identity before sending any outreach. These fields auto-fill discovered contact forms.</p>
+
+                <div className="space-y-1.5">
+                  <p><Ic><User className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Name</strong> — Your full name.</p>
+                  <p><Ic><Mail className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Email</strong> — Reply-to email address.</p>
+                  <p><Ic><Phone className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Phone</strong> — Contact number.</p>
+                  <p><Ic><Building2 className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Company</strong> — Your company name.</p>
+                  <p><Ic><Briefcase className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Title</strong> — Your role or title.</p>
+                </div>
+
+                <p className="text-amber-400/25 text-[10px]">Persists in your browser — you only need to set this once.</p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="bloom-batch" className="border-amber-500/8">
+              <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
+                <span className="flex items-center gap-2">
+                  <Send className="w-3.5 h-3.5 text-amber-400/50" /> Batch Submission
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
+                <p>Send outreach to all your leads at once, or safely simulate everything first.</p>
+
+                <div className="space-y-1.5">
+                  <p className="text-amber-200/50 font-medium">Controls:</p>
+                  <p><strong className="text-amber-200/50">Dry Run switch</strong> — ON by default. Simulates every submission without actually sending anything. Toggle OFF to go live.</p>
+                  <p><Btn icon={<Rocket className="w-2.5 h-2.5" />} label="Submit All" /> Sends to all leads with discovered forms (or dry-runs them). Label changes to "Dry Run — All Leads" in safe mode.</p>
+                  <p><Btn icon={<PauseCircle className="w-2.5 h-2.5" />} label="Stop" /> Aborts a batch mid-run.</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <p className="text-amber-200/50 font-medium">Submit log:</p>
+                  <p>A real-time feed appears during submission showing each form's result. <Ic><Leaf className="w-2.5 h-2.5 text-lime-400/50" /></Ic> Lime entries are graceful skips — the bees backed away from defenses.</p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="bloom-per-form" className="border-amber-500/8">
+              <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
+                <span className="flex items-center gap-2">
+                  <Pencil className="w-3.5 h-3.5 text-amber-400/50" /> Per-Form Actions
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
+                <p>Inside each expanded lead card, every discovered form has its own set of controls.</p>
+
+                <div className="space-y-1.5">
+                  <p><Ic><Copy className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Copy URL</strong> — Copies the form's action URL to clipboard.</p>
+                  <p><Ic><Pencil className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Compose</strong> — Opens a dialog to customize each field value before sending. Use this to write a personalized message.</p>
+                  <p><strong className="text-amber-200/50">Auto-Fill</strong> — Pre-populates form fields from your sender profile with one click.</p>
+                  <p><Ic><Rocket className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Send Single</strong> — Submits just this one form (respects the Dry Run switch).</p>
+                </div>
+
+                <p><Btn icon={<Zap className="w-2.5 h-2.5" />} label="Quantum Forward" /> Appears when a lead has multiple forms. Saves a summary of all discovered forms as one outreach record.</p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="bloom-pipeline" className="border-amber-500/8">
+              <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
+                <span className="flex items-center gap-2">
+                  <ArrowRight className="w-3.5 h-3.5 text-amber-400/50" /> Pipeline & Safety
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
+                <p>Track where each lead stands in your outreach, and how the bees stay safe.</p>
+
+                <div className="space-y-1.5">
+                  <p className="text-amber-200/50 font-medium">Pipeline stages:</p>
+                  <p><Ic><ArrowRight className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Advance</strong> — Click to move a lead through: <strong className="text-amber-200/50">Composed</strong> → <strong className="text-amber-200/50">Pushed</strong> → <strong className="text-amber-200/50">Exchanged</strong> → <strong className="text-amber-200/50">Received</strong>.</p>
+                  <p><strong className="text-amber-200/50">Pipeline badges</strong> — Color-coded badges on each lead card show the current outreach stage at a glance.</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <p className="text-amber-200/50 font-medium">Safety mechanisms:</p>
+                  <p><Ic><ShieldCheck className="w-2.5 h-2.5 text-amber-400/50" /></Ic> <strong className="text-amber-200/50">Defense Check</strong> — Click the shield icon on any lead to scan their domain for WAF, honeypots, bot detection scripts, and JS challenges before you approach.</p>
+                  <p><Ic><Leaf className="w-2.5 h-2.5 text-lime-400/50" /></Ic> <strong className="text-amber-200/50">Graceful Skip</strong> — During submission, if the bees detect defenses, they back away quietly. The form is skipped and you get a notification. No alarms triggered, no blocks earned.</p>
+                  <p className="text-amber-400/25 text-[10px]">The bees are precocious, elegant, and gentle. They give grace.</p>
                 </div>
               </AccordionContent>
             </AccordionItem>
