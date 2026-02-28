@@ -1,5 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import path from "path";
+import { existsSync } from "fs";
 import session from "express-session";
 import { storage } from "./storage";
 import { db } from "./db";
@@ -1760,6 +1762,16 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  app.get("/api/download-archive", (req, res) => {
+    const archivePath = path.resolve("data-cloudware-archive.tar.gz");
+    if (!existsSync(archivePath)) {
+      return res.status(404).json({ error: "Archive not found. It may need to be regenerated." });
+    }
+    res.setHeader("Content-Type", "application/gzip");
+    res.setHeader("Content-Disposition", "attachment; filename=DATA-Cloudware-Full-Archive.tar.gz");
+    res.sendFile(archivePath);
   });
 
   return httpServer;
