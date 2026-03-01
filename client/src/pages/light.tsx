@@ -17,12 +17,12 @@ import { Switch } from "@/components/ui/switch";
 import {
   Sun, Building2, ChevronRight, ChevronDown, Copy, CheckCircle, Send,
   Zap, ArrowRight, Loader2, Search, Eye,
-  Lock, Globe2, Pencil, MessageSquare, Calendar,
+  Lock, Globe2, MessageSquare, Calendar,
   Shield, Type, AtSign, Phone, Hash, LayoutGrid,
   Flower2, Radio, ArrowRightLeft,
   ShieldCheck, ShieldAlert, Bot, Bug, Radar, Activity,
   Coins, Sparkles, TreePine, Landmark,
-  Rocket, User, Mail, Briefcase, XCircle, MinusCircle, PauseCircle, Leaf,
+  XCircle, MinusCircle, Leaf,
   BarChart3, MapPin, TrendingUp, DollarSign, Users, FileText, Factory,
   GitBranch, Brain, FolderOpen, ArrowDown, Layers, Target,
 } from "lucide-react";
@@ -30,7 +30,6 @@ import { Shape4DCanvas } from "@/components/shapes-4d";
 import { HowToGuide } from "@/components/how-to-guide";
 import { IntelDashboard } from "@/components/light/IntelDashboard";
 import { HelpCircle } from "lucide-react";
-import { ComposeDialog } from "@/components/light/ComposeDialog";
 import { SecurityDialog } from "@/components/light/SecurityDialog";
 import type { FormField, DiscoveredForm, SecurityProfile, AdIntel, ApplicableCredit, CreditAnalysisItem, TaxPositionSummary, LeadDelta } from "@/components/light/types";
 import { FORM_LABELS as FORM_LABELS_IMPORTED } from "@/components/light/types";
@@ -264,8 +263,6 @@ export default function LightEngine() {
   const [selectedSubIndustry, setSelectedSubIndustry] = useState<string>("all");
   const [minCredit, setMinCredit] = useState("");
   const [minRdScore, setMinRdScore] = useState("");
-  const [composeForm, setComposeForm] = useState<{ lead: LeadDelta; form: DiscoveredForm } | null>(null);
-  const [composeFields, setComposeFields] = useState<Record<string, string>>({});
   const [securityDomain, setSecurityDomain] = useState<string | null>(null);
   const [showCashews, setShowCashews] = useState(false);
   const [bloomIndustry, setBloomIndustry] = useState<string>("");
@@ -281,17 +278,6 @@ export default function LightEngine() {
   const [bloomProgress, setBloomProgress] = useState<{ stored: number; total: number; scanned: number }>({ stored: 0, total: 0, scanned: 0 });
   const [bloomLog, setBloomLog] = useState<string[]>([]);
 
-  const [senderProfile, setSenderProfile] = useState<{ name: string; email: string; phone: string; company: string; title: string }>(() => {
-    try { const s = localStorage.getItem("light_sender"); return s ? JSON.parse(s) : { name: "", email: "", phone: "", company: "", title: "" }; }
-    catch { return { name: "", email: "", phone: "", company: "", title: "" }; }
-  });
-  const [dryRun, setDryRun] = useState(true);
-  const [submitRunning, setSubmitRunning] = useState(false);
-  const [submitProgress, setSubmitProgress] = useState<{ total: number; completed: number; succeeded: number; blocked: number; failed: number; skipped: number; current?: string } | null>(null);
-  const [submitLog, setSubmitLog] = useState<Array<{ leadId: string; leadName: string; domain: string; formAction: string; success?: boolean; blocked?: boolean; skipped?: boolean; error?: string; dryRun?: boolean; skipReason?: string; graceful?: boolean }>>([]);
-  const [showSubmitPanel, setShowSubmitPanel] = useState(false);
-  const [submitAbort, setSubmitAbort] = useState<AbortController | null>(null);
-  const [submittedLeads, setSubmittedLeads] = useState<Map<string, "success" | "blocked" | "failed" | "skipped" | "graceful">>(new Map());
   const [xrayRunning, setXrayRunning] = useState(false);
   const [xrayForceMode, setXrayForceMode] = useState(false);
   const [xrayProgress, setXrayProgress] = useState<{ scanned: number; updated: number; failed: number; total: number; skippedDead?: number }>({ scanned: 0, updated: 0, failed: 0, total: 0 });
@@ -634,127 +620,6 @@ export default function LightEngine() {
     }
   }, [bloomIndustry, bloomState, bloomCount, bloomXbrlGate, bloomSources, bloomEftsQuery, bloomRunning, queryClient, toast]);
 
-  useEffect(() => {
-    localStorage.setItem("light_sender", JSON.stringify(senderProfile));
-  }, [senderProfile]);
-
-  const updateSender = useCallback((field: string, value: string) => {
-    setSenderProfile(prev => ({ ...prev, [field]: value }));
-  }, []);
-
-  const startBatchSubmit = useCallback(async (leadIds?: string[]) => {
-    if (submitRunning || !senderProfile.name || !senderProfile.email) return;
-    setSubmitRunning(true);
-    setSubmitLog([]);
-    setSubmitProgress(null);
-    setShowSubmitPanel(true);
-
-    const abort = new AbortController();
-    setSubmitAbort(abort);
-
-    try {
-      const res = await fetch("/api/light/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          ...(leadIds ? { leadIds } : { all: true }),
-          senderProfile,
-          dryRun,
-        }),
-        signal: abort.signal,
-      });
-
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => "Unknown error");
-        toast({ title: "Submission failed", description: errBody, variant: "destructive" });
-        setSubmitRunning(false);
-        setSubmitAbort(null);
-        return;
-      }
-
-      const reader = res.body?.getReader();
-      if (!reader) {
-        toast({ title: "No response stream", variant: "destructive" });
-        setSubmitRunning(false);
-        setSubmitAbort(null);
-        return;
-      }
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split("\n\n");
-          buffer = parts.pop() || "";
-          for (const part of parts) {
-            const dataMatch = part.match(/^data: (.+)$/m);
-            if (!dataMatch) continue;
-            try {
-              const evt = JSON.parse(dataMatch[1]);
-              if (evt.type === "queued") {
-                setSubmitProgress({ total: evt.total, completed: 0, succeeded: 0, blocked: 0, failed: 0, skipped: 0 });
-              } else if (evt.type === "submitting") {
-                setSubmitProgress(p => p ? { ...p, current: evt.leadName || evt.domain } : p);
-              } else if (evt.type === "result") {
-                setSubmitLog(prev => [...prev, { leadId: evt.leadId, leadName: evt.leadName, domain: evt.domain, formAction: evt.formAction, success: evt.success, blocked: evt.blocked, skipped: evt.skipped, error: evt.error, dryRun: evt.dryRun, skipReason: evt.skipReason, graceful: evt.graceful }]);
-                setSubmittedLeads(prev => {
-                  const next = new Map(prev);
-                  const status = evt.graceful ? "graceful" : evt.skipped ? "skipped" : evt.success ? "success" : evt.blocked ? "blocked" : "failed";
-                  if (!next.has(evt.leadId) || status === "success") next.set(evt.leadId, status);
-                  return next;
-                });
-              } else if (evt.type === "progress") {
-                setSubmitProgress(evt);
-              } else if (evt.type === "complete") {
-                setSubmitProgress(prev => ({ ...prev, ...evt, current: undefined }));
-                queryClient.invalidateQueries({ queryKey: ["/api/light/delta"] });
-                toast({ title: dryRun ? "Dry run complete" : "Batch submission complete", description: `${evt.succeeded} submitted, ${evt.blocked} blocked, ${evt.failed} failed` });
-              }
-            } catch {}
-          }
-        }
-      }
-    } catch (err: any) {
-      if (err.name !== "AbortError") {
-        toast({ title: "Submission failed", description: err.message, variant: "destructive" });
-      }
-    } finally {
-      setSubmitRunning(false);
-      setSubmitAbort(null);
-    }
-  }, [submitRunning, senderProfile, dryRun, queryClient, toast]);
-
-  const submitSingleLead = useCallback(async (leadId: string) => {
-    if (!senderProfile.name || !senderProfile.email) {
-      toast({ title: "Sender profile required", description: "Fill in your name and email in the Submit panel", variant: "destructive" });
-      setShowSubmitPanel(true);
-      return;
-    }
-    try {
-      const res = await apiRequest("POST", "/api/light/submit-single", { leadId: Number(leadId), senderProfile, dryRun });
-      const result = await res.json();
-      setSubmittedLeads(prev => {
-        const next = new Map(prev);
-        next.set(leadId, result.graceful ? "graceful" : result.skipped ? "skipped" : result.success ? "success" : result.blocked ? "blocked" : "failed");
-        return next;
-      });
-      if (result.success) {
-        queryClient.invalidateQueries({ queryKey: ["/api/light/delta"] });
-        toast({ title: dryRun ? "Dry run OK" : "Form submitted", description: result.formAction });
-      } else if (result.graceful) {
-        toast({ title: "Graceful skip", description: (result.skipReason || "defenses detected").replace(/_/g, " ") });
-      } else {
-        toast({ title: result.skipped ? "Skipped" : "Submission blocked", description: result.error || result.skipReason || result.wafDetected || "Could not submit", variant: "destructive" });
-      }
-    } catch (err: any) {
-      toast({ title: "Submit failed", description: err.message, variant: "destructive" });
-    }
-  }, [senderProfile, dryRun, queryClient, toast]);
-
   const deltaQuery = useQuery<DeltaMap>({ queryKey: ["/api/light/delta"] });
   const industryQuery = useQuery<IndustryTree>({ queryKey: ["/api/light/industries"] });
   const creditsQuery = useQuery<{ credits: Array<{ id: string; name: string; section: string; description: string; maxValue: string; applicableCategories: string[]; neglectLevel: string }> }>({ queryKey: ["/api/light/credits"] });
@@ -910,84 +775,6 @@ export default function LightEngine() {
       return bDate.localeCompare(aDate);
     }).slice(0, 20);
   }, [deltaQuery.data]);
-
-  const openCompose = useCallback((lead: LeadDelta, form: DiscoveredForm) => {
-    setComposeForm({ lead, form });
-    const prefill: Record<string, string> = {};
-    for (const f of form.fields) {
-      const name = (f.name || "").toLowerCase();
-      const type = (f.type || "").toLowerCase();
-      const isTextarea = f.tag?.toUpperCase() === "TEXTAREA" || type === "textarea";
-      if (isTextarea || name.includes("message") || name.includes("comment") || name.includes("description")) {
-        let messageBody = "";
-        const hasCreditAnalysis = lead.creditAnalysis?.length > 0 && lead.xbrlDepth > 0;
-
-        if (hasCreditAnalysis) {
-          const unclaimed = lead.creditAnalysis.filter(ca => ca.status === "unclaimed" || ca.status === "likely_unclaimed");
-          const active = lead.creditAnalysis.filter(ca => ca.status === "active");
-          const parts: string[] = [];
-          parts.push(`Based on ${lead.company}'s SEC filings (${lead.xbrlDepth} financial data points analyzed), I've identified specific tax credit opportunities.`);
-          if (unclaimed.length > 0) {
-            const topUnclaimed = unclaimed.slice(0, 3).map(u => u.creditName).join(", ");
-            parts.push(`Notably, ${unclaimed.length} credit${unclaimed.length > 1 ? "s appear" : " appears"} untouched: ${topUnclaimed}.`);
-          }
-          if (lead.estimatedUnclaimedValue > 0) {
-            parts.push(`Estimated unclaimed value: ${formatCurrency(lead.estimatedUnclaimedValue)}.`);
-          }
-          if (active.length > 0) {
-            parts.push(`I can see ${lead.company} is already utilizing ${active.length} credit${active.length > 1 ? "s" : ""}, which shows strong tax planning — there may be additional optimization available.`);
-          }
-          if (lead.taxPositionSummary?.rdIntensity && lead.taxPositionSummary.rdIntensity > 0.03) {
-            parts.push(`With R&D intensity at ${(lead.taxPositionSummary.rdIntensity * 100).toFixed(1)}% of revenue, there's significant credit-eligible activity.`);
-          }
-          parts.push("I'd welcome the opportunity to discuss how we can help maximize your eligible credits.");
-          messageBody = parts.join(" ");
-        } else {
-          const credits = lead.applicableCredits.length > 0
-            ? ` I've identified ${lead.applicableCredits.length} potential tax credit opportunities including ${lead.applicableCredits.slice(0, 3).map(c => c.name).join(", ")}.`
-            : "";
-          const credit = lead.estimatedCreditLow > 0 || lead.estimatedCreditHigh > 0
-            ? ` (estimated credit value: ${formatCurrency(lead.estimatedCreditLow)}–${formatCurrency(lead.estimatedCreditHigh)})`
-            : "";
-          messageBody = `I identified ${lead.company} as a strong candidate for significant tax credit opportunities${credit}.${credits} I'd welcome the opportunity to discuss how we can help maximize your eligible credits.`;
-        }
-        prefill[f.name || ""] = messageBody;
-      } else if (name.includes("subject") || name.includes("topic")) {
-        prefill[f.name || ""] = `Tax Credit Opportunities — ${lead.company}`;
-      } else if (name.includes("email") || type === "email") {
-        prefill[f.name || ""] = senderProfile.email || "";
-      } else if (name.includes("firstname") || name.includes("first_name") || name.includes("first-name") || name.includes("fname")) {
-        prefill[f.name || ""] = (senderProfile.name || "").split(" ")[0] || "";
-      } else if (name.includes("lastname") || name.includes("last_name") || name.includes("last-name") || name.includes("lname") || name.includes("surname")) {
-        prefill[f.name || ""] = (senderProfile.name || "").split(" ").slice(1).join(" ") || "";
-      } else if (name.includes("name") || name.includes("fullname") || name.includes("full_name")) {
-        prefill[f.name || ""] = senderProfile.name || "";
-      } else if (name.includes("phone") || name.includes("tel") || type === "tel") {
-        prefill[f.name || ""] = senderProfile.phone || "";
-      } else if (name.includes("company") || name.includes("organization") || name.includes("organisation") || name.includes("business")) {
-        prefill[f.name || ""] = senderProfile.company || "";
-      } else if (name.includes("title") || name.includes("jobtitle") || name.includes("position") || name.includes("role")) {
-        prefill[f.name || ""] = senderProfile.title || "";
-      } else {
-        prefill[f.name || ""] = "";
-      }
-    }
-    setComposeFields(prefill);
-  }, [senderProfile]);
-
-  const saveCompose = useCallback(() => {
-    if (!composeForm) return;
-    const summary = Object.entries(composeFields).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join("\n");
-    saveMutation.mutate({
-      leadId: composeForm.lead.leadId,
-      channel: "form",
-      status: "composed",
-      message: `Form: ${composeForm.form.action} (${composeForm.form.method})\n${composeForm.form.classification}\n\n${summary}`,
-      target: composeForm.form.action,
-    });
-    setComposeForm(null);
-    setComposeFields({});
-  }, [composeForm, composeFields, saveMutation]);
 
   const agg = deltaQuery.data?.aggregate;
   const tree = industryQuery.data;
@@ -1372,150 +1159,6 @@ export default function LightEngine() {
       </div>
 
       {hasLeads && (
-        <div className={`rounded-xl border space-y-4 transition-all ${showSubmitPanel ? "border-sky-400/15 bg-gradient-to-br from-sky-950/8 to-sky-900/5 p-5" : "border-sky-500/8 bg-sky-950/3 p-3"}`} data-testid="section-submit-engine">
-          <button onClick={() => setShowSubmitPanel(!showSubmitPanel)} className="flex items-center gap-3 w-full text-left" data-testid="button-toggle-submit">
-            <div className={`rounded-lg bg-sky-400/8 border border-sky-400/15 flex items-center justify-center ${showSubmitPanel ? "w-9 h-9" : "w-8 h-8"}`}>
-              <Rocket className={`text-sky-300/60 ${showSubmitPanel ? "w-4.5 h-4.5" : "w-4 h-4"}`} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h2 className={`font-medium text-sky-200/70 ${showSubmitPanel ? "text-sm" : "text-xs"}`}>
-                Form Submitter
-              </h2>
-              {!showSubmitPanel && <p className="text-[11px] text-sky-400/25">Fill and submit lead forms at scale</p>}
-            </div>
-            {submittedLeads.size > 0 && !showSubmitPanel && (
-              <div className="flex items-center gap-1.5 text-[11px]">
-                {Array.from(submittedLeads.values()).filter(v => v === "success").length > 0 && <span className="text-emerald-400/50">{Array.from(submittedLeads.values()).filter(v => v === "success").length} sent</span>}
-                {Array.from(submittedLeads.values()).filter(v => v === "graceful").length > 0 && <span className="text-lime-400/40">{Array.from(submittedLeads.values()).filter(v => v === "graceful").length} graceful</span>}
-                {Array.from(submittedLeads.values()).filter(v => v === "blocked").length > 0 && <span className="text-orange-400/50">{Array.from(submittedLeads.values()).filter(v => v === "blocked").length} blocked</span>}
-              </div>
-            )}
-            <ChevronDown className={`w-3.5 h-3.5 text-sky-400/25 transition-transform ${showSubmitPanel ? "rotate-180" : ""}`} />
-          </button>
-
-          {showSubmitPanel && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-sky-400/30 flex items-center gap-1"><User className="w-2.5 h-2.5" /> Your Name *</label>
-                  <Input value={senderProfile.name} onChange={e => updateSender("name", e.target.value)} data-testid="input-sender-name"
-                    className="h-8 text-xs bg-transparent border-sky-500/10 focus:border-sky-500/20 placeholder:text-sky-400/15"
-                    placeholder="Jane Smith" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-sky-400/30 flex items-center gap-1"><Mail className="w-2.5 h-2.5" /> Your Email *</label>
-                  <Input value={senderProfile.email} onChange={e => updateSender("email", e.target.value)} data-testid="input-sender-email"
-                    className="h-8 text-xs bg-transparent border-sky-500/10 focus:border-sky-500/20 placeholder:text-sky-400/15"
-                    placeholder="jane@company.com" type="email" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-sky-400/30 flex items-center gap-1"><Phone className="w-2.5 h-2.5" /> Phone</label>
-                  <Input value={senderProfile.phone} onChange={e => updateSender("phone", e.target.value)} data-testid="input-sender-phone"
-                    className="h-8 text-xs bg-transparent border-sky-500/10 focus:border-sky-500/20 placeholder:text-sky-400/15"
-                    placeholder="(555) 123-4567" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-sky-400/30 flex items-center gap-1"><Briefcase className="w-2.5 h-2.5" /> Company</label>
-                  <Input value={senderProfile.company} onChange={e => updateSender("company", e.target.value)} data-testid="input-sender-company"
-                    className="h-8 text-xs bg-transparent border-sky-500/10 focus:border-sky-500/20 placeholder:text-sky-400/15"
-                    placeholder="Acme Tax Consulting" />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] text-sky-400/30 flex items-center gap-1"><Briefcase className="w-2.5 h-2.5" /> Title</label>
-                <Input value={senderProfile.title} onChange={e => updateSender("title", e.target.value)} data-testid="input-sender-title"
-                  className="h-8 text-xs bg-transparent border-sky-500/10 focus:border-sky-500/20 placeholder:text-sky-400/15"
-                  placeholder="Tax Credit Specialist" />
-              </div>
-
-              <Separator className="bg-sky-500/8" />
-
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Switch checked={dryRun} onCheckedChange={setDryRun} data-testid="switch-dry-run" />
-                    <span className={`text-xs ${dryRun ? "text-sky-300/60" : "text-amber-300/60"}`}>{dryRun ? "Dry Run" : "Live Submit"}</span>
-                  </div>
-                  {!dryRun && (
-                    <span className="text-[10px] text-amber-400/40 flex items-center gap-1">
-                      <Zap className="w-2.5 h-2.5" /> Forms will actually be submitted
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 text-[11px] text-sky-400/25">
-                  <span>{agg?.withForms || 0} leads with forms</span>
-                  <span>·</span>
-                  <span>{agg?.totalForms || 0} forms total</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button onClick={() => startBatchSubmit()} disabled={submitRunning || !senderProfile.name || !senderProfile.email} data-testid="button-submit-all"
-                  className={`flex-1 text-xs h-9 border ${dryRun ? "bg-sky-500/12 text-sky-200/70 border-sky-400/15" : "bg-amber-500/15 text-amber-200/70 border-amber-400/15"}`}>
-                  {submitRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Rocket className="w-3.5 h-3.5 mr-1.5" />}
-                  {submitRunning ? "Submitting..." : dryRun ? "Dry Run — All Leads" : "Submit All Forms"}
-                </Button>
-                {submitRunning && submitAbort && (
-                  <Button variant="outline" size="sm" onClick={() => submitAbort.abort()} data-testid="button-abort-submit"
-                    className="h-9 px-3 text-xs border-red-500/15 text-red-300/50">
-                    <PauseCircle className="w-3.5 h-3.5 mr-1" /> Stop
-                  </Button>
-                )}
-              </div>
-
-              {submitProgress && (
-                <div className="space-y-2">
-                  <div className="w-full h-2 rounded-full bg-sky-500/5 overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-300"
-                      style={{
-                        width: `${submitProgress.total > 0 ? (submitProgress.completed / submitProgress.total) * 100 : 0}%`,
-                        background: `linear-gradient(90deg, rgba(56,189,248,0.3) 0%, rgba(52,211,153,0.3) 100%)`,
-                      }} />
-                  </div>
-                  <div className="flex items-center justify-between gap-3 text-[11px] flex-wrap">
-                    <div className="flex items-center gap-3">
-                      <span className="text-emerald-400/50">{submitProgress.succeeded} sent</span>
-                      <span className="text-orange-400/50">{submitProgress.blocked} blocked</span>
-                      <span className="text-red-400/50">{submitProgress.failed} failed</span>
-                      <span className="text-zinc-400/30">{submitProgress.skipped} skipped</span>
-                    </div>
-                    <span className="text-sky-400/30 tabular-nums">{submitProgress.completed}/{submitProgress.total}</span>
-                  </div>
-                  {submitProgress.current && (
-                    <div className="flex items-center gap-2 text-[11px] text-sky-300/30">
-                      <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                      <span className="truncate">{submitProgress.current}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {submitLog.length > 0 && (
-                <div className="max-h-36 overflow-y-auto space-y-0.5 rounded border border-sky-500/5 bg-sky-950/3 p-2">
-                  {submitLog.map((entry, i) => (
-                    <div key={i} className="flex items-center gap-2 text-[11px] py-0.5">
-                      {entry.success ? <CheckCircle className="w-2.5 h-2.5 text-emerald-400/50 shrink-0" /> :
-                        entry.graceful ? <Leaf className="w-2.5 h-2.5 text-lime-400/45 shrink-0" /> :
-                        entry.blocked ? <ShieldAlert className="w-2.5 h-2.5 text-orange-400/50 shrink-0" /> :
-                        entry.skipped ? <MinusCircle className="w-2.5 h-2.5 text-zinc-400/30 shrink-0" /> :
-                        <XCircle className="w-2.5 h-2.5 text-red-400/50 shrink-0" />}
-                      <span className={`truncate ${entry.graceful ? "text-lime-300/35" : "text-sky-300/40"}`}>{entry.leadName}</span>
-                      {entry.skipReason && (
-                        <span className={`text-[10px] truncate ${entry.graceful ? "text-lime-400/25" : "text-zinc-400/25"}`}>{entry.skipReason.replace(/_/g, " ")}</span>
-                      )}
-                      {!entry.skipReason && <span className="text-sky-400/15 font-mono truncate flex-1">{entry.formAction}</span>}
-                      {entry.dryRun && <Badge variant="outline" className="text-[9px] px-1 py-0 border-sky-500/10 text-sky-400/30">dry</Badge>}
-                      {entry.error && <span className="text-red-400/30 truncate text-[10px]">{entry.error}</span>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {hasLeads && (
         <div className="space-y-3">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex-1 min-w-[200px]">
@@ -1891,16 +1534,6 @@ export default function LightEngine() {
                       )}
                     </div>
 
-                    {submittedLeads.has(lead.leadId) && (
-                      <span data-testid={`status-submit-${lead.leadId}`}>
-                        {submittedLeads.get(lead.leadId) === "success" && <CheckCircle className="w-3.5 h-3.5 text-emerald-400/60" title="Submitted" />}
-                        {submittedLeads.get(lead.leadId) === "graceful" && <Leaf className="w-3.5 h-3.5 text-lime-400/50" title="Graceful skip" />}
-                        {submittedLeads.get(lead.leadId) === "blocked" && <ShieldAlert className="w-3.5 h-3.5 text-orange-400/50" title="Blocked by WAF" />}
-                        {submittedLeads.get(lead.leadId) === "failed" && <XCircle className="w-3.5 h-3.5 text-red-400/50" title="Failed" />}
-                        {submittedLeads.get(lead.leadId) === "skipped" && <MinusCircle className="w-3.5 h-3.5 text-zinc-400/25" title="Skipped" />}
-                      </span>
-                    )}
-
                     {lead.domain && (
                       <button onClick={e => { e.stopPropagation(); setSecurityDomain(lead.domain); }} data-testid={`button-security-${lead.leadId}`}
                         className="text-zinc-500/30 hover:text-zinc-400/50 transition-colors" title="Check defenses before approach">
@@ -2215,16 +1848,6 @@ export default function LightEngine() {
                               className="text-amber-400/20 hover:text-amber-400/40 transition-colors" data-testid={`button-copy-form-${i}`}>
                               <Copy className="w-3.5 h-3.5" />
                             </button>
-                            <Button variant="outline" size="sm" data-testid={`button-fill-form-${i}`}
-                              onClick={() => openCompose(lead, form)}
-                              className="h-7 px-3 text-xs border-amber-500/15 text-amber-200/60 bg-transparent">
-                              <Pencil className="w-3 h-3 mr-1.5" /> Fill
-                            </Button>
-                            <Button variant="outline" size="sm" data-testid={`button-submit-form-${lead.leadId}-${i}`}
-                              onClick={() => submitSingleLead(lead.leadId)}
-                              className="h-7 px-3 text-xs border-sky-500/15 text-sky-200/60 bg-transparent">
-                              <Rocket className="w-3 h-3 mr-1.5" /> {dryRun ? "Test" : "Send"}
-                            </Button>
                           </div>
                         </div>
                         {form.source && form.source !== form.action && (
@@ -2344,14 +1967,6 @@ export default function LightEngine() {
           </div>
         </div>
       )}
-
-      <ComposeDialog
-        composeForm={composeForm}
-        composeFields={composeFields}
-        setComposeFields={setComposeFields}
-        setComposeForm={setComposeForm}
-        saveCompose={saveCompose}
-      />
 
       <SecurityDialog
         securityDomain={securityDomain}

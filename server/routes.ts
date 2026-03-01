@@ -790,6 +790,9 @@ export async function registerRoutes(
     };
 
     try {
+      const portfolioAllocsList = await storage.getPortfolioAllocations();
+      const portfolioLeadIds = new Set(portfolioAllocsList.map(a => a.leadId));
+
       const [allLeads, allFormResults] = await Promise.all([
         storage.getFiscalLeads({}, 10000, 0),
         db.select().from(scrapedResults).where(sql`${scrapedResults.extractorType} = 'forms'`),
@@ -805,6 +808,7 @@ export async function registerRoutes(
       const batchItems: BatchItem[] = [];
 
       for (const lead of allLeads) {
+        if (!portfolioLeadIds.has(String(lead.id))) continue;
         if (!all && leadIds && !leadIds.includes(String(lead.id))) continue;
         if (!lead.domain) continue;
 
@@ -2214,8 +2218,12 @@ export async function registerRoutes(
 
   app.post("/api/portfolio/allocate", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { leadIds } = req.body as { leadIds: string[] };
+      const { leadIds, batchLabel } = req.body as { leadIds: string[]; batchLabel?: string };
       if (!leadIds?.length) return res.status(400).json({ error: "No lead IDs provided" });
+
+      const now = new Date();
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const batchTag = batchLabel || `${monthNames[now.getMonth()]} ${now.getDate()} \u00B7 ${leadIds.length} leads`;
 
       const results = [];
       for (const leadId of leadIds) {
@@ -2223,10 +2231,10 @@ export async function registerRoutes(
         if (existing) continue;
         const lead = await storage.getFiscalLead(leadId);
         if (!lead) continue;
-        const alloc = await storage.allocateToPortfolio({ leadId, company: lead.company, domain: lead.domain || undefined });
+        const alloc = await storage.allocateToPortfolio({ leadId, company: lead.company, domain: lead.domain || undefined, batchTag });
         results.push(alloc);
       }
-      res.json({ allocated: results.length, total: leadIds.length });
+      res.json({ allocated: results.length, total: leadIds.length, batchTag });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -2273,8 +2281,23 @@ export async function registerRoutes(
         if (position.creditHealthScore) { totalHealth += position.creditHealthScore; healthCount++; }
       }
 
+      const batchMap = new Map<string, { count: number; allocatedAt: string }>();
+      for (const p of portfolioLeads) {
+        const tag = (p as any).batchTag || "Untagged";
+        const existing = batchMap.get(tag);
+        const allocTime = (p as any).allocatedAt ? new Date((p as any).allocatedAt).toISOString() : new Date().toISOString();
+        if (!existing) {
+          batchMap.set(tag, { count: 1, allocatedAt: allocTime });
+        } else {
+          existing.count++;
+          if (allocTime < existing.allocatedAt) existing.allocatedAt = allocTime;
+        }
+      }
+      const batches = Array.from(batchMap.entries()).map(([tag, info]) => ({ tag, count: info.count, allocatedAt: info.allocatedAt }));
+
       res.json({
         allocations: portfolioLeads,
+        batches,
         groups: { byIndustry, byState, byHealth },
         intelligence: {
           totalCompanies: portfolioLeads.length,
