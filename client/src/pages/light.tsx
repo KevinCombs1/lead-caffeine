@@ -646,6 +646,16 @@ export default function LightEngine() {
     refetchInterval: (query) => query.state.data?.building ? 5000 : 60000,
   });
 
+  const buildIndexMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/gradient/build-index");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gradient/index-status"] });
+    },
+  });
+
   const securityQuery = useQuery<SecurityProfile>({
     queryKey: ["/api/light/security", securityDomain],
     enabled: !!securityDomain,
@@ -960,22 +970,28 @@ export default function LightEngine() {
                   <>
                     <Loader2 className="w-3 h-3 animate-spin text-amber-400/50" />
                     <span className="text-[10px] text-amber-300/50">
-                      Building company index... {indexStatusQuery.data.enriched.toLocaleString()} / {indexStatusQuery.data.total.toLocaleString()} enriched
-                      {indexStatusQuery.data.financials > 0 && ` (${indexStatusQuery.data.financials.toLocaleString()} with financials)`}
+                      Building company index... {indexStatusQuery.data.enriched.toLocaleString()} / {indexStatusQuery.data.total.toLocaleString()} with SIC
                     </span>
                   </>
                 ) : indexStatusQuery.data.enriched > 0 ? (
                   <>
                     <Database className="w-3 h-3 text-emerald-400/60" />
                     <span className="text-[10px] text-emerald-300/50">
-                      Index ready — {indexStatusQuery.data.enriched.toLocaleString()} companies
-                      {indexStatusQuery.data.financials > 0 && ` (${indexStatusQuery.data.financials.toLocaleString()} with financials)`}
+                      Index ready — {indexStatusQuery.data.enriched.toLocaleString()} companies with SIC data
                     </span>
                   </>
                 ) : (
                   <>
-                    <AlertTriangle className="w-3 h-3 text-red-400/60" />
-                    <span className="text-[10px] text-red-300/50">Index not available — EFTS fallback active</span>
+                    <Database className="w-3 h-3 text-amber-400/40" />
+                    <span className="text-[10px] text-amber-300/40">Index not built</span>
+                    <button
+                      onClick={() => buildIndexMutation.mutate()}
+                      disabled={buildIndexMutation.isPending}
+                      className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-300/70 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                      data-testid="button-build-index"
+                    >
+                      {buildIndexMutation.isPending ? "Starting..." : "Build Index"}
+                    </button>
                   </>
                 )}
               </div>

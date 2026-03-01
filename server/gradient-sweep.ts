@@ -1,5 +1,6 @@
 const USER_AGENT = "SurfingIsland/1.0 (intelligence@surfingisland.com)";
 const SEC_RATE_LIMIT_MS = 120;
+const ENRICH_DELAY_MS = 4500;
 
 async function secFetch(url: string, accept?: string): Promise<Response> {
   await new Promise(r => setTimeout(r, SEC_RATE_LIMIT_MS));
@@ -41,7 +42,6 @@ class SecCompanyIndex {
   building = false;
   buildPhase = "idle";
   lastBuilt = 0;
-  private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   async initialize(): Promise<void> {
     try {
@@ -77,122 +77,53 @@ class SecCompanyIndex {
     const ciks = Array.from(this.entries.keys());
     const total = ciks.length;
     let processed = 0;
-    console.log(`[INDEX] Phase 2: Enriching ${total} companies with SIC + financials...`);
+    let consecutive429s = 0;
+    console.log(`[INDEX] Phase 2: Enriching ${total} companies with SIC data (~${Math.round(total * ENRICH_DELAY_MS / 3600000)}h at ${ENRICH_DELAY_MS}ms/req)...`);
 
-    const BATCH_SIZE = 3;
-    for (let i = 0; i < ciks.length; i += BATCH_SIZE) {
-      const batch = ciks.slice(i, i + BATCH_SIZE);
+    for (const cik of ciks) {
       this.buildPhase = `enriching ${processed}/${total}`;
 
-      for (const cik of batch) {
-        try {
-          await new Promise(r => setTimeout(r, 200));
-          const subRes = await secFetch(`https://data.sec.gov/submissions/CIK${cik}.json`);
-          await new Promise(r => setTimeout(r, 200));
-          const factsRes = await secFetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`);
+      try {
+        await new Promise(r => setTimeout(r, ENRICH_DELAY_MS));
+        const subRes = await secFetch(`https://data.sec.gov/submissions/CIK${cik}.json`);
 
-          const entry = this.entries.get(cik);
-          if (!entry) continue;
-
-          if (!subRes.ok && processed < 10) {
-            console.warn(`[INDEX] Submissions failed for CIK ${cik}: ${subRes.status} ${subRes.statusText}`);
+        if (subRes.status === 429) {
+          consecutive429s++;
+          if (consecutive429s <= 3) {
+            console.warn(`[INDEX] Rate limited (429) on CIK ${cik}, backing off 30s...`);
           }
-
-          if (subRes.ok) {
-            const subs = await subRes.json() as any;
-            entry.sic = subs.sic || undefined;
-            entry.state = subs.stateOfIncorporation || undefined;
-            entry.fiscalYearEnd = subs.fiscalYearEnd || undefined;
-            entry.exchange = subs.exchanges?.[0] || undefined;
-            entry.enrichedAt = Date.now();
-            this.enrichedCount++;
-          }
-
-          if (factsRes.ok) {
-            const facts = await factsRes.json() as any;
-            const usGaap = facts?.facts?.["us-gaap"] || {};
-            const dei = facts?.facts?.["dei"] || {};
-
-            const getLatest = (concept: string, ns: Record<string, any>): number | undefined => {
-              const data = ns[concept];
-              if (!data) return undefined;
-              const units = data.units || {};
-              const vals = units["USD"] || units["pure"] || units["shares"] || Object.values(units)[0] || [];
-              const tenK = (vals as any[])
-                .filter((v: any) => v.form === "10-K")
-                .sort((a: any, b: any) => (b.end || "").localeCompare(a.end || ""));
-              return tenK.length > 0 ? tenK[0].val : undefined;
-            };
-
-            entry.revenue = getLatest("Revenues", usGaap)
-              ?? getLatest("RevenueFromContractWithCustomerExcludingAssessedTax", usGaap)
-              ?? getLatest("SalesRevenueNet", usGaap)
-              ?? getLatest("SalesRevenueGoodsNet", usGaap)
-              ?? getLatest("SalesRevenueServicesNet", usGaap);
-            entry.rdExpense = getLatest("ResearchAndDevelopmentExpense", usGaap)
-              ?? getLatest("ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost", usGaap);
-            entry.totalAssets = getLatest("Assets", usGaap);
-            entry.employees = getLatest("EntityNumberOfEmployees", dei);
-            entry.effectiveTaxRate = getLatest("EffectiveIncomeTaxRateContinuingOperations", usGaap);
-            entry.preTaxIncome = getLatest("IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest", usGaap)
-              ?? getLatest("IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments", usGaap);
-            entry.taxesPaid = getLatest("IncomeTaxesPaidNet", usGaap)
-              ?? getLatest("IncomeTaxesPaid", usGaap);
-            entry.netIncome = getLatest("NetIncomeLoss", usGaap)
-              ?? getLatest("ProfitLoss", usGaap);
-
-            const hasFinancials = entry.revenue !== undefined || entry.totalAssets !== undefined || entry.netIncome !== undefined;
-            if (hasFinancials) this.financialsCount++;
-          }
-        } catch (e: any) {
-          // skip failed enrichments silently
+          await new Promise(r => setTimeout(r, 30000));
+          processed++;
+          continue;
         }
+
+        consecutive429s = 0;
+        const entry = this.entries.get(cik);
+        if (!entry) { processed++; continue; }
+
+        if (subRes.ok) {
+          const subs = await subRes.json() as any;
+          entry.sic = subs.sic || undefined;
+          entry.state = subs.stateOfIncorporation || undefined;
+          entry.fiscalYearEnd = subs.fiscalYearEnd || undefined;
+          entry.exchange = subs.exchanges?.[0] || undefined;
+          entry.enrichedAt = Date.now();
+          this.enrichedCount++;
+        }
+      } catch (e: any) {
       }
 
-      processed += batch.length;
+      processed++;
 
-      if (processed % 500 === 0 || processed === total) {
-        console.log(`[INDEX] Progress: ${processed}/${total} enriched (${this.enrichedCount} with SIC, ${this.financialsCount} with financials)`);
+      if (processed % 200 === 0 || processed === total) {
+        console.log(`[INDEX] Progress: ${processed}/${total} processed (${this.enrichedCount} with SIC)`);
       }
     }
 
     this.building = false;
     this.buildPhase = "complete";
     this.lastBuilt = Date.now();
-    console.log(`[INDEX] Build complete: ${this.enrichedCount} enriched, ${this.financialsCount} with financials out of ${this.entries.size} total`);
-  }
-
-  async refresh(): Promise<void> {
-    if (this.building) return;
-    console.log("[INDEX] Starting 24h refresh...");
-    const newIndex = new SecCompanyIndex();
-    await newIndex.initialize();
-
-    const waitForBuild = () => new Promise<void>((resolve) => {
-      const check = setInterval(() => {
-        if (!newIndex.building) {
-          clearInterval(check);
-          resolve();
-        }
-      }, 5000);
-    });
-    await waitForBuild();
-
-    if (newIndex.enrichedCount > 0) {
-      this.entries = newIndex.entries;
-      this.enrichedCount = newIndex.enrichedCount;
-      this.financialsCount = newIndex.financialsCount;
-      this.lastBuilt = newIndex.lastBuilt;
-      this.buildPhase = "complete";
-      console.log(`[INDEX] Refresh complete: swapped in ${this.entries.size} entries`);
-    } else {
-      console.warn("[INDEX] Refresh produced 0 enriched entries, keeping old index");
-    }
-  }
-
-  startAutoRefresh(): void {
-    if (this.refreshTimer) return;
-    this.refreshTimer = setInterval(() => this.refresh(), 24 * 60 * 60 * 1000);
+    console.log(`[INDEX] Build complete: ${this.enrichedCount} with SIC out of ${this.entries.size} total`);
   }
 
   findBySIC(sicCodes: string[], maxResults: number = 500): { cik: string; name: string; sic: string; state?: string }[] {

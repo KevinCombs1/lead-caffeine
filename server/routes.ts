@@ -313,11 +313,16 @@ export async function registerRoutes(
     });
   });
 
-  companyIndex.initialize().catch(e => console.error("[INDEX] Auto-init failed:", e));
-  companyIndex.startAutoRefresh();
-
   app.get("/api/gradient/index-status", requireAuth, async (_req, res) => {
     res.json(companyIndex.getStatus());
+  });
+
+  app.post("/api/gradient/build-index", requireAuth, async (_req, res) => {
+    if (companyIndex.building) {
+      return res.json({ success: false, message: "Index build already in progress" });
+    }
+    companyIndex.initialize().catch(e => console.error("[INDEX] Build failed:", e));
+    res.json({ success: true, message: "Index build started" });
   });
 
   app.get("/api/light/delta", requireAuth, async (req, res) => {
