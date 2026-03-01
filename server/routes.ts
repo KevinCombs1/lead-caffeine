@@ -7,7 +7,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { scrapedResults, scrapeJobs, domainSecurityProfiles } from "@shared/schema";
-import { TAX_CREDIT_UNIVERSE, matchLeadCredits, analyzeCompanyCreditPosition } from "./credit-universe";
+import { TAX_CREDIT_UNIVERSE, matchLeadCredits, analyzeCompanyCreditPosition, analyzeMultiYearTrends, analyzeCreditInteractions, applyInteractionAdjustments, computeIndustryBenchmarks, compareToIndustryPeers } from "./credit-universe";
 import { scanSingleLead, type SingleLeadGapResult } from "./credit-gap-engine";
 import { SIC_INDUSTRIES, findCompaniesBySIC, findCompaniesByFormD, findCompaniesByFilingText, getCompanyDetails, loadAllCompanies, type RecentEvent } from "./gradient-sweep";
 import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-blocklist";
@@ -2112,19 +2112,55 @@ export async function registerRoutes(
 
           if (cik) {
             try {
-              const details = await getCompanyDetails(cik, lead.sic);
+              const details = await getCompanyDetails(cik);
               if (details?.creditXRay) {
                 enrichment.creditXRay = details.creditXRay;
                 if (details.revenue) enrichment.revenue = details.revenue;
                 if (details.rdExpense) enrichment.rdExpense = details.rdExpense;
                 if (details.totalAssets) enrichment.totalAssets = details.totalAssets;
                 if (details.employeeCount) enrichment.employeeCount = details.employeeCount;
+                if (details.multiYearXRay) enrichment.multiYearXRay = details.multiYearXRay;
+                if (details.footnoteInsights) enrichment.footnoteInsights = details.footnoteInsights;
+                if (details.last10KAccession) enrichment.last10KAccession = details.last10KAccession;
+
                 const applicableCredits = matchLeadCredits(lead.sicDescription, lead.industryCategory);
-                const position = analyzeCompanyCreditPosition(details.creditXRay, applicableCredits);
+                const position = analyzeCompanyCreditPosition(details.creditXRay, applicableCredits, details.footnoteInsights);
                 enrichment.creditPosition = position;
                 enrichment.applicableCredits = applicableCredits;
+
+                const interactions = analyzeCreditInteractions(details.creditXRay, position.creditAnalysis);
+                if (interactions.length > 0) {
+                  applyInteractionAdjustments(position.creditAnalysis, interactions);
+                  enrichment.creditInteractions = interactions;
+                  send({ type: "interactions", company: lead.company, count: interactions.length, interactions: interactions.map(i => ({ type: i.interactionType, credits: i.credits, description: i.description.slice(0, 150) })) });
+                }
+
+                const trends = analyzeMultiYearTrends(details.multiYearXRay);
+                if (trends.length > 0) {
+                  enrichment.multiYearTrends = trends;
+                  for (const trend of trends) {
+                    const ca = position.creditAnalysis.find(c =>
+                      (trend.metric.includes("R&D") && c.creditId === "rd_41") ||
+                      (trend.metric.includes("Foreign") && c.creditId === "foreign_credit")
+                    );
+                    if (ca) {
+                      if (!ca.evidenceDetails) ca.evidenceDetails = { xbrlSignals: [] };
+                      ca.evidenceDetails.trendInsight = trend.description;
+                      if (trend.metric.includes("Drop-off") && trend.severity === "high") {
+                        ca.status = "dropped" as any;
+                        ca.classificationReason = trend.description;
+                      }
+                    }
+                  }
+                  send({ type: "trends", company: lead.company, insights: trends.map(t => ({ metric: t.metric, severity: t.severity, description: t.description.slice(0, 150) })) });
+                }
+
+                if (details.footnoteInsights && details.footnoteInsights.length > 0) {
+                  send({ type: "footnotes", company: lead.company, count: details.footnoteInsights.length, insights: details.footnoteInsights.map(f => ({ category: f.category, signal: f.signal.slice(0, 120) })) });
+                }
+
                 xrayCount++;
-                send({ type: "xray", company: lead.company, healthScore: position.creditHealthScore, unclaimed: position.estimatedUnclaimedValue });
+                send({ type: "xray", company: lead.company, healthScore: position.creditHealthScore, unclaimed: position.estimatedUnclaimedValue, xbrlDepth: details.creditXRay.xbrlDepth });
               }
             } catch (xrayErr: any) {
               send({ type: "warning", company: lead.company, message: `X-Ray fetch failed: ${xrayErr.message?.slice(0, 80)}` });
@@ -2177,7 +2213,7 @@ export async function registerRoutes(
 
           const retroOpportunities: any[] = [];
           for (const credit of creditAnalysis) {
-            if ((credit.status === "confirmed_unclaimed" || credit.status === "likely_unclaimed") && credit.potentialAmount) {
+            if ((credit.status === "confirmed_unclaimed" || credit.status === "likely_unclaimed" || credit.status === "peer_outlier" || credit.status === "dropped") && credit.potentialAmount) {
               retroOpportunities.push({
                 creditId: credit.creditId,
                 creditName: credit.creditName,
@@ -2206,6 +2242,49 @@ export async function registerRoutes(
         } catch (err: any) {
           send({ type: "error", company: lead.company, error: err.message?.slice(0, 100) });
         }
+      }
+
+      try {
+        const allLeads = await Promise.all(validLeads.map(l => storage.getFiscalLead(l.id)));
+        const enrichedLeads = allLeads.filter(Boolean) as any[];
+        const benchmarks = computeIndustryBenchmarks(enrichedLeads);
+
+        if (benchmarks.size > 0) {
+          let benchmarkCount = 0;
+          for (const lead of enrichedLeads) {
+            const sic2 = String(lead.sic || "").slice(0, 2);
+            const benchmark = benchmarks.get(sic2);
+            if (!benchmark) continue;
+
+            const comparisons = compareToIndustryPeers(lead, benchmark);
+            if (comparisons.length > 0) {
+              const enrichment = (lead.enrichmentData as any) || {};
+              enrichment.peerComparison = comparisons;
+
+              const pos = enrichment.creditPosition;
+              if (pos?.creditAnalysis) {
+                for (const comp of comparisons) {
+                  if (comp.isOutlier && comp.metric.includes("Peer Comparison")) {
+                    const creditName = comp.metric.replace(" Peer Comparison", "");
+                    const ca = pos.creditAnalysis.find((c: any) => c.creditName === creditName);
+                    if (ca && (ca.status === "likely_unclaimed" || ca.status === "confirmed_unclaimed" || ca.status === "data_gap")) {
+                      ca.status = "peer_outlier";
+                      ca.classificationReason = comp.insight;
+                      if (!ca.evidenceDetails) ca.evidenceDetails = { xbrlSignals: [] };
+                      ca.evidenceDetails.peerContext = comp.insight;
+                    }
+                  }
+                }
+              }
+
+              await storage.updateFiscalLead(lead.id, { enrichmentData: enrichment });
+              benchmarkCount++;
+              send({ type: "benchmark", company: lead.company, peerCount: benchmark.peerCount, outliers: comparisons.filter(c => c.isOutlier).length, comparisons: comparisons.slice(0, 3).map(c => ({ metric: c.metric, insight: c.insight.slice(0, 120) })) });
+            }
+          }
+        }
+      } catch (benchErr: any) {
+        send({ type: "warning", company: "Benchmark", message: `Industry benchmarking: ${benchErr.message?.slice(0, 80)}` });
       }
 
       send({ type: "complete", total: validLeads.length, xrayed: xrayCount, gaps: gapCount, retroactive: retroCount, cascades: cascadeCount });

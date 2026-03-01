@@ -1,4 +1,4 @@
-import type { CreditXRay, XbrlValue } from "./gradient-sweep";
+import type { CreditXRay, XbrlValue, MultiYearXRay, FootnoteInsight } from "./gradient-sweep";
 
 export type { CreditXRay };
 
@@ -631,8 +631,30 @@ function v(xbrl: XbrlValue | null | undefined): number | null {
   return xbrl?.value ?? null;
 }
 
-export type CreditStatus = "active" | "unclaimed" | "likely_unclaimed" | "partial" | "maxed_out" | "unknown";
-export type CreditConfidence = "xbrl_verified" | "inferred" | "estimated";
+export type CreditStatus = "active" | "unclaimed" | "confirmed_unclaimed" | "likely_unclaimed" | "partial" | "maxed_out" | "data_gap" | "structurally_limited" | "dropped" | "peer_outlier" | "unknown";
+export type CreditConfidence = "xbrl_verified" | "footnote_confirmed" | "high" | "inferred" | "estimated";
+
+export const STATUS_DISPLAY_LABELS: Record<CreditStatus, string> = {
+  active: "Actively Claimed",
+  partial: "Partially Utilized",
+  maxed_out: "Fully Optimized",
+  confirmed_unclaimed: "Confirmed Unclaimed",
+  likely_unclaimed: "Likely Unclaimed",
+  unclaimed: "Unclaimed",
+  data_gap: "Insufficient Data",
+  structurally_limited: "Structurally Limited",
+  dropped: "Recently Dropped",
+  peer_outlier: "Industry Outlier",
+  unknown: "Under Review",
+};
+
+export interface CreditEvidenceDetails {
+  xbrlSignals: string[];
+  footnoteExcerpt?: string;
+  trendInsight?: string;
+  peerContext?: string;
+  interactionWarning?: string;
+}
 
 export interface CreditAnalysisItem {
   creditId: string;
@@ -643,6 +665,43 @@ export interface CreditAnalysisItem {
   claimedAmount: number | null;
   potentialAmount: number | null;
   confidence: CreditConfidence;
+  classificationReason?: string;
+  evidenceDetails?: CreditEvidenceDetails;
+}
+
+export interface TrendInsight {
+  metric: string;
+  direction: "rising" | "falling" | "flat" | "volatile";
+  severity: "high" | "medium" | "low";
+  description: string;
+}
+
+export interface CreditInteraction {
+  credits: string[];
+  interactionType: "constraint" | "enhancement" | "mutual_exclusion" | "structural_limit";
+  description: string;
+  impactOnEstimate: "reduces" | "increases" | "invalidates";
+  adjustmentFactor?: number;
+}
+
+export interface IndustryBenchmark {
+  sic2: string;
+  industryName: string;
+  peerCount: number;
+  avgCreditHealth: number;
+  medianEffectiveRate: number | null;
+  avgRdIntensity: number | null;
+  creditClaimRates: Record<string, number>;
+  avgUnclaimedValue: number;
+}
+
+export interface PeerComparison {
+  metric: string;
+  companyValue: number | null;
+  peerAvg: number;
+  percentile: number;
+  isOutlier: boolean;
+  insight: string;
 }
 
 export interface TaxPositionSummary {
@@ -690,49 +749,85 @@ function getCreditHealthLabel(score: number): string {
   return "Fully Optimized";
 }
 
-function analyzeRdCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
+function analyzeRdCredit(xray: CreditXRay, credit: TaxCredit, footnoteInsights?: FootnoteInsight[]): CreditAnalysisItem {
   const reconciliation = v(xray.activeCredits?.researchCredit);
   const carryforward = v(xray.creditCarryforwards?.researchCarryforward);
   const rateImpact = v(xray.effectiveRateBreakdown?.researchRateImpact);
   const rdExpense = v(xray.supplemental?.rdExpense);
+  const capitalizedRd = v(xray.deferredTaxPosition?.capitalizedRd);
 
   let status: CreditStatus = "unknown";
   let evidence = "";
   let claimedAmount: number | null = null;
   let potentialAmount: number | null = null;
   let confidence: CreditConfidence = "estimated";
+  let classificationReason = "";
+  const xbrlSignals: string[] = [];
 
   if (reconciliation !== null && reconciliation > 0) {
     status = "active";
     claimedAmount = reconciliation;
     evidence = `${formatDollars(reconciliation)} R&D credit claimed in latest 10-K`;
     confidence = "xbrl_verified";
+    classificationReason = "R&D credit actively claimed per XBRL rate reconciliation";
+    xbrlSignals.push("IncomeTaxReconciliationTaxCreditsResearch");
     if (carryforward !== null && carryforward > 0) {
       evidence += `. ${formatDollars(carryforward)} in R&D credit carryforwards`;
+      xbrlSignals.push("DeferredTaxAssetsTaxCreditCarryforwardsResearch");
     }
   } else if (carryforward !== null && carryforward > 0) {
     status = "partial";
     claimedAmount = null;
     evidence = `${formatDollars(carryforward)} R&D credit carryforward exists but no active reconciliation credit found — may have lapsed or been fully utilized`;
     confidence = "xbrl_verified";
+    classificationReason = "R&D credit carryforwards exist but no current-year credit claimed — possible §174 capitalization impact or AMT limitation";
+    xbrlSignals.push("DeferredTaxAssetsTaxCreditCarryforwardsResearch");
   } else if (rateImpact !== null && rateImpact !== 0) {
     status = "active";
     evidence = `R&D credit rate impact of ${(Math.abs(rateImpact) * 100).toFixed(2)}% visible in effective rate reconciliation`;
     confidence = "xbrl_verified";
+    classificationReason = "R&D credit impact visible in effective rate reconciliation";
+    xbrlSignals.push("EffectiveIncomeTaxRateReconciliationTaxCreditsResearch");
   } else if (reconciliation === null && carryforward === null) {
     if (rdExpense !== null && rdExpense > 0) {
-      status = "unclaimed";
+      status = "confirmed_unclaimed";
       potentialAmount = Math.round(rdExpense * 0.065);
       evidence = `${formatDollars(rdExpense)} in R&D spending but no R&D credit activity found in any filing — estimated ${formatDollars(potentialAmount)} potential credit`;
       confidence = "inferred";
+      classificationReason = `Company reports ${formatDollars(rdExpense)} R&D expense but has zero R&D credit activity in XBRL — strong unclaimed signal`;
+      xbrlSignals.push("ResearchAndDevelopmentExpense");
+
+      if (capitalizedRd !== null && capitalizedRd > 0) {
+        status = "structurally_limited";
+        evidence += `. Note: ${formatDollars(capitalizedRd)} in capitalized R&D deferred asset — post-2022 §174 capitalization may reduce effective credit benefit`;
+        classificationReason = `R&D expense exists without credit, but §174 capitalization (${formatDollars(capitalizedRd)} deferred asset) suggests structural limitation on credit availability`;
+        xbrlSignals.push("DeferredTaxAssetsDeferredResearchAndDevelopmentCosts");
+      }
     } else {
-      status = "likely_unclaimed";
-      evidence = "No R&D credit activity found in any filing";
+      status = "data_gap";
+      evidence = "No R&D credit activity or R&D expense data found in any filing";
       confidence = "estimated";
+      classificationReason = "Insufficient XBRL data to assess R&D credit eligibility";
     }
   }
 
-  return { creditId: credit.id, creditName: credit.name, section: credit.section, status, evidence, claimedAmount, potentialAmount, confidence };
+  const footnoteNote = footnoteInsights?.find(f => f.creditId === "rd_41");
+  let footnoteExcerpt: string | undefined;
+  if (footnoteNote) {
+    footnoteExcerpt = footnoteNote.rawExcerpt;
+    if (status === "confirmed_unclaimed" || status === "likely_unclaimed" || status === "data_gap") {
+      status = "partial";
+      confidence = "footnote_confirmed";
+      evidence += ` [Footnote: "${footnoteNote.signal}"]`;
+      classificationReason = `XBRL shows no R&D credit, but 10-K footnote references R&D credit activity — reclassified to partial`;
+    }
+  }
+
+  return {
+    creditId: credit.id, creditName: credit.name, section: credit.section,
+    status, evidence, claimedAmount, potentialAmount, confidence,
+    classificationReason, evidenceDetails: { xbrlSignals, footnoteExcerpt },
+  };
 }
 
 function analyzeInvestmentEnergyCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
@@ -766,39 +861,101 @@ function analyzeInvestmentEnergyCredit(xray: CreditXRay, credit: TaxCredit): Cre
   return { creditId: credit.id, creditName: credit.name, section: credit.section, status, evidence, claimedAmount, potentialAmount, confidence };
 }
 
-function analyzeForeignCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
+function analyzeForeignCredit(xray: CreditXRay, credit: TaxCredit, footnoteInsights?: FootnoteInsight[]): CreditAnalysisItem {
   const foreignCredit = v(xray.activeCredits?.foreignTaxCredit);
   const foreignCarryforward = v(xray.creditCarryforwards?.foreignCarryforward);
   const foreignIncome = v(xray.preTaxIncome?.foreignPreTax);
+  const foreignTaxExpense = v(xray.foreignTaxDetail?.foreignIncomeTaxExpense);
+  const giltiInclusion = v(xray.foreignTaxDetail?.giltiInclusion);
+  const beatTax = v(xray.foreignTaxDetail?.beatTax);
+  const deferredForeignCredit = v(xray.foreignTaxDetail?.deferredForeignCredit);
+  const currentForeignTax = v(xray.taxCashFlow?.currentForeignTax);
 
   let status: CreditStatus = "unknown";
   let evidence = "";
   let claimedAmount: number | null = null;
   let confidence: CreditConfidence = "estimated";
+  let classificationReason = "";
+  const xbrlSignals: string[] = [];
 
   if (foreignCredit !== null && foreignCredit > 0) {
     status = "active";
     claimedAmount = foreignCredit;
     evidence = `${formatDollars(foreignCredit)} foreign tax credit claimed`;
     confidence = "xbrl_verified";
+    classificationReason = "Foreign tax credit actively claimed in XBRL filings";
+    xbrlSignals.push("IncomeTaxReconciliationTaxCreditsForeign");
     if (foreignCarryforward !== null && foreignCarryforward > 0) {
       evidence += `. ${formatDollars(foreignCarryforward)} in foreign credit carryforwards`;
+      xbrlSignals.push("DeferredTaxAssetsTaxCreditCarryforwardsForeign");
     }
   } else if (foreignCarryforward !== null && foreignCarryforward > 0) {
     status = "partial";
     evidence = `${formatDollars(foreignCarryforward)} foreign credit carryforward but no active credit in current period`;
     confidence = "xbrl_verified";
+    classificationReason = "Foreign credit carryforwards exist but no current-year credit claimed — may indicate §904 limitation or election to defer";
+    xbrlSignals.push("DeferredTaxAssetsTaxCreditCarryforwardsForeign");
+  } else if (deferredForeignCredit !== null && deferredForeignCredit > 0) {
+    status = "partial";
+    evidence = `Deferred foreign credit asset of ${formatDollars(deferredForeignCredit)} found — credit activity exists but may not appear in reconciliation`;
+    confidence = "xbrl_verified";
+    classificationReason = "Deferred tax asset for foreign credits exists, indicating some historical FTC utilization";
+    xbrlSignals.push("DeferredTaxAssetsTaxCreditCarryforwardsForeign");
   } else if (foreignIncome !== null && foreignIncome > 0) {
-    status = "likely_unclaimed";
-    evidence = `Foreign income of ${formatDollars(foreignIncome)} present but no foreign tax credits claimed`;
-    confidence = "inferred";
+    xbrlSignals.push("IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign");
+    if (currentForeignTax !== null && currentForeignTax > 0) {
+      status = "likely_unclaimed";
+      evidence = `Foreign income of ${formatDollars(foreignIncome)} with ${formatDollars(currentForeignTax)} in foreign taxes paid but no FTC credit line — may be structurally limited or embedded in general credits`;
+      confidence = "high";
+      classificationReason = `${formatDollars(foreignIncome)} foreign pre-tax income detected with ${formatDollars(currentForeignTax)} foreign tax expense, but no explicit FTC in rate reconciliation`;
+      xbrlSignals.push("CurrentForeignTaxExpenseBenefit");
+    } else if (foreignTaxExpense !== null && foreignTaxExpense > 0) {
+      status = "likely_unclaimed";
+      evidence = `Foreign income of ${formatDollars(foreignIncome)} with ${formatDollars(foreignTaxExpense)} foreign tax expense but no FTC claimed`;
+      confidence = "high";
+      classificationReason = `Significant foreign tax expense (${formatDollars(foreignTaxExpense)}) detected but no corresponding FTC — strong unclaimed signal`;
+      xbrlSignals.push("ForeignIncomeTaxExpenseBenefit");
+    } else {
+      status = "likely_unclaimed";
+      evidence = `Foreign income of ${formatDollars(foreignIncome)} present but no foreign tax credits claimed`;
+      confidence = "inferred";
+      classificationReason = "Foreign pre-tax income exists without corresponding FTC or foreign tax expense data";
+    }
+
+    if (giltiInclusion !== null) {
+      status = "structurally_limited";
+      evidence += `. GILTI inclusion detected — FTC may be limited to 80% under §904(d)(1)(A)`;
+      classificationReason = `GILTI provisions apply — foreign tax credit may be structurally limited to 80% basket under §904(d)(1)(A), not simply neglected`;
+      xbrlSignals.push("GlobalIntangibleLowTaxedIncomeInclusionAmount");
+    }
+    if (beatTax !== null) {
+      evidence += `. BEAT tax liability detected — may override FTC benefits`;
+      xbrlSignals.push("BaseErosionAndAntiAbuseTaxAmount");
+    }
   } else {
     status = "unknown";
     evidence = "No foreign credit data available";
     confidence = "estimated";
+    classificationReason = "Insufficient XBRL data on foreign operations to assess FTC eligibility";
   }
 
-  return { creditId: "foreign_credit", creditName: "Foreign Tax Credit", section: "IRC §904", status, evidence, claimedAmount, potentialAmount: null, confidence };
+  const footnoteNote = footnoteInsights?.find(f => f.creditId === "foreign_credit");
+  let footnoteExcerpt: string | undefined;
+  if (footnoteNote) {
+    footnoteExcerpt = footnoteNote.rawExcerpt;
+    if (status === "likely_unclaimed" || status === "unknown") {
+      status = "partial";
+      confidence = "footnote_confirmed";
+      evidence += ` [Footnote: "${footnoteNote.signal}"]`;
+      classificationReason = `XBRL shows no explicit FTC, but 10-K footnote references foreign tax credit activity — reclassified from unclaimed to partial`;
+    }
+  }
+
+  return {
+    creditId: "foreign_credit", creditName: "Foreign Tax Credit", section: "IRC §904",
+    status, evidence, claimedAmount, potentialAmount: null, confidence,
+    classificationReason, evidenceDetails: { xbrlSignals, footnoteExcerpt },
+  };
 }
 
 function analyzeDepreciationCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
@@ -890,7 +1047,7 @@ function analyzeEmploymentCredit(xray: CreditXRay, credit: TaxCredit): CreditAna
   return { creditId: credit.id, creditName: credit.name, section: credit.section, status, evidence, claimedAmount: null, potentialAmount, confidence };
 }
 
-function analyzeGenericCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
+function analyzeGenericCredit(xray: CreditXRay, credit: TaxCredit, footnoteInsights?: FootnoteInsight[]): CreditAnalysisItem {
   const totalGeneralCredits = v(xray.activeCredits?.generalCredits);
   const otherCarryforward = v(xray.creditCarryforwards?.otherCarryforward);
   const totalCarryforwards = v(xray.creditCarryforwards?.totalCarryforwards);
@@ -898,31 +1055,58 @@ function analyzeGenericCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalys
   let status: CreditStatus = "unknown";
   let evidence = "";
   let confidence: CreditConfidence = "estimated";
+  let classificationReason = "";
 
   if (otherCarryforward !== null && otherCarryforward === 0 && totalGeneralCredits !== null && totalGeneralCredits === 0) {
     status = "likely_unclaimed";
     evidence = `No general credits or carryforwards found — ${credit.name} likely not being utilized`;
     confidence = "inferred";
+    classificationReason = `Zero general credits and zero carryforwards in XBRL — ${credit.name} does not appear to be claimed`;
   } else if (totalGeneralCredits !== null && totalGeneralCredits > 0) {
     status = "unknown";
     evidence = `${formatDollars(totalGeneralCredits)} in general credits claimed but no specific breakdown available for ${credit.name}`;
     confidence = "inferred";
+    classificationReason = `General credits exist (${formatDollars(totalGeneralCredits)}) but XBRL lacks per-credit breakdown — ${credit.name} may be embedded`;
   } else if (totalCarryforwards !== null && totalCarryforwards > 0) {
     status = "unknown";
     evidence = `${formatDollars(totalCarryforwards)} in total credit carryforwards exist — ${credit.name} status unclear`;
     confidence = "inferred";
+    classificationReason = `Credit carryforwards exist but cannot determine if ${credit.name} is included`;
   } else {
-    status = "likely_unclaimed";
-    evidence = `No credit activity found that would indicate ${credit.name} utilization`;
+    if (xray.xbrlDepth < 5) {
+      status = "data_gap";
+      evidence = `Insufficient XBRL data to assess ${credit.name} utilization (only ${xray.xbrlDepth} data points available)`;
+      classificationReason = "XBRL filing has minimal data coverage — manual review recommended";
+    } else {
+      status = "likely_unclaimed";
+      evidence = `No credit activity found that would indicate ${credit.name} utilization`;
+      classificationReason = `Despite adequate XBRL coverage (${xray.xbrlDepth} data points), no evidence of ${credit.name} utilization found`;
+    }
     confidence = "estimated";
   }
 
-  return { creditId: credit.id, creditName: credit.name, section: credit.section, status, evidence, claimedAmount: null, potentialAmount: null, confidence };
+  const footnoteNote = footnoteInsights?.find(f => f.creditId === credit.id);
+  let footnoteExcerpt: string | undefined;
+  if (footnoteNote) {
+    footnoteExcerpt = footnoteNote.rawExcerpt;
+    if (status === "likely_unclaimed" || status === "data_gap") {
+      status = "partial";
+      confidence = "footnote_confirmed";
+      evidence += ` [Footnote: "${footnoteNote.signal}"]`;
+      classificationReason = `XBRL shows no ${credit.name}, but 10-K footnote references credit activity — reclassified`;
+    }
+  }
+
+  return {
+    creditId: credit.id, creditName: credit.name, section: credit.section,
+    status, evidence, claimedAmount: null, potentialAmount: null, confidence,
+    classificationReason, evidenceDetails: { xbrlSignals: [], footnoteExcerpt },
+  };
 }
 
-function analyzeSingleCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
+function analyzeSingleCredit(xray: CreditXRay, credit: TaxCredit, footnoteInsights?: FootnoteInsight[]): CreditAnalysisItem {
   if (credit.id === "rd_41" || credit.id === "rd_payroll_offset") {
-    return analyzeRdCredit(xray, credit);
+    return analyzeRdCredit(xray, credit, footnoteInsights);
   }
   if (credit.id === "itc" || credit.id === "adv_energy_48c") {
     return analyzeInvestmentEnergyCredit(xray, credit);
@@ -933,7 +1117,7 @@ function analyzeSingleCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysi
   if (credit.id === "wotc" || credit.id === "erc" || credit.id === "paid_leave_45s" || credit.id === "childcare") {
     return analyzeEmploymentCredit(xray, credit);
   }
-  return analyzeGenericCredit(xray, credit);
+  return analyzeGenericCredit(xray, credit, footnoteInsights);
 }
 
 function computeTaxPositionSummary(xray: CreditXRay): TaxPositionSummary {
@@ -997,20 +1181,24 @@ function computeCreditHealthScore(analyses: CreditAnalysisItem[], xray: CreditXR
   let likelyUnclaimedCount = 0;
   let partialCount = 0;
   let unknownCount = 0;
+  let structuralCount = 0;
+  let dataGapCount = 0;
 
   for (const a of analyses) {
     switch (a.status) {
       case "active": case "maxed_out": activeCount++; break;
-      case "unclaimed": unclaimedCount++; break;
-      case "likely_unclaimed": likelyUnclaimedCount++; break;
+      case "unclaimed": case "confirmed_unclaimed": unclaimedCount++; break;
+      case "likely_unclaimed": case "peer_outlier": case "dropped": likelyUnclaimedCount++; break;
       case "partial": partialCount++; break;
+      case "structurally_limited": structuralCount++; break;
+      case "data_gap": dataGapCount++; break;
       case "unknown": unknownCount++; break;
     }
   }
 
   const total = analyses.length;
   const activeRatio = activeCount / total;
-  const partialRatio = partialCount / total;
+  const partialRatio = (partialCount + structuralCount) / total;
   const unclaimedRatio = (unclaimedCount + likelyUnclaimedCount) / total;
 
   let score = activeRatio * 100 + partialRatio * 50 - unclaimedRatio * 30;
@@ -1043,16 +1231,19 @@ function computeCreditHealthScore(analyses: CreditAnalysisItem[], xray: CreditXR
 
 export function analyzeCompanyCreditPosition(
   creditXRay: CreditXRay,
-  applicableCredits: TaxCredit[]
+  applicableCredits: TaxCredit[],
+  footnoteInsights?: FootnoteInsight[],
 ): CreditPositionAnalysis {
   const creditAnalysis: CreditAnalysisItem[] = [];
 
   const hasForeignActivity = creditXRay.activeCredits?.foreignTaxCredit !== null && creditXRay.activeCredits?.foreignTaxCredit !== undefined ||
     creditXRay.creditCarryforwards?.foreignCarryforward !== null && creditXRay.creditCarryforwards?.foreignCarryforward !== undefined ||
-    (creditXRay.preTaxIncome?.foreignPreTax !== null && v(creditXRay.preTaxIncome?.foreignPreTax) !== null && v(creditXRay.preTaxIncome?.foreignPreTax)! > 0);
+    (creditXRay.preTaxIncome?.foreignPreTax !== null && v(creditXRay.preTaxIncome?.foreignPreTax) !== null && v(creditXRay.preTaxIncome?.foreignPreTax)! > 0) ||
+    v(creditXRay.foreignTaxDetail?.foreignIncomeTaxExpense) !== null ||
+    v(creditXRay.foreignTaxDetail?.giltiInclusion) !== null;
 
   for (const credit of applicableCredits) {
-    creditAnalysis.push(analyzeSingleCredit(creditXRay, credit));
+    creditAnalysis.push(analyzeSingleCredit(creditXRay, credit, footnoteInsights));
   }
 
   if (hasForeignActivity && !applicableCredits.some(c => c.id === "foreign_credit")) {
@@ -1066,7 +1257,7 @@ export function analyzeCompanyCreditPosition(
       neglectLevel: "low",
       status: "active",
     };
-    creditAnalysis.push(analyzeForeignCredit(creditXRay, foreignTc));
+    creditAnalysis.push(analyzeForeignCredit(creditXRay, foreignTc, footnoteInsights));
   }
 
   const creditHealthScore = computeCreditHealthScore(creditAnalysis, creditXRay);
@@ -1074,7 +1265,7 @@ export function analyzeCompanyCreditPosition(
 
   let estimatedUnclaimedValue = 0;
   for (const a of creditAnalysis) {
-    if ((a.status === "unclaimed" || a.status === "likely_unclaimed") && a.potentialAmount !== null) {
+    if ((a.status === "unclaimed" || a.status === "likely_unclaimed" || a.status === "confirmed_unclaimed" || a.status === "peer_outlier" || a.status === "dropped") && a.potentialAmount !== null) {
       estimatedUnclaimedValue += a.potentialAmount;
     }
   }
@@ -1089,4 +1280,337 @@ export function analyzeCompanyCreditPosition(
     taxPositionSummary,
     xbrlDepth: creditXRay.xbrlDepth,
   };
+}
+
+export function analyzeMultiYearTrends(multiYear: MultiYearXRay | undefined): TrendInsight[] {
+  if (!multiYear) return [];
+  const insights: TrendInsight[] = [];
+
+  const detectDropoff = (series: { values: { value: number; year: number }[] } | null, label: string, creditLabel: string) => {
+    if (!series || series.values.length < 2) return;
+    const [newest, previous] = series.values;
+    if (previous.value > 0 && (newest.value === 0 || newest.value === null)) {
+      insights.push({
+        metric: `${creditLabel} Drop-off`,
+        direction: "falling",
+        severity: "high",
+        description: `${creditLabel} claimed in ${previous.year} (${formatDollars(previous.value)}) but absent from ${newest.year} filing — possible lapse or restructuring`,
+      });
+    }
+  };
+
+  detectDropoff(multiYear.researchCredit, "researchCredit", "R&D Credit");
+  detectDropoff(multiYear.foreignTaxCredit, "foreignTaxCredit", "Foreign Tax Credit");
+
+  if (multiYear.rdExpense && multiYear.researchCredit && multiYear.rdExpense.values.length >= 2 && multiYear.researchCredit.values.length >= 2) {
+    const rdGrowth = (multiYear.rdExpense.values[0].value - multiYear.rdExpense.values[1].value) / Math.abs(multiYear.rdExpense.values[1].value || 1);
+    const creditGrowth = (multiYear.researchCredit.values[0].value - multiYear.researchCredit.values[1].value) / Math.abs(multiYear.researchCredit.values[1].value || 1);
+    if (rdGrowth > 0.15 && creditGrowth < 0.05) {
+      insights.push({
+        metric: "R&D Growth vs Credit Stagnation",
+        direction: "volatile",
+        severity: "medium",
+        description: `R&D expense grew ${(rdGrowth * 100).toFixed(0)}% but R&D credit grew only ${(creditGrowth * 100).toFixed(0)}% — credit may not be keeping pace with qualifying expenditures`,
+      });
+    }
+  }
+
+  if (multiYear.foreignPreTax && multiYear.foreignTaxCredit && multiYear.foreignPreTax.values.length >= 2) {
+    const fIncGrowth = (multiYear.foreignPreTax.values[0].value - multiYear.foreignPreTax.values[1].value) / Math.abs(multiYear.foreignPreTax.values[1].value || 1);
+    const hasFtc = multiYear.foreignTaxCredit && multiYear.foreignTaxCredit.values.length > 0 && multiYear.foreignTaxCredit.values[0].value > 0;
+    if (fIncGrowth > 0.2 && !hasFtc) {
+      insights.push({
+        metric: "Foreign Income Growth Without FTC",
+        direction: "rising",
+        severity: "high",
+        description: `Foreign pre-tax income grew ${(fIncGrowth * 100).toFixed(0)}% but no foreign tax credit detected — growing opportunity or structural limitation`,
+      });
+    }
+  }
+
+  if (multiYear.nolCarryforwards && multiYear.nolCarryforwards.values.length >= 2) {
+    const [newest, previous] = multiYear.nolCarryforwards.values;
+    const growth = (newest.value - previous.value) / Math.abs(previous.value || 1);
+    if (growth > 0.1) {
+      insights.push({
+        metric: "NOL Accumulation",
+        direction: "rising",
+        severity: "medium",
+        description: `NOL carryforwards grew ${(growth * 100).toFixed(0)}% from ${formatDollars(previous.value)} to ${formatDollars(newest.value)} — credits may be limited by §382 or income constraints`,
+      });
+    } else if (growth < -0.3 && previous.value > 0) {
+      insights.push({
+        metric: "NOL Utilization",
+        direction: "falling",
+        severity: "low",
+        description: `NOL carryforwards decreased ${(Math.abs(growth) * 100).toFixed(0)}% — company is actively utilizing loss carryforwards`,
+      });
+    }
+  }
+
+  if (multiYear.effectiveTaxRate && multiYear.effectiveTaxRate.values.length >= 2) {
+    const [newest, previous] = multiYear.effectiveTaxRate.values;
+    const rateChange = newest.value - previous.value;
+    if (rateChange > 0.03) {
+      insights.push({
+        metric: "Effective Rate Increase",
+        direction: "rising",
+        severity: "medium",
+        description: `Effective tax rate increased from ${(previous.value * 100).toFixed(1)}% to ${(newest.value * 100).toFixed(1)}% — possible credit lapse or expiration`,
+      });
+    }
+  }
+
+  return insights;
+}
+
+export function analyzeCreditInteractions(xray: CreditXRay, creditAnalysis: CreditAnalysisItem[]): CreditInteraction[] {
+  const interactions: CreditInteraction[] = [];
+  const foreignPreTax = v(xray.preTaxIncome?.foreignPreTax);
+  const effectiveRate = v(xray.effectiveRateBreakdown?.effectiveRate);
+  const statutoryRate = v(xray.effectiveRateBreakdown?.statutoryRate) ?? 0.21;
+  const giltiInclusion = v(xray.foreignTaxDetail?.giltiInclusion);
+  const beatTax = v(xray.foreignTaxDetail?.beatTax);
+  const fdiiDeduction = v(xray.foreignTaxDetail?.fdiiDeduction);
+  const revenue = v(xray.supplemental?.revenue);
+  const rdExpense = v(xray.supplemental?.rdExpense);
+  const capitalizedRd = v(xray.deferredTaxPosition?.capitalizedRd);
+  const capex = v(xray.capitalExpenditures?.capex);
+
+  const ftcAnalysis = creditAnalysis.find(c => c.creditId === "foreign_credit");
+  const ftcUnclaimed = ftcAnalysis && (ftcAnalysis.status === "likely_unclaimed" || ftcAnalysis.status === "confirmed_unclaimed");
+
+  if (ftcUnclaimed && (giltiInclusion !== null || (foreignPreTax !== null && foreignPreTax > 0 && effectiveRate !== null && effectiveRate < statutoryRate))) {
+    interactions.push({
+      credits: ["foreign_credit"],
+      interactionType: "structural_limit",
+      description: "GILTI inclusion detected — FTC may be limited to 80% basket under §904(d)(1)(A). The absence of FTC may reflect structural limitation rather than neglect.",
+      impactOnEstimate: "reduces",
+      adjustmentFactor: 0.8,
+    });
+  }
+
+  if (ftcUnclaimed && beatTax !== null && revenue !== null && revenue > 500e6) {
+    interactions.push({
+      credits: ["foreign_credit"],
+      interactionType: "constraint",
+      description: `BEAT liability detected with ${formatDollars(revenue)} revenue (>$500M threshold). Base erosion payments may override FTC benefits.`,
+      impactOnEstimate: "reduces",
+      adjustmentFactor: 0.7,
+    });
+  }
+
+  if (foreignPreTax !== null && foreignPreTax > 0 && fdiiDeduction === null) {
+    interactions.push({
+      credits: ["fdii_250"],
+      interactionType: "enhancement",
+      description: `Foreign-derived income of ${formatDollars(foreignPreTax)} detected but no FDII deduction (§250) found — potential 37.5% deduction opportunity on qualifying income.`,
+      impactOnEstimate: "increases",
+    });
+  }
+
+  const itcAnalysis = creditAnalysis.find(c => c.creditId === "itc" || c.creditId === "adv_energy_48c");
+  const ptcAnalysis = creditAnalysis.find(c => c.creditId === "ptc_45");
+  const itcUnclaimed = itcAnalysis && (itcAnalysis.status === "likely_unclaimed" || itcAnalysis.status === "confirmed_unclaimed");
+  const ptcUnclaimed = ptcAnalysis && (ptcAnalysis.status === "likely_unclaimed" || ptcAnalysis.status === "confirmed_unclaimed");
+  if (itcUnclaimed && ptcUnclaimed) {
+    interactions.push({
+      credits: ["itc", "ptc_45"],
+      interactionType: "mutual_exclusion",
+      description: "ITC and PTC are mutually exclusive for the same energy property — only one can be claimed per qualifying asset. Combined estimate may overstate opportunity.",
+      impactOnEstimate: "invalidates",
+      adjustmentFactor: 0.5,
+    });
+  }
+
+  if (rdExpense !== null && rdExpense > 0 && capitalizedRd !== null && capitalizedRd > 0) {
+    interactions.push({
+      credits: ["rd_41"],
+      interactionType: "constraint",
+      description: `Post-2022 §174 requires R&D capitalization (5yr domestic/15yr foreign). Capitalized R&D asset of ${formatDollars(capitalizedRd)} detected — effective credit benefit may be reduced from initial estimate.`,
+      impactOnEstimate: "reduces",
+      adjustmentFactor: 0.85,
+    });
+  }
+
+  const sec179 = creditAnalysis.find(c => c.creditId === "sec179_expensing");
+  const bonusDepr = creditAnalysis.find(c => c.creditId === "bonus_depreciation_168k");
+  const sec179Unclaimed = sec179 && (sec179.status === "likely_unclaimed" || sec179.status === "confirmed_unclaimed");
+  const bonusUnclaimed = bonusDepr && (bonusDepr.status === "likely_unclaimed" || bonusDepr.status === "confirmed_unclaimed");
+  if (sec179Unclaimed && bonusUnclaimed && capex !== null) {
+    interactions.push({
+      credits: ["sec179_expensing", "bonus_depreciation_168k"],
+      interactionType: "mutual_exclusion",
+      description: "§179 is claimed first on qualifying property up to annual limit, bonus depreciation applies to remainder. Both flagged as unclaimed on same asset base — combined estimate double-counts.",
+      impactOnEstimate: "reduces",
+      adjustmentFactor: 0.6,
+    });
+  }
+
+  return interactions;
+}
+
+export function applyInteractionAdjustments(creditAnalysis: CreditAnalysisItem[], interactions: CreditInteraction[]): void {
+  for (const interaction of interactions) {
+    for (const creditId of interaction.credits) {
+      const ca = creditAnalysis.find(c => c.creditId === creditId);
+      if (!ca) continue;
+
+      if (!ca.evidenceDetails) ca.evidenceDetails = { xbrlSignals: [] };
+      ca.evidenceDetails.interactionWarning = interaction.description;
+
+      if (interaction.adjustmentFactor !== undefined && ca.potentialAmount !== null) {
+        ca.potentialAmount = Math.round(ca.potentialAmount * interaction.adjustmentFactor);
+      }
+
+      if (interaction.interactionType === "structural_limit" && ca.status === "likely_unclaimed") {
+        ca.status = "structurally_limited";
+        ca.classificationReason = interaction.description;
+      }
+    }
+  }
+}
+
+export function computeIndustryBenchmarks(leads: any[]): Map<string, IndustryBenchmark> {
+  const benchmarks = new Map<string, IndustryBenchmark>();
+  const groups = new Map<string, any[]>();
+
+  for (const lead of leads) {
+    if (!lead.deepAnalysisComplete || !lead.sic) continue;
+    const sic2 = String(lead.sic).slice(0, 2);
+    if (!groups.has(sic2)) groups.set(sic2, []);
+    groups.get(sic2)!.push(lead);
+  }
+
+  for (const [sic2, group] of groups) {
+    if (group.length < 3) continue;
+
+    const healthScores: number[] = [];
+    const effectiveRates: number[] = [];
+    const rdIntensities: number[] = [];
+    const unclaimedValues: number[] = [];
+    const creditCounts = new Map<string, { active: number; total: number }>();
+
+    for (const lead of group) {
+      const enrichment = (lead.enrichmentData || {}) as any;
+      const pos = enrichment.creditPosition;
+      if (pos?.creditHealthScore !== undefined) healthScores.push(pos.creditHealthScore);
+      if (pos?.estimatedUnclaimedValue !== undefined) unclaimedValues.push(pos.estimatedUnclaimedValue);
+
+      const xray = enrichment.creditXRay;
+      if (xray?.effectiveRateBreakdown?.effectiveRate?.value !== undefined) {
+        effectiveRates.push(xray.effectiveRateBreakdown.effectiveRate.value);
+      }
+      const rd = xray?.supplemental?.rdExpense?.value;
+      const rev = xray?.supplemental?.revenue?.value;
+      if (rd !== undefined && rev !== undefined && rev > 0) {
+        rdIntensities.push(rd / rev);
+      }
+
+      const analysis = pos?.creditAnalysis || enrichment.creditAnalysis || [];
+      for (const ca of analysis) {
+        if (!creditCounts.has(ca.creditId)) creditCounts.set(ca.creditId, { active: 0, total: 0 });
+        const entry = creditCounts.get(ca.creditId)!;
+        entry.total++;
+        if (ca.status === "active" || ca.status === "partial" || ca.status === "maxed_out") entry.active++;
+      }
+    }
+
+    const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
+    const median = (arr: number[]) => {
+      if (arr.length === 0) return null;
+      const sorted = [...arr].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    };
+
+    const creditClaimRates: Record<string, number> = {};
+    for (const [creditId, counts] of creditCounts) {
+      if (counts.total > 0) creditClaimRates[creditId] = counts.active / counts.total;
+    }
+
+    benchmarks.set(sic2, {
+      sic2,
+      industryName: group[0].sicDescription || `SIC ${sic2}xx`,
+      peerCount: group.length,
+      avgCreditHealth: avg(healthScores),
+      medianEffectiveRate: median(effectiveRates),
+      avgRdIntensity: rdIntensities.length > 0 ? avg(rdIntensities) : null,
+      creditClaimRates,
+      avgUnclaimedValue: avg(unclaimedValues),
+    });
+  }
+
+  return benchmarks;
+}
+
+export function compareToIndustryPeers(lead: any, benchmark: IndustryBenchmark): PeerComparison[] {
+  const comparisons: PeerComparison[] = [];
+  const enrichment = (lead.enrichmentData || {}) as any;
+  const pos = enrichment.creditPosition;
+
+  if (pos?.creditHealthScore !== undefined) {
+    const diff = pos.creditHealthScore - benchmark.avgCreditHealth;
+    comparisons.push({
+      metric: "Credit Health Score",
+      companyValue: pos.creditHealthScore,
+      peerAvg: benchmark.avgCreditHealth,
+      percentile: Math.min(100, Math.max(0, 50 + diff)),
+      isOutlier: Math.abs(diff) > 20,
+      insight: diff < -20
+        ? `Credit health score ${pos.creditHealthScore} is significantly below industry average of ${benchmark.avgCreditHealth.toFixed(0)} — may indicate untapped credit opportunities`
+        : diff > 20
+          ? `Credit health score ${pos.creditHealthScore} is well above industry average — credit strategy appears optimized`
+          : `Credit health score is within normal range for industry peers`,
+    });
+  }
+
+  if (benchmark.medianEffectiveRate !== null) {
+    const xray = enrichment.creditXRay;
+    const companyRate = xray?.effectiveRateBreakdown?.effectiveRate?.value;
+    if (companyRate !== undefined) {
+      const diff = companyRate - benchmark.medianEffectiveRate;
+      comparisons.push({
+        metric: "Effective Tax Rate",
+        companyValue: companyRate,
+        peerAvg: benchmark.medianEffectiveRate,
+        percentile: Math.min(100, Math.max(0, 50 + diff * 100)),
+        isOutlier: Math.abs(diff) > 0.03,
+        insight: diff > 0.03
+          ? `Effective rate ${(companyRate * 100).toFixed(1)}% vs industry median ${(benchmark.medianEffectiveRate * 100).toFixed(1)}% — paying more tax than peers, may indicate suboptimal credit utilization`
+          : diff < -0.03
+            ? `Effective rate below industry median — aggressive credit/deduction strategy`
+            : `Effective rate within normal range for industry`,
+      });
+    }
+  }
+
+  const analysis = pos?.creditAnalysis || enrichment.creditAnalysis || [];
+  for (const ca of analysis) {
+    const peerRate = benchmark.creditClaimRates[ca.creditId];
+    if (peerRate === undefined) continue;
+
+    const isUnclaimed = ca.status === "likely_unclaimed" || ca.status === "confirmed_unclaimed" || ca.status === "data_gap";
+    if (isUnclaimed && peerRate > 0.6) {
+      comparisons.push({
+        metric: `${ca.creditName} Peer Comparison`,
+        companyValue: 0,
+        peerAvg: peerRate,
+        percentile: 0,
+        isOutlier: true,
+        insight: `${(peerRate * 100).toFixed(0)}% of industry peers claim ${ca.creditName} but this company does not — statistically significant gap`,
+      });
+    } else if (isUnclaimed && peerRate < 0.1) {
+      comparisons.push({
+        metric: `${ca.creditName} Peer Comparison`,
+        companyValue: 0,
+        peerAvg: peerRate,
+        percentile: 50,
+        isOutlier: false,
+        insight: `Only ${(peerRate * 100).toFixed(0)}% of industry peers claim ${ca.creditName} — absence is normal for this industry`,
+      });
+    }
+  }
+
+  return comparisons;
 }

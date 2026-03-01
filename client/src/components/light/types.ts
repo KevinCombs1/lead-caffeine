@@ -47,11 +47,22 @@ export interface CreditAnalysisItem {
   creditId: string;
   creditName: string;
   section: string;
-  status: "active" | "unclaimed" | "likely_unclaimed" | "partial" | "maxed_out" | "unknown";
+  status: "active" | "unclaimed" | "likely_unclaimed" | "confirmed_unclaimed" | "partial" | "maxed_out" | "data_gap" | "structurally_limited" | "dropped" | "peer_outlier" | "unknown";
   evidence: string;
   claimedAmount: number | null;
   potentialAmount: number | null;
-  confidence: "xbrl_verified" | "inferred" | "estimated";
+  confidence: "xbrl_verified" | "footnote_confirmed" | "high" | "inferred" | "estimated";
+  classificationReason?: string;
+  evidenceDetails?: {
+    xbrlSignals?: string[];
+    footnoteExcerpt?: string;
+    trendInsight?: string;
+    peerContext?: string;
+    interactionWarning?: string;
+  };
+  fingerprintsMatched?: string[];
+  priorityScore?: number;
+  legislativeTrigger?: string | null;
 }
 
 export interface TaxPositionSummary {

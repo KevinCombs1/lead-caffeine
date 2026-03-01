@@ -20,6 +20,34 @@ export interface XbrlValue {
   period: string;
 }
 
+export interface XbrlTimeSeries {
+  values: { value: number; period: string; year: number }[];
+}
+
+export interface MultiYearXRay {
+  revenue: XbrlTimeSeries | null;
+  rdExpense: XbrlTimeSeries | null;
+  capex: XbrlTimeSeries | null;
+  ppeNet: XbrlTimeSeries | null;
+  effectiveTaxRate: XbrlTimeSeries | null;
+  taxesPaid: XbrlTimeSeries | null;
+  foreignPreTax: XbrlTimeSeries | null;
+  foreignTaxCredit: XbrlTimeSeries | null;
+  researchCredit: XbrlTimeSeries | null;
+  nolCarryforwards: XbrlTimeSeries | null;
+  totalAssets: XbrlTimeSeries | null;
+  employeeCount: XbrlTimeSeries | null;
+}
+
+export interface FootnoteInsight {
+  category: "credit_claim" | "credit_constraint" | "credit_expiration" | "uncertain_position";
+  signal: string;
+  creditId?: string;
+  extractedValue?: number;
+  expirationYear?: number;
+  rawExcerpt: string;
+}
+
 export interface CreditXRay {
   activeCredits: {
     researchCredit: XbrlValue | null;
@@ -93,6 +121,9 @@ export interface CreditXRay {
     employeeCount: XbrlValue | null;
     salariesAndWages: XbrlValue | null;
     pensionCost: XbrlValue | null;
+    shareBasedComp: XbrlValue | null;
+    definedContribution: XbrlValue | null;
+    pensionAssets: XbrlValue | null;
   };
   supplemental: {
     rdExpense: XbrlValue | null;
@@ -109,9 +140,46 @@ export interface CreditXRay {
     sgaExpense: XbrlValue | null;
     acquisitionCost: XbrlValue | null;
   };
+  foreignTaxDetail: {
+    foreignIncomeTaxExpense: XbrlValue | null;
+    foreignRateDifferential: XbrlValue | null;
+    foreignEarningsRepatriated: XbrlValue | null;
+    undistributedForeignEarnings: XbrlValue | null;
+    transitionTax: XbrlValue | null;
+    giltiInclusion: XbrlValue | null;
+    deferredForeignCredit: XbrlValue | null;
+    beatTax: XbrlValue | null;
+    fdiiDeduction: XbrlValue | null;
+  };
+  energyCredits: {
+    ptcCarryforward: XbrlValue | null;
+    investmentTaxCredit: XbrlValue | null;
+    deferredItc: XbrlValue | null;
+    cleanEnergyCredit: XbrlValue | null;
+  };
+  depreciationDetail: {
+    totalDA: XbrlValue | null;
+    depreciation: XbrlValue | null;
+    amortization: XbrlValue | null;
+    acceleratedDepreciation: XbrlValue | null;
+  };
+  workingCapital: {
+    cash: XbrlValue | null;
+    shortTermInvestments: XbrlValue | null;
+    inventory: XbrlValue | null;
+    accountsReceivable: XbrlValue | null;
+    accountsPayable: XbrlValue | null;
+  };
+  debtStructure: {
+    longTermDebt: XbrlValue | null;
+    shortTermBorrowings: XbrlValue | null;
+    interestExpense: XbrlValue | null;
+  };
   deiFields: {
     sharesOutstanding: XbrlValue | null;
     publicFloat: XbrlValue | null;
+    incorporationState: XbrlValue | null;
+    filerCategory: XbrlValue | null;
   };
   xbrlDepth: number;
 }
@@ -933,6 +1001,9 @@ function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>
     employeeCount: d("EntityNumberOfEmployees"),
     salariesAndWages: g("LaborAndRelatedExpense") || g("SalariesAndWages"),
     pensionCost: g("DefinedBenefitPlanNetPeriodicBenefitCost"),
+    shareBasedComp: g("ShareBasedCompensation") || g("AllocatedShareBasedCompensationExpense"),
+    definedContribution: g("DefinedContributionPlanCostRecognized"),
+    pensionAssets: g("DefinedBenefitPlanFairValueOfPlanAssets"),
   };
   countNonNull(employment);
 
@@ -955,9 +1026,56 @@ function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>
   };
   countNonNull(supplemental);
 
+  const foreignTaxDetail = {
+    foreignIncomeTaxExpense: g("ForeignIncomeTaxExpenseBenefit"),
+    foreignRateDifferential: g("IncomeTaxReconciliationForeignIncomeTaxRateDifferential") || g("EffectiveIncomeTaxRateReconciliationForeignIncomeTaxRateDifferential"),
+    foreignEarningsRepatriated: g("ForeignEarningsRepatriated"),
+    undistributedForeignEarnings: g("UndistributedEarningsOfForeignSubsidiaries"),
+    transitionTax: g("TaxCutsAndJobsActOf2017TransitionTaxForAccumulatedForeignEarningsLiability"),
+    giltiInclusion: g("GlobalIntangibleLowTaxedIncomeInclusionAmount") || g("IncomeTaxReconciliationGILTI"),
+    deferredForeignCredit: g("DeferredTaxAssetsTaxCreditCarryforwardsForeign"),
+    beatTax: g("BaseErosionAndAntiAbuseTaxAmount") || g("BaseErosionMinimumTaxAmount"),
+    fdiiDeduction: g("DeductionUnderSection250") || g("ForeignDerivedIntangibleIncomeDeduction") || g("DeductionForForeignDerivedIntangibleIncome"),
+  };
+  countNonNull(foreignTaxDetail);
+
+  const energyCredits = {
+    ptcCarryforward: g("RenewableEnergyTaxCreditCarryforward") || g("ProductionTaxCreditCarryforward"),
+    investmentTaxCredit: g("InvestmentTaxCredit"),
+    deferredItc: g("DeferredTaxAssetsInvestmentTaxCredit") || g("DeferredTaxAssetsTaxCreditCarryforwardsOther"),
+    cleanEnergyCredit: g("CleanEnergyTaxCreditAmount"),
+  };
+  countNonNull(energyCredits);
+
+  const depreciationDetail = {
+    totalDA: g("DepreciationAndAmortization") || g("DepreciationDepletionAndAmortization"),
+    depreciation: g("Depreciation"),
+    amortization: g("AmortizationOfIntangibleAssets"),
+    acceleratedDepreciation: g("AcceleratedDepreciation") || deferredTaxLiabilities.propertyPlantEquipment,
+  };
+  countNonNull(depreciationDetail);
+
+  const workingCapital = {
+    cash: g("CashAndCashEquivalentsAtCarryingValue"),
+    shortTermInvestments: g("ShortTermInvestments") || g("AvailableForSaleSecuritiesDebtSecuritiesCurrent"),
+    inventory: g("InventoryNet"),
+    accountsReceivable: g("AccountsReceivableNetCurrent"),
+    accountsPayable: g("AccountsPayableCurrent"),
+  };
+  countNonNull(workingCapital);
+
+  const debtStructure = {
+    longTermDebt: g("LongTermDebtNoncurrent") || g("LongTermDebt"),
+    shortTermBorrowings: g("ShortTermBorrowings"),
+    interestExpense: g("InterestExpense") || g("InterestExpenseDebt"),
+  };
+  countNonNull(debtStructure);
+
   const deiFields = {
     sharesOutstanding: d("EntityCommonStockSharesOutstanding"),
     publicFloat: d("EntityPublicFloat"),
+    incorporationState: d("EntityIncorporationStateCountryCode"),
+    filerCategory: d("EntityFilerCategory"),
   };
   countNonNull(deiFields);
 
@@ -972,9 +1090,192 @@ function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>
     capitalExpenditures,
     employment,
     supplemental,
+    foreignTaxDetail,
+    energyCredits,
+    depreciationDetail,
+    workingCapital,
+    debtStructure,
     deiFields,
     xbrlDepth,
   };
+}
+
+export function extractXbrlTimeSeries(
+  concept: string,
+  namespace: Record<string, any>,
+  form: string = "10-K",
+  years: number = 3,
+): XbrlTimeSeries | null {
+  const conceptData = namespace[concept];
+  if (!conceptData) return null;
+  const units = conceptData.units || {};
+  const values = units["USD"] || units["pure"] || units["shares"] || Object.values(units)[0] || [];
+  const filtered = (values as any[])
+    .filter((v: any) => v.form === form && v.end)
+    .sort((a: any, b: any) => (b.end || "").localeCompare(a.end || ""));
+  if (filtered.length === 0) return null;
+
+  const seenYears = new Set<number>();
+  const result: { value: number; period: string; year: number }[] = [];
+  for (const entry of filtered) {
+    const yr = new Date(entry.end).getFullYear();
+    if (seenYears.has(yr)) continue;
+    seenYears.add(yr);
+    result.push({ value: entry.val, period: entry.end, year: yr });
+    if (result.length >= years) break;
+  }
+  return result.length > 0 ? { values: result } : null;
+}
+
+export function extractMultiYearXRay(usGaap: Record<string, any>, dei: Record<string, any>, years: number = 3): MultiYearXRay {
+  const gs = (c: string) => extractXbrlTimeSeries(c, usGaap, "10-K", years);
+  const ds = (c: string) => extractXbrlTimeSeries(c, dei, "10-K", years);
+  return {
+    revenue: gs("Revenues") || gs("RevenueFromContractWithCustomerExcludingAssessedTax") || gs("SalesRevenueNet"),
+    rdExpense: gs("ResearchAndDevelopmentExpense") || gs("ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost"),
+    capex: gs("PaymentsToAcquirePropertyPlantAndEquipment"),
+    ppeNet: gs("PropertyPlantAndEquipmentNet"),
+    effectiveTaxRate: gs("EffectiveIncomeTaxRateContinuingOperations"),
+    taxesPaid: gs("IncomeTaxesPaidNet") || gs("IncomeTaxesPaid"),
+    foreignPreTax: gs("IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign"),
+    foreignTaxCredit: gs("IncomeTaxReconciliationTaxCreditsForeign"),
+    researchCredit: gs("IncomeTaxReconciliationTaxCreditsResearch"),
+    nolCarryforwards: gs("DeferredTaxAssetsOperatingLossCarryforwards"),
+    totalAssets: gs("Assets"),
+    employeeCount: ds("EntityNumberOfEmployees"),
+  };
+}
+
+export async function fetchFilingFootnotes(cik: string, accessionNumber: string): Promise<{ taxFootnote: string | null; commitmentsSection: string | null }> {
+  try {
+    const accFormatted = accessionNumber.replace(/-/g, "");
+    const indexRes = await secFetch(`https://www.sec.gov/Archives/edgar/data/${cik.replace(/^0+/, "")}/${accFormatted}/index.json`);
+    if (!indexRes.ok) return { taxFootnote: null, commitmentsSection: null };
+
+    const indexData = await indexRes.json() as any;
+    const items = indexData?.directory?.item || [];
+    const htmFile = items.find((f: any) =>
+      (f.name?.toLowerCase().endsWith(".htm") || f.name?.toLowerCase().endsWith(".html")) &&
+      !f.name?.toLowerCase().includes("r9999") &&
+      (f.size > 100000 || f.name?.toLowerCase().includes("10-k") || f.name?.toLowerCase().includes("10k"))
+    ) || items.find((f: any) =>
+      (f.name?.toLowerCase().endsWith(".htm") || f.name?.toLowerCase().endsWith(".html")) && f.size > 50000
+    );
+    if (!htmFile) return { taxFootnote: null, commitmentsSection: null };
+
+    const docRes = await secFetch(
+      `https://www.sec.gov/Archives/edgar/data/${cik.replace(/^0+/, "")}/${accFormatted}/${htmFile.name}`,
+      "text/html",
+    );
+    if (!docRes.ok) return { taxFootnote: null, commitmentsSection: null };
+    const html = await docRes.text();
+
+    const taxPatterns = [
+      /income\s+tax/i, /provision\s+for\s+income\s+tax/i, /tax\s+provision/i,
+      /income\s+taxes/i, /taxes\s+on\s+income/i,
+    ];
+    const commitPatterns = [/commitments?\s+and\s+contingenc/i, /contingencies/i];
+
+    const extractSection = (text: string, patterns: RegExp[], maxLen: number = 5000): string | null => {
+      const stripped = text.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
+      for (const pat of patterns) {
+        const match = pat.exec(stripped);
+        if (match) {
+          const start = Math.max(0, match.index - 100);
+          return stripped.slice(start, start + maxLen);
+        }
+      }
+      return null;
+    };
+
+    return {
+      taxFootnote: extractSection(html, taxPatterns),
+      commitmentsSection: extractSection(html, commitPatterns),
+    };
+  } catch (e: any) {
+    console.warn(`[BLOOM] fetchFilingFootnotes error:`, e.message?.slice(0, 100));
+    return { taxFootnote: null, commitmentsSection: null };
+  }
+}
+
+export function extractFootnoteSignals(footnoteText: string | null): FootnoteInsight[] {
+  if (!footnoteText) return [];
+  const insights: FootnoteInsight[] = [];
+  const text = footnoteText.toLowerCase();
+
+  const dollarRegex = /\$\s*([\d,.]+)\s*(million|billion|thousand)?/gi;
+  const parseDollar = (match: RegExpMatchArray): number | undefined => {
+    const num = parseFloat(match[1].replace(/,/g, ""));
+    if (isNaN(num)) return undefined;
+    const unit = (match[2] || "").toLowerCase();
+    if (unit === "billion") return num * 1e9;
+    if (unit === "million") return num * 1e6;
+    if (unit === "thousand") return num * 1e3;
+    return num;
+  };
+
+  const creditPatterns: { pattern: RegExp; creditId: string; label: string }[] = [
+    { pattern: /foreign\s+tax\s+credit/i, creditId: "foreign_credit", label: "Foreign Tax Credit" },
+    { pattern: /(research|r&d)\s+(tax\s+)?credit/i, creditId: "rd_41", label: "R&D Tax Credit" },
+    { pattern: /investment\s+tax\s+credit/i, creditId: "itc", label: "Investment Tax Credit" },
+    { pattern: /production\s+tax\s+credit/i, creditId: "ptc_45", label: "Production Tax Credit" },
+    { pattern: /energy\s+(tax\s+)?credit/i, creditId: "adv_energy_48c", label: "Energy Tax Credit" },
+    { pattern: /new\s+markets?\s+tax\s+credit/i, creditId: "new_markets_45d", label: "New Markets Tax Credit" },
+    { pattern: /low.income\s+housing/i, creditId: "lihtc", label: "Low-Income Housing Credit" },
+    { pattern: /orphan\s+drug/i, creditId: "orphan_drug_45c", label: "Orphan Drug Credit" },
+  ];
+
+  for (const { pattern, creditId, label } of creditPatterns) {
+    const match = pattern.exec(text);
+    if (match) {
+      const context = footnoteText.slice(Math.max(0, match.index - 50), Math.min(footnoteText.length, match.index + 200));
+      const dollarMatch = dollarRegex.exec(context);
+      dollarRegex.lastIndex = 0;
+      const extractedValue = dollarMatch ? parseDollar(dollarMatch) : undefined;
+
+      if (context.match(/carryforward|carry\s*forward|carried\s+forward/i)) {
+        insights.push({ category: "credit_claim", signal: `${label} carryforward referenced in 10-K footnotes`, creditId, extractedValue, rawExcerpt: context.trim().slice(0, 200) });
+      } else if (context.match(/credit\s+of\s+approximately|credit\s+totaling|credit\s+amount/i)) {
+        insights.push({ category: "credit_claim", signal: `${label} amount disclosed in footnotes`, creditId, extractedValue, rawExcerpt: context.trim().slice(0, 200) });
+      } else {
+        insights.push({ category: "credit_claim", signal: `${label} referenced in 10-K footnotes`, creditId, extractedValue, rawExcerpt: context.trim().slice(0, 200) });
+      }
+    }
+  }
+
+  const constraintPatterns: { pattern: RegExp; signal: string }[] = [
+    { pattern: /valuation\s+allowance/i, signal: "Valuation allowance mentioned — may limit credit utilization" },
+    { pattern: /uncertain\s+tax\s+position/i, signal: "Uncertain tax positions disclosed" },
+    { pattern: /section\s+382\s+limitation/i, signal: "§382 limitation on NOL/credit carryforwards" },
+    { pattern: /gilti/i, signal: "GILTI provisions referenced" },
+    { pattern: /base\s+erosion/i, signal: "BEAT provisions referenced" },
+    { pattern: /transfer\s+pricing/i, signal: "Transfer pricing disclosures may affect FTC" },
+  ];
+
+  for (const { pattern, signal } of constraintPatterns) {
+    const match = pattern.exec(text);
+    if (match) {
+      const context = footnoteText.slice(Math.max(0, match.index - 30), Math.min(footnoteText.length, match.index + 150));
+      insights.push({ category: "credit_constraint", signal, rawExcerpt: context.trim().slice(0, 200) });
+    }
+  }
+
+  const expirationMatch = text.match(/expir(?:es?|ing|ation).*?(20\d{2})/);
+  if (expirationMatch) {
+    const yr = parseInt(expirationMatch[1]);
+    const context = footnoteText.slice(Math.max(0, expirationMatch.index! - 30), Math.min(footnoteText.length, expirationMatch.index! + 150));
+    insights.push({ category: "credit_expiration", signal: `Credit/carryforward expiration referenced (${yr})`, expirationYear: yr, rawExcerpt: context.trim().slice(0, 200) });
+  }
+
+  if (text.match(/uncertain\s+tax\s+position|unrecognized\s+tax\s+benefit/i)) {
+    const match = text.match(/uncertain\s+tax\s+position|unrecognized\s+tax\s+benefit/i)!;
+    const context = footnoteText.slice(Math.max(0, match.index! - 30), Math.min(footnoteText.length, match.index! + 200));
+    const dollarMatch = dollarRegex.exec(context);
+    dollarRegex.lastIndex = 0;
+    insights.push({ category: "uncertain_position", signal: "Uncertain tax positions/unrecognized benefits disclosed", extractedValue: dollarMatch ? parseDollar(dollarMatch) : undefined, rawExcerpt: context.trim().slice(0, 200) });
+  }
+
+  return insights;
 }
 
 export async function getCompanyDetails(cik: string): Promise<{
@@ -982,7 +1283,10 @@ export async function getCompanyDetails(cik: string): Promise<{
   rdExpense?: number; rdPeriod?: string; revenue?: number; creditIndicator?: number;
   entityType?: string; ein?: string; employeeCount?: number; totalAssets?: number;
   creditXRay?: CreditXRay;
+  multiYearXRay?: MultiYearXRay;
+  footnoteInsights?: FootnoteInsight[];
   lastFilingDate?: string; last10KDate?: string;
+  last10KAccession?: string;
   recentEvents?: RecentEvent[];
 } | null> {
   try {
@@ -994,6 +1298,7 @@ export async function getCompanyDetails(cik: string): Promise<{
     let sic: string | undefined, sicDescription: string | undefined, stateOfIncorporation: string | undefined;
     let entityType: string | undefined, ein: string | undefined;
     let lastFilingDate: string | undefined, last10KDate: string | undefined;
+    let last10KAccession: string | undefined;
     let recentEvents: RecentEvent[] = [];
 
     if (subRes.ok) {
@@ -1009,6 +1314,7 @@ export async function getCompanyDetails(cik: string): Promise<{
         const dates: string[] = recentFilings.filingDate;
         const forms: string[] = recentFilings.form;
         const items: string[] = recentFilings.items || [];
+        const accessions: string[] = recentFilings.accessionNumber || [];
         if (dates.length > 0) {
           lastFilingDate = dates[0];
         }
@@ -1016,6 +1322,7 @@ export async function getCompanyDetails(cik: string): Promise<{
           const formType = forms[fi];
           if (formType === "10-K" || formType === "10-K/A") {
             last10KDate = dates[fi];
+            last10KAccession = accessions[fi];
             break;
           }
         }
@@ -1027,6 +1334,7 @@ export async function getCompanyDetails(cik: string): Promise<{
     let creditIndicator: number | undefined;
     let employeeCount: number | undefined, totalAssets: number | undefined;
     let creditXRay: CreditXRay | undefined;
+    let multiYearXRay: MultiYearXRay | undefined;
 
     if (factsRes.ok) {
       const facts = await factsRes.json() as any;
@@ -1034,6 +1342,7 @@ export async function getCompanyDetails(cik: string): Promise<{
       const dei = facts?.facts?.["dei"] || {};
 
       creditXRay = extractCreditXRay(usGaap, dei);
+      multiYearXRay = extractMultiYearXRay(usGaap, dei, 3);
 
       if (creditXRay.supplemental.rdExpense) {
         rdExpense = creditXRay.supplemental.rdExpense.value;
@@ -1057,7 +1366,20 @@ export async function getCompanyDetails(cik: string): Promise<{
       }
     }
 
-    return { sic, sicDescription, stateOfIncorporation, rdExpense, rdPeriod, revenue, creditIndicator, entityType, ein, employeeCount, totalAssets, creditXRay, lastFilingDate, last10KDate, recentEvents };
+    let footnoteInsights: FootnoteInsight[] | undefined;
+    if (last10KAccession && cik) {
+      try {
+        const footnotes = await fetchFilingFootnotes(cik, last10KAccession);
+        const taxInsights = extractFootnoteSignals(footnotes.taxFootnote);
+        const commitInsights = extractFootnoteSignals(footnotes.commitmentsSection);
+        footnoteInsights = [...taxInsights, ...commitInsights];
+        if (footnoteInsights.length === 0) footnoteInsights = undefined;
+      } catch (e: any) {
+        console.warn(`[BLOOM] Footnote extraction failed for CIK ${cik}:`, e.message?.slice(0, 80));
+      }
+    }
+
+    return { sic, sicDescription, stateOfIncorporation, rdExpense, rdPeriod, revenue, creditIndicator, entityType, ein, employeeCount, totalAssets, creditXRay, multiYearXRay, footnoteInsights, lastFilingDate, last10KDate, last10KAccession, recentEvents };
   } catch (e: any) {
     console.warn(`[BLOOM] getCompanyDetails error for CIK ${cik}:`, e.message || e);
     return null;

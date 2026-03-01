@@ -15,7 +15,7 @@ import {
   FolderOpen, Heart, Globe2,
   Rocket, User, Mail, Briefcase, Phone,
   CheckCircle, ShieldAlert, XCircle, MinusCircle, Leaf, PauseCircle, Zap,
-  Bug,
+  Bug, Lock, ArrowDownCircle, BarChart3, HelpCircle, AlertTriangle, Info,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -638,6 +638,125 @@ export default function PortfolioPage() {
   );
 }
 
+const STATUS_COLORS: Record<string, string> = {
+  active: "text-emerald-300/80 border-emerald-500/20 bg-emerald-500/8",
+  partial: "text-yellow-300/70 border-yellow-500/20 bg-yellow-500/8",
+  maxed_out: "text-emerald-400/60 border-emerald-500/15 bg-emerald-500/6",
+  confirmed_unclaimed: "text-amber-200 border-amber-400/25 bg-amber-500/12 animate-pulse",
+  likely_unclaimed: "text-amber-300/70 border-amber-500/20 bg-amber-500/8",
+  unclaimed: "text-amber-200 border-amber-400/25 bg-amber-500/10",
+  data_gap: "text-zinc-400/60 border-zinc-500/20 bg-zinc-500/8",
+  structurally_limited: "text-orange-300/70 border-orange-500/20 bg-orange-500/8",
+  dropped: "text-red-300/70 border-red-500/20 bg-red-500/8",
+  peer_outlier: "text-violet-300/70 border-violet-500/20 bg-violet-500/8",
+  unknown: "text-zinc-400/50 border-zinc-500/15",
+};
+const STATUS_LABELS: Record<string, string> = {
+  active: "Actively Claimed", partial: "Partially Utilized", maxed_out: "Fully Optimized",
+  confirmed_unclaimed: "Confirmed Unclaimed", likely_unclaimed: "Likely Unclaimed",
+  unclaimed: "Unclaimed", data_gap: "Insufficient Data",
+  structurally_limited: "Structurally Limited", dropped: "Recently Dropped",
+  peer_outlier: "Industry Outlier", unknown: "Under Review",
+};
+const STATUS_ICONS: Record<string, any> = {
+  active: CheckCircle, partial: MinusCircle, maxed_out: CheckCircle,
+  confirmed_unclaimed: AlertTriangle, likely_unclaimed: Sparkles,
+  unclaimed: Sparkles, data_gap: HelpCircle,
+  structurally_limited: Lock, dropped: ArrowDownCircle,
+  peer_outlier: BarChart3, unknown: HelpCircle,
+};
+
+function CreditAnalysisSection({ creditAnalysis, leadId }: { creditAnalysis: any[]; leadId: string }) {
+  const [expandedCredits, setExpandedCredits] = useState<Set<number>>(new Set());
+  const toggleCredit = (i: number) => {
+    setExpandedCredits(prev => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
+  return (
+    <div className="rounded-lg border border-amber-500/8 bg-amber-950/3 p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <Coins className="w-3.5 h-3.5 text-amber-400/40" />
+        <span className="text-xs font-medium text-amber-300/50">Credit Analysis ({creditAnalysis.length})</span>
+      </div>
+      <div className="space-y-1">
+        {creditAnalysis.map((ca: any, i: number) => {
+          const isExpanded = expandedCredits.has(i);
+          const StatusIcon = STATUS_ICONS[ca.status] || Sparkles;
+          const ed = ca.evidenceDetails || {};
+          const hasDetails = ca.classificationReason || ed.footnoteExcerpt || ed.trendInsight || ed.peerContext || ed.interactionWarning;
+          return (
+            <div key={i} data-testid={`credit-row-${leadId}-${ca.creditId}`}>
+              <div
+                className={`flex items-center gap-3 py-1.5 px-3 rounded border border-amber-500/5 bg-amber-950/3 ${hasDetails ? "cursor-pointer hover:bg-amber-950/8 transition-colors" : ""}`}
+                onClick={() => hasDetails && toggleCredit(i)}
+              >
+                <StatusIcon className={`w-3 h-3 shrink-0 ${ca.status === "active" || ca.status === "maxed_out" ? "text-emerald-400/60" : ca.status === "structurally_limited" ? "text-orange-400/60" : ca.status === "dropped" ? "text-red-400/60" : ca.status === "peer_outlier" ? "text-violet-400/60" : ca.status === "data_gap" ? "text-zinc-400/40" : "text-amber-300/60"}`} />
+                <span className="text-xs text-amber-200/60 font-medium flex-1 truncate">{ca.creditName}</span>
+                <span className="text-[10px] text-amber-400/30 font-mono">{ca.section}</span>
+                <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${STATUS_COLORS[ca.status] || STATUS_COLORS.unknown}`}>
+                  {STATUS_LABELS[ca.status] || ca.status?.replace(/_/g, " ")}
+                </Badge>
+                {ca.potentialAmount > 0 && <span className="text-[10px] text-amber-300/50 tabular-nums">{formatCurrency(ca.potentialAmount)}</span>}
+                {hasDetails && (isExpanded ? <ChevronDown className="w-3 h-3 text-amber-400/30" /> : <ChevronRight className="w-3 h-3 text-amber-400/20" />)}
+              </div>
+
+              {isExpanded && hasDetails && (
+                <div className="ml-6 mr-2 mt-1 mb-2 space-y-2 border-l-2 border-amber-500/10 pl-3">
+                  {ca.classificationReason && (
+                    <div className="flex items-start gap-2">
+                      <Info className="w-3 h-3 shrink-0 mt-0.5 text-amber-400/40" />
+                      <p className="text-[11px] text-amber-200/50 leading-relaxed">{ca.classificationReason}</p>
+                    </div>
+                  )}
+                  {ca.evidence && (
+                    <div className="flex items-start gap-2">
+                      <Sparkles className="w-3 h-3 shrink-0 mt-0.5 text-amber-400/25" />
+                      <p className="text-[11px] text-amber-400/30 leading-relaxed">{ca.evidence}</p>
+                    </div>
+                  )}
+                  {ed.footnoteExcerpt && (
+                    <div className="rounded bg-amber-950/5 border border-amber-500/5 p-2">
+                      <div className="text-[10px] text-amber-300/40 font-medium mb-0.5">10-K Footnote</div>
+                      <p className="text-[10px] text-amber-400/30 leading-relaxed italic">"{ed.footnoteExcerpt}"</p>
+                    </div>
+                  )}
+                  {ed.trendInsight && (
+                    <div className="flex items-start gap-2">
+                      <TrendingUp className="w-3 h-3 shrink-0 mt-0.5 text-violet-400/40" />
+                      <p className="text-[11px] text-violet-300/50 leading-relaxed">{ed.trendInsight}</p>
+                    </div>
+                  )}
+                  {ed.peerContext && (
+                    <div className="flex items-start gap-2">
+                      <BarChart3 className="w-3 h-3 shrink-0 mt-0.5 text-violet-400/40" />
+                      <p className="text-[11px] text-violet-300/50 leading-relaxed">{ed.peerContext}</p>
+                    </div>
+                  )}
+                  {ed.interactionWarning && (
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5 text-orange-400/40" />
+                      <p className="text-[11px] text-orange-300/50 leading-relaxed">{ed.interactionWarning}</p>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3">
+                    {ca.claimedAmount > 0 && <span className="text-[10px] text-emerald-300/50 font-medium tabular-nums">{formatCurrency(ca.claimedAmount)} claimed</span>}
+                    {ca.potentialAmount > 0 && <span className="text-[10px] text-amber-300/60 font-medium tabular-nums">{formatCurrency(ca.potentialAmount)} potential</span>}
+                    {ca.confidence && <span className="text-[9px] text-amber-400/20">{ca.confidence === "xbrl_verified" ? "XBRL Verified" : ca.confidence === "footnote_confirmed" ? "Footnote Confirmed" : ca.confidence}</span>}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PortfolioCard({ alloc, expanded, onToggle, onRemove, selected, onSelect, submitStatus }: {
   alloc: any;
   expanded: boolean;
@@ -762,33 +881,7 @@ function PortfolioCard({ alloc, expanded, onToggle, onRemove, selected, onSelect
             )}
 
             {creditAnalysis.length > 0 && (
-              <div className="rounded-lg border border-amber-500/8 bg-amber-950/3 p-3 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Coins className="w-3.5 h-3.5 text-amber-400/40" />
-                  <span className="text-xs font-medium text-amber-300/50">Credit Analysis ({creditAnalysis.length})</span>
-                </div>
-                <div className="space-y-1">
-                  {creditAnalysis.map((ca: any, i: number) => {
-                    const statusColors: Record<string, string> = {
-                      active: "text-emerald-300/80 border-emerald-500/20 bg-emerald-500/8",
-                      unclaimed: "text-amber-200 border-amber-400/25 bg-amber-500/10",
-                      likely_unclaimed: "text-amber-300/70 border-amber-500/20 bg-amber-500/8",
-                      partial: "text-yellow-300/70 border-yellow-500/20 bg-yellow-500/8",
-                    };
-                    return (
-                      <div key={i} className="flex items-center gap-3 py-1.5 px-3 rounded border border-amber-500/5 bg-amber-950/3">
-                        <Sparkles className={`w-3 h-3 shrink-0 ${ca.status === "unclaimed" || ca.status === "likely_unclaimed" ? "text-amber-300/60" : "text-emerald-400/40"}`} />
-                        <span className="text-xs text-amber-200/60 font-medium flex-1 truncate">{ca.creditName}</span>
-                        <span className="text-[10px] text-amber-400/30 font-mono">{ca.section}</span>
-                        <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${statusColors[ca.status] || "text-zinc-400/50 border-zinc-500/15"}`}>
-                          {ca.status?.replace(/_/g, " ")}
-                        </Badge>
-                        {ca.potentialAmount > 0 && <span className="text-[10px] text-amber-300/50 tabular-nums">{formatCurrency(ca.potentialAmount)}</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <CreditAnalysisSection creditAnalysis={creditAnalysis} leadId={lead.id} />
             )}
 
             {retroRecovery.length > 0 && (

@@ -25,11 +25,11 @@ import {
   XCircle, MinusCircle, Leaf,
   BarChart3, MapPin, TrendingUp, DollarSign, Users, FileText, Factory,
   GitBranch, Brain, FolderOpen, ArrowDown, Layers, Target,
+  ArrowDownCircle, HelpCircle, AlertTriangle, Info,
 } from "lucide-react";
 import { Shape4DCanvas } from "@/components/shapes-4d";
 import { HowToGuide } from "@/components/how-to-guide";
 import { IntelDashboard } from "@/components/light/IntelDashboard";
-import { HelpCircle } from "lucide-react";
 import { SecurityDialog } from "@/components/light/SecurityDialog";
 import type { FormField, DiscoveredForm, SecurityProfile, AdIntel, ApplicableCredit, CreditAnalysisItem, TaxPositionSummary, LeadDelta } from "@/components/light/types";
 import { FORM_LABELS as FORM_LABELS_IMPORTED } from "@/components/light/types";
@@ -295,6 +295,14 @@ export default function LightEngine() {
   const [selectedStage2, setSelectedStage2] = useState<Set<string>>(new Set());
   const [selectedStage3, setSelectedStage3] = useState<Set<string>>(new Set());
   const [pipelineView, setPipelineView] = useState<"stages" | "all">("stages");
+  const [expandedCredits, setExpandedCredits] = useState<Set<string>>(new Set());
+  const toggleCreditExpand = useCallback((key: string) => {
+    setExpandedCredits(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
 
   const startFormDiscovery = useCallback(async () => {
     if (formDiscoveryRunning) return;
@@ -447,6 +455,16 @@ export default function LightEngine() {
             } else if (evt.type === "retro") {
               const yearsStr = evt.amendableYears?.length ? ` (years: ${evt.amendableYears.join(', ')})` : '';
               setDeeplogicLog(p => [...p, `${evt.company}: ${evt.opportunities} retroactive opportunities (${formatCurrency(evt.totalValue)})${yearsStr}`]);
+            } else if (evt.type === "trends") {
+              const trendStr = evt.insights?.map((t: any) => `${t.metric} (${t.severity})`).join(', ') || '';
+              setDeeplogicLog(p => [...p, `[TRENDS] ${evt.company}: ${trendStr}`]);
+            } else if (evt.type === "interactions") {
+              setDeeplogicLog(p => [...p, `[INTERACTIONS] ${evt.company}: ${evt.count} credit interactions detected`]);
+            } else if (evt.type === "footnotes") {
+              setDeeplogicLog(p => [...p, `[FOOTNOTES] ${evt.company}: ${evt.count} footnote signals extracted`]);
+            } else if (evt.type === "benchmark") {
+              const outlierStr = evt.outliers > 0 ? ` — ${evt.outliers} outlier(s)` : '';
+              setDeeplogicLog(p => [...p, `[BENCHMARK] ${evt.company}: ${evt.peerCount} peers compared${outlierStr}`]);
             } else if (evt.type === "warning") {
               setDeeplogicLog(p => [...p, `[WARN] ${evt.company}: ${evt.message}`]);
             } else if (evt.type === "error") {
@@ -1683,43 +1701,102 @@ export default function LightEngine() {
                         )}
 
                         <div className="space-y-1">
-                          {hasCreditXray ? lead.creditAnalysis.map((ca, ci) => {
-                            const statusColors: Record<string, string> = {
+                          {hasCreditXray ? lead.creditAnalysis.map((ca: any, ci: number) => {
+                            const stColors: Record<string, string> = {
                               active: "text-emerald-300/80 border-emerald-500/20 bg-emerald-500/8",
-                              unclaimed: "text-amber-200 border-amber-400/25 bg-amber-500/10 animate-pulse",
-                              likely_unclaimed: "text-amber-300/70 border-amber-500/20 bg-amber-500/8",
                               partial: "text-yellow-300/70 border-yellow-500/20 bg-yellow-500/8",
-                              maxed_out: "text-emerald-400/60 border-emerald-500/15",
+                              maxed_out: "text-emerald-400/60 border-emerald-500/15 bg-emerald-500/6",
+                              confirmed_unclaimed: "text-amber-200 border-amber-400/25 bg-amber-500/12 animate-pulse",
+                              likely_unclaimed: "text-amber-300/70 border-amber-500/20 bg-amber-500/8",
+                              unclaimed: "text-amber-200 border-amber-400/25 bg-amber-500/10 animate-pulse",
+                              data_gap: "text-zinc-400/60 border-zinc-500/20 bg-zinc-500/8",
+                              structurally_limited: "text-orange-300/70 border-orange-500/20 bg-orange-500/8",
+                              dropped: "text-red-300/70 border-red-500/20 bg-red-500/8",
+                              peer_outlier: "text-violet-300/70 border-violet-500/20 bg-violet-500/8",
                               unknown: "text-zinc-400/50 border-zinc-500/15",
                             };
-                            const statusLabels: Record<string, string> = {
-                              active: "Active", unclaimed: "Unclaimed", likely_unclaimed: "Likely Unclaimed",
-                              partial: "Partial", maxed_out: "Maxed Out", unknown: "Unknown",
+                            const stLabels: Record<string, string> = {
+                              active: "Actively Claimed", partial: "Partially Utilized", maxed_out: "Fully Optimized",
+                              confirmed_unclaimed: "Confirmed Unclaimed", likely_unclaimed: "Likely Unclaimed",
+                              unclaimed: "Unclaimed", data_gap: "Insufficient Data",
+                              structurally_limited: "Structurally Limited", dropped: "Recently Dropped",
+                              peer_outlier: "Industry Outlier", unknown: "Under Review",
                             };
+                            const stIcons: Record<string, any> = {
+                              active: CheckCircle, partial: MinusCircle, maxed_out: CheckCircle,
+                              confirmed_unclaimed: AlertTriangle, likely_unclaimed: Sparkles,
+                              unclaimed: Sparkles, data_gap: HelpCircle,
+                              structurally_limited: Lock, dropped: ArrowDownCircle,
+                              peer_outlier: BarChart3, unknown: HelpCircle,
+                            };
+                            const StatusIcon = stIcons[ca.status] || Sparkles;
+                            const ed = ca.evidenceDetails || {};
+                            const hasDetails = ca.classificationReason || ed.footnoteExcerpt || ed.trendInsight || ed.peerContext || ed.interactionWarning;
+                            const creditKey = `${lead.leadId}-${ci}`;
+                            const isExpanded = expandedCredits.has(creditKey);
                             return (
-                              <div key={ci} className="flex items-start gap-3 py-2 px-3 rounded border border-amber-500/5 bg-amber-950/3" data-testid={`credit-analysis-${lead.leadId}-${ca.creditId}`}>
-                                <Sparkles className={`w-3 h-3 shrink-0 mt-0.5 ${ca.status === "unclaimed" || ca.status === "likely_unclaimed" ? "text-amber-300/60" : ca.status === "active" ? "text-emerald-400/60" : "text-amber-500/25"}`} />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-xs text-amber-200/60 font-medium">{ca.creditName}</span>
-                                    <span className="text-[10px] text-amber-400/30 font-mono">{ca.section}</span>
-                                    <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${statusColors[ca.status] || statusColors.unknown}`}>
-                                      {statusLabels[ca.status] || ca.status}
-                                    </Badge>
-                                    {ca.confidence === "xbrl_verified" && (
-                                      <span className="text-[9px] text-emerald-400/40 flex items-center gap-0.5"><CheckCircle className="w-2 h-2" />XBRL</span>
-                                    )}
-                                  </div>
-                                  <p className="text-[11px] text-amber-400/30 mt-0.5 leading-relaxed">{ca.evidence}</p>
-                                  <div className="flex items-center gap-3 mt-1">
-                                    {ca.claimedAmount !== null && ca.claimedAmount > 0 && (
-                                      <span className="text-[10px] text-emerald-300/50 font-medium tabular-nums">{formatCurrency(ca.claimedAmount)} claimed</span>
-                                    )}
-                                    {ca.potentialAmount !== null && ca.potentialAmount > 0 && (
-                                      <span className="text-[10px] text-amber-300/60 font-medium tabular-nums">{formatCurrency(ca.potentialAmount)} potential</span>
-                                    )}
-                                  </div>
+                              <div key={ci} data-testid={`credit-analysis-${lead.leadId}-${ca.creditId}`}>
+                                <div
+                                  className={`flex items-center gap-3 py-2 px-3 rounded border border-amber-500/5 bg-amber-950/3 ${hasDetails ? "cursor-pointer hover:bg-amber-950/8 transition-colors" : ""}`}
+                                  onClick={() => hasDetails && toggleCreditExpand(creditKey)}
+                                >
+                                  <StatusIcon className={`w-3 h-3 shrink-0 ${ca.status === "active" || ca.status === "maxed_out" ? "text-emerald-400/60" : ca.status === "structurally_limited" ? "text-orange-400/60" : ca.status === "dropped" ? "text-red-400/60" : ca.status === "peer_outlier" ? "text-violet-400/60" : ca.status === "data_gap" ? "text-zinc-400/40" : "text-amber-300/60"}`} />
+                                  <span className="text-xs text-amber-200/60 font-medium flex-1 truncate">{ca.creditName}</span>
+                                  <span className="text-[10px] text-amber-400/30 font-mono">{ca.section}</span>
+                                  <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${stColors[ca.status] || stColors.unknown}`}>
+                                    {stLabels[ca.status] || ca.status?.replace(/_/g, " ")}
+                                  </Badge>
+                                  {ca.confidence === "xbrl_verified" && (
+                                    <span className="text-[9px] text-emerald-400/40 flex items-center gap-0.5"><CheckCircle className="w-2 h-2" />XBRL</span>
+                                  )}
+                                  {ca.potentialAmount > 0 && <span className="text-[10px] text-amber-300/50 tabular-nums">{formatCurrency(ca.potentialAmount)}</span>}
+                                  {hasDetails && (isExpanded ? <ChevronDown className="w-3 h-3 text-amber-400/30" /> : <ChevronRight className="w-3 h-3 text-amber-400/20" />)}
                                 </div>
+                                {isExpanded && hasDetails && (
+                                  <div className="ml-6 mr-2 mt-1 mb-2 space-y-2 border-l-2 border-amber-500/10 pl-3">
+                                    {ca.classificationReason && (
+                                      <div className="flex items-start gap-2">
+                                        <Info className="w-3 h-3 shrink-0 mt-0.5 text-amber-400/40" />
+                                        <p className="text-[11px] text-amber-200/50 leading-relaxed">{ca.classificationReason}</p>
+                                      </div>
+                                    )}
+                                    {ca.evidence && (
+                                      <div className="flex items-start gap-2">
+                                        <Sparkles className="w-3 h-3 shrink-0 mt-0.5 text-amber-400/25" />
+                                        <p className="text-[11px] text-amber-400/30 leading-relaxed">{ca.evidence}</p>
+                                      </div>
+                                    )}
+                                    {ed.footnoteExcerpt && (
+                                      <div className="rounded bg-amber-950/5 border border-amber-500/5 p-2">
+                                        <div className="text-[10px] text-amber-300/40 font-medium mb-0.5">10-K Footnote</div>
+                                        <p className="text-[10px] text-amber-400/30 leading-relaxed italic">"{ed.footnoteExcerpt}"</p>
+                                      </div>
+                                    )}
+                                    {ed.trendInsight && (
+                                      <div className="flex items-start gap-2">
+                                        <TrendingUp className="w-3 h-3 shrink-0 mt-0.5 text-violet-400/40" />
+                                        <p className="text-[11px] text-violet-300/50 leading-relaxed">{ed.trendInsight}</p>
+                                      </div>
+                                    )}
+                                    {ed.peerContext && (
+                                      <div className="flex items-start gap-2">
+                                        <BarChart3 className="w-3 h-3 shrink-0 mt-0.5 text-violet-400/40" />
+                                        <p className="text-[11px] text-violet-300/50 leading-relaxed">{ed.peerContext}</p>
+                                      </div>
+                                    )}
+                                    {ed.interactionWarning && (
+                                      <div className="flex items-start gap-2">
+                                        <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5 text-orange-400/40" />
+                                        <p className="text-[11px] text-orange-300/50 leading-relaxed">{ed.interactionWarning}</p>
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-3">
+                                      {ca.claimedAmount > 0 && <span className="text-[10px] text-emerald-300/50 font-medium tabular-nums">{formatCurrency(ca.claimedAmount)} claimed</span>}
+                                      {ca.potentialAmount > 0 && <span className="text-[10px] text-amber-300/60 font-medium tabular-nums">{formatCurrency(ca.potentialAmount)} potential</span>}
+                                      {ca.confidence && <span className="text-[9px] text-amber-400/20">{ca.confidence === "xbrl_verified" ? "XBRL Verified" : ca.confidence === "footnote_confirmed" ? "Footnote Confirmed" : ca.confidence}</span>}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           }) : lead.applicableCredits.map((c, ci) => (
