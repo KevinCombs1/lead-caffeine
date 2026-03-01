@@ -14,7 +14,6 @@ import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-block
 import { submitSingleForm, runBatchSubmission, isActionableForm, type SenderProfile, type FormTarget, type BatchItem } from "./form-submitter";
 import * as cheerio from "cheerio";
 import { smartGet } from "./smart-retry";
-import { scrapeWithHeadless, isSpaHtml, closeBrowser } from "./headless-scraper";
 import dns from "dns";
 import { promisify } from "util";
 const dnsResolve = promisify(dns.resolve);
@@ -1987,18 +1986,12 @@ export async function registerRoutes(
             const seenActions = new Set<string>();
             const adNetworks: string[] = [];
             const trackingPixels: any[] = [];
-            let homepageHtml = "";
-            let scrapeMethod = "cheerio";
 
             const rawDomain = lead.domain!;
             const domainVariants = rawDomain.startsWith("www.") ? [rawDomain] : [rawDomain, `www.${rawDomain}`];
-            let activeDomain = rawDomain;
-            let blockedAll = false;
 
             for (const tryDomain of domainVariants) {
               if (forms.length > 0) break;
-              blockedAll = true;
-              activeDomain = tryDomain;
 
               for (const p of contactPaths) {
                 if (forms.length >= 5) break;
@@ -2007,9 +2000,7 @@ export async function registerRoutes(
                   const resp = await smartGet(url, { timeout: 8000, stealthMode: "full_stealth" });
                   if (!resp || !resp.data) continue;
                   if (resp.captchaDetected || resp.blocked || resp.status >= 400) continue;
-                  blockedAll = false;
                   const htmlBody = resp.data;
-                  if (p === "") homepageHtml = htmlBody;
                   const $ = cheerio.load(htmlBody);
                   $("form").each((_: any, el: any) => {
                     const action = $(el).attr("action") || "";
@@ -2045,30 +2036,6 @@ export async function registerRoutes(
               }
             }
 
-            const shouldTryHeadless = forms.length === 0 && (
-              blockedAll || (!blockedAll && homepageHtml && isSpaHtml(homepageHtml))
-            );
-            if (shouldTryHeadless) {
-              const reason = blockedAll ? "Blocked by WAF" : "SPA detected";
-              try {
-                send({ type: "progress", current: lead.company, index: i, total: validLeads.length, message: `${reason} — using headless browser` });
-                scrapeMethod = "headless";
-                const headlessTimeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Headless timeout (45s)")), 45000));
-                const headlessForms = await Promise.race([
-                  scrapeWithHeadless(activeDomain, contactPaths.slice(0, 3)),
-                  headlessTimeout,
-                ]);
-                for (const hf of headlessForms) {
-                  const { classification, confidence } = classifyForm(hf);
-                  const qualityScore = scoreFormQuality(hf, classification, confidence);
-                  forms.push({ ...hf, classification, classificationConfidence: confidence, qualityScore });
-                }
-              } catch (headlessErr: any) {
-                send({ type: "warning", company: lead.company, message: `Headless scrape failed: ${(headlessErr?.message || "").slice(0, 100)}` });
-                warnTotal++;
-              }
-            }
-
             forms.sort((a: any, b: any) => (b.qualityScore || 0) - (a.qualityScore || 0));
 
             foundForms = forms.length;
@@ -2076,7 +2043,6 @@ export async function registerRoutes(
 
             if (forms.length > 0 || adNetworks.length > 0) {
               enrichment.discoveredForms = forms;
-              enrichment.scrapeMethod = scrapeMethod;
               enrichment.adIntel = { adNetworks, trackingPixels, adsExchanges: [], adActivity: adNetworks.length > 0 ? "active" : "none" };
             }
           } catch (err: any) {
