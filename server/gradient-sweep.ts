@@ -1055,7 +1055,7 @@ export function extractXbrlValue(
   return { value: filtered[0].val, period: filtered[0].end };
 }
 
-function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>): CreditXRay {
+export function extractCreditXRay(usGaap: Record<string, any>, dei: Record<string, any>): CreditXRay {
   const g = (concept: string) => extractXbrlValue(concept, usGaap);
   const d = (concept: string) => extractXbrlValue(concept, dei);
 

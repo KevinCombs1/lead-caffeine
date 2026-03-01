@@ -5,8 +5,8 @@ import { existsSync } from "fs";
 import session from "express-session";
 import { storage } from "./storage";
 import { db } from "./db";
-import { sql } from "drizzle-orm";
-import { scrapedResults, scrapeJobs, domainSecurityProfiles } from "@shared/schema";
+import { sql, eq } from "drizzle-orm";
+import { scrapedResults, scrapeJobs, domainSecurityProfiles, fiscalLeads } from "@shared/schema";
 import { TAX_CREDIT_UNIVERSE, matchLeadCredits, analyzeCompanyCreditPosition, analyzeMultiYearTrends, analyzeCreditInteractions, applyInteractionAdjustments, computeIndustryBenchmarks, compareToIndustryPeers } from "./credit-universe";
 import { scanSingleLead, type SingleLeadGapResult } from "./credit-gap-engine";
 import { SIC_INDUSTRIES, findCompaniesBySIC, findCompaniesByFormD, findCompaniesByFilingText, getCompanyDetails, loadAllCompanies, companyIndex, type RecentEvent } from "./gradient-sweep";
@@ -18,6 +18,7 @@ import dns from "dns";
 import { promisify } from "util";
 const dnsResolve = promisify(dns.resolve);
 import { initializeSources, getSources, fetchSource, fetchAllSources, getEvents, getEventsCount, getEventsByState, getTrends, getTimelines, getConvergencePoints, getDealStats, getSourceHealth } from "./deal-sources";
+import { runFullEnrichment, isEnrichmentRunning, type FullEnrichmentResult } from "./full-enrichment";
 
 function getOwnerPassword() {
   return process.env.SCANNER_PASSWORD || "passwardo";
@@ -2409,6 +2410,103 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/portfolio/:leadId/full-enrichment", requireAuth, async (req: Request, res: Response) => {
+    try {
+      if (isEnrichmentRunning()) {
+        return res.status(409).json({ error: "Another enrichment is already running. Please wait." });
+      }
+
+      const leadId = req.params.leadId;
+      const allLeads = await db.select().from(fiscalLeads).where(eq(fiscalLeads.id, leadId));
+      if (allLeads.length === 0) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+      const lead = allLeads[0];
+      const enrichment = (lead.enrichmentData as any) || {};
+      const cik = enrichment.cik || "";
+      if (!cik) {
+        return res.status(400).json({ error: "Lead has no CIK — cannot run SEC enrichment" });
+      }
+
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      res.flushHeaders();
+
+      const sendSSE = (event: string, data: any) => {
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+
+      const startTime = Date.now();
+
+      try {
+        const result = await runFullEnrichment(
+          {
+            cik,
+            companyName: lead.company,
+            ticker: enrichment.ticker || "",
+            sic: lead.sic || enrichment.sic || "",
+            state: lead.state || enrichment.stateOfIncorporation || "",
+          },
+          (progress) => {
+            sendSSE("progress", progress);
+            if (progress.creditId) {
+              sendSSE("credit", { creditId: progress.creditId, creditName: progress.creditName, step: progress.step });
+            }
+          },
+        );
+
+        if (result.dealSourceSignals.length > 0) {
+          sendSSE("source", {
+            totalSources: result.enrichmentMetadata.dealSourcesQueried,
+            totalHits: result.dealSourceSignals.length,
+            signals: result.dealSourceSignals.slice(0, 20),
+          });
+        }
+
+        const updatedEnrichment = {
+          ...enrichment,
+          fullEnrichment: result,
+          isFullyEnriched: true,
+          fullEnrichmentTimestamp: new Date().toISOString(),
+          fullEnrichmentDuration: Date.now() - startTime,
+          creditAnalysis: result.creditAnalysis,
+          creditPosition: result.creditPosition,
+          creditInteractions: result.creditInteractions,
+          trendInsights: result.trendInsights,
+          retroactiveRecovery: result.retroactiveRecovery,
+          summaryStatements: result.summaryStatements,
+          dealSourceSignals: result.dealSourceSignals,
+          industryBenchmark: result.industryBenchmark,
+          peerComparisons: result.peerComparisons,
+          gapResults: result.gapResults,
+          creditHealthScore: result.creditHealthScore,
+          creditHealthLabel: result.creditHealthLabel,
+          estimatedUnclaimedValue: result.estimatedUnclaimedValue,
+          totalRetroactiveValue: result.totalRetroactiveValue,
+        };
+
+        await db.update(fiscalLeads).set({
+          enrichmentData: updatedEnrichment,
+          updatedAt: new Date(),
+        }).where(eq(fiscalLeads.id, leadId));
+
+        sendSSE("complete", result);
+      } catch (err: any) {
+        sendSSE("error", { message: err.message || "Enrichment failed" });
+      }
+
+      res.end();
+    } catch (err: any) {
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message });
+      }
     }
   });
 
