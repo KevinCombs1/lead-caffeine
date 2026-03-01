@@ -2193,6 +2193,21 @@ export default function LightEngine() {
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 border-amber-500/10 text-amber-400/40 shrink-0">
                               {form.method}
                             </Badge>
+                            {form.qualityScore != null && (
+                              <Badge variant="outline" data-testid={`badge-quality-${lead.leadId}-${i}`}
+                                className={`text-[9px] px-1.5 py-0 shrink-0 ${
+                                  form.qualityScore >= 70 ? "border-emerald-500/20 text-emerald-300/60" :
+                                  form.qualityScore >= 40 ? "border-amber-500/15 text-amber-300/50" :
+                                  "border-zinc-500/10 text-zinc-400/40"
+                                }`}>
+                                {form.qualityScore >= 70 ? "◆◆◆" : form.qualityScore >= 40 ? "◆◆" : "◆"} Q{form.qualityScore}
+                              </Badge>
+                            )}
+                            {form.classificationConfidence != null && form.classificationConfidence < 60 && (
+                              <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-rose-500/15 text-rose-300/40 shrink-0">
+                                low conf
+                              </Badge>
+                            )}
                             <span className="text-xs text-amber-300/40 font-mono truncate">{form.action}</span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">

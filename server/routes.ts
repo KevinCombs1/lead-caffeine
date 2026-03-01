@@ -14,6 +14,10 @@ import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-block
 import { submitSingleForm, runBatchSubmission, isActionableForm, type SenderProfile, type FormTarget, type BatchItem } from "./form-submitter";
 import * as cheerio from "cheerio";
 import { smartGet } from "./smart-retry";
+import { scrapeWithHeadless, isSpaHtml, closeBrowser } from "./headless-scraper";
+import dns from "dns";
+import { promisify } from "util";
+const dnsResolve = promisify(dns.resolve);
 import { initializeSources, getSources, fetchSource, fetchAllSources, getEvents, getEventsCount, getEventsByState, getTrends, getTimelines, getConvergencePoints, getDealStats, getSourceHealth } from "./deal-sources";
 
 function getOwnerPassword() {
@@ -58,25 +62,180 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   res.status(401).json({ error: "Unauthorized" });
 }
 
-function classifyForm(form: any): string {
+function tokenize(text: string): string[] {
+  return text.toLowerCase()
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(/[\s\/\-_\.]+/)
+    .filter(t => t.length > 0);
+}
+
+function wordMatch(tokens: string[], keywords: string[]): boolean {
+  return keywords.some(kw => tokens.some(t => t === kw || (kw.length >= 5 && t.startsWith(kw))));
+}
+
+interface FormStructure {
+  hasEmail: boolean;
+  hasPassword: boolean;
+  hasMessage: boolean;
+  hasName: boolean;
+  hasPhone: boolean;
+  hasCompany: boolean;
+  hasSubject: boolean;
+  hasFile: boolean;
+  hasSingleInput: boolean;
+  totalFields: number;
+}
+
+function analyzeFormStructure(form: any): FormStructure {
+  const fields = form.fields || form.inputs || [];
+  const types = fields.map((f: any) => (f.type || "").toLowerCase());
+  const names = fields.map((f: any) => (f.name || "").toLowerCase());
+  const tags = fields.map((f: any) => (f.tag || "").toLowerCase());
+  const placeholders = fields.map((f: any) => (f.placeholder || "").toLowerCase());
+  const all = [...names, ...placeholders];
+  return {
+    hasEmail: types.includes("email") || all.some((n: string) => /\bemail\b/.test(n) || /\be-?mail\b/.test(n)),
+    hasPassword: types.includes("password"),
+    hasMessage: tags.includes("textarea") || all.some((n: string) => /\bmessage\b/.test(n) || /\bcomment\b/.test(n) || /\binquiry\b/.test(n)),
+    hasName: all.some((n: string) => /\bname\b/.test(n) || /\bfullname\b/.test(n) || /\bfirst.?name\b/.test(n)),
+    hasPhone: types.includes("tel") || all.some((n: string) => /\bphone\b/.test(n) || /\btel\b/.test(n) || /\bmobile\b/.test(n)),
+    hasCompany: all.some((n: string) => /\bcompany\b/.test(n) || /\borganiz/i.test(n) || /\bbusiness\b/.test(n)),
+    hasSubject: all.some((n: string) => /\bsubject\b/.test(n) || /\btopic\b/.test(n)),
+    hasFile: types.includes("file"),
+    hasSingleInput: fields.length === 1 && !tags.includes("textarea"),
+    totalFields: fields.length,
+  };
+}
+
+function classifyForm(form: any): { classification: string; confidence: number } {
   const action = (form.action || "").toLowerCase();
-  const fieldNames = (form.fields || form.inputs || []).map((f: any) => (f.name || f.type || "").toLowerCase()).join(" ");
-  const all = action + " " + fieldNames;
-  if (all.includes("demo") || all.includes("schedule") || all.includes("book")) return "demo";
-  if (all.includes("consultation") || all.includes("consult") || all.includes("advisory")) return "consultation";
-  if (all.includes("quote") || all.includes("pricing") || all.includes("estimate")) return "quote";
-  if (all.includes("rfp") || all.includes("proposal") || all.includes("vendor") || all.includes("procurement") || all.includes("bid") || all.includes("tender")) return "rfp";
-  if (all.includes("partner") || all.includes("referral") || all.includes("affiliate") || all.includes("reseller") || all.includes("channel")) return "partnership";
-  if (all.includes("investor") || all.includes("invest") || all.includes("lp inquiry") || all.includes("capital")) return "investor";
-  if (all.includes("webinar") || all.includes("event") || all.includes("attend") || all.includes("rsvp") || all.includes("seminar")) return "webinar";
-  if (all.includes("contact") || all.includes("message") || all.includes("inquiry") || all.includes("enquiry")) return "contact";
-  if (all.includes("newsletter") || all.includes("subscribe") || all.includes("signup") || all.includes("sign-up")) return "newsletter";
-  if (all.includes("login") || all.includes("signin") || all.includes("sign-in") || all.includes("password")) return "login";
-  if (all.includes("support") || all.includes("ticket") || all.includes("helpdesk")) return "support";
-  if (all.includes("search") || all.includes("query") || all.includes("q=")) return "search";
-  if (all.includes("apply") || all.includes("career") || all.includes("job") || all.includes("resume")) return "application";
-  if (all.includes("register") || all.includes("create") || all.includes("account")) return "registration";
-  return "other";
+  const fields = form.fields || form.inputs || [];
+  const placeholders = fields.map((f: any) => (f.placeholder || "").toLowerCase());
+  const names = fields.map((f: any) => (f.name || "").toLowerCase());
+  const actionTokens = tokenize(action);
+  const fieldTokens = tokenize([...names, ...placeholders].join(" "));
+  const allTokens = [...actionTokens, ...fieldTokens];
+  const struct = analyzeFormStructure(form);
+
+  if (struct.hasPassword) return { classification: "login", confidence: 95 };
+  if (struct.hasSingleInput && !struct.hasEmail && !struct.hasMessage) {
+    const looksSearch = wordMatch(allTokens, ["search", "query"]) || action.includes("q=") || action.includes("search");
+    return { classification: "search", confidence: looksSearch ? 90 : 70 };
+  }
+
+  let bestClass = "other";
+  let bestConf = 0;
+
+  const rules: Array<{ cls: string; keywords: string[]; structBonus: number }> = [
+    { cls: "demo", keywords: ["demo", "schedule", "trial"], structBonus: struct.hasEmail ? 20 : 0 },
+    { cls: "consultation", keywords: ["consultation", "consult", "advisory"], structBonus: struct.hasEmail ? 20 : 0 },
+    { cls: "quote", keywords: ["quote", "pricing", "estimate"], structBonus: (struct.hasEmail && struct.hasCompany) ? 25 : 0 },
+    { cls: "rfp", keywords: ["rfp", "proposal", "procurement", "tender"], structBonus: struct.hasFile ? 15 : 0 },
+    { cls: "partnership", keywords: ["partner", "referral", "affiliate", "reseller"], structBonus: struct.hasEmail ? 10 : 0 },
+    { cls: "investor", keywords: ["investor", "invest", "capital"], structBonus: 0 },
+    { cls: "webinar", keywords: ["webinar", "rsvp", "seminar"], structBonus: struct.hasEmail ? 15 : 0 },
+    { cls: "contact", keywords: ["contact", "inquiry", "enquiry"], structBonus: (struct.hasEmail && struct.hasMessage) ? 30 : struct.hasMessage ? 15 : 0 },
+    { cls: "newsletter", keywords: ["newsletter", "subscribe", "signup"], structBonus: (struct.hasEmail && struct.totalFields <= 3) ? 20 : 0 },
+    { cls: "support", keywords: ["support", "ticket", "helpdesk"], structBonus: struct.hasMessage ? 10 : 0 },
+    { cls: "application", keywords: ["apply", "career", "resume"], structBonus: struct.hasFile ? 20 : 0 },
+    { cls: "registration", keywords: ["register", "account"], structBonus: struct.hasPassword ? 20 : 0 },
+  ];
+
+  for (const rule of rules) {
+    const kw = wordMatch(allTokens, rule.keywords);
+    if (!kw && rule.structBonus === 0) continue;
+    let conf = 0;
+    if (kw) conf += 50;
+    conf += rule.structBonus;
+    if (wordMatch(actionTokens, rule.keywords)) conf += 15;
+    if (conf > bestConf) { bestConf = conf; bestClass = rule.cls; }
+  }
+
+  if (bestConf < 40 && struct.hasEmail && struct.hasMessage && struct.hasName) {
+    bestClass = "contact";
+    bestConf = 75;
+  } else if (bestConf < 40 && struct.hasEmail && struct.hasMessage) {
+    bestClass = "contact";
+    bestConf = 65;
+  } else if (bestConf < 40 && struct.hasEmail && struct.totalFields >= 3) {
+    bestClass = "contact";
+    bestConf = 55;
+  }
+
+  return { classification: bestClass, confidence: Math.min(bestConf, 100) };
+}
+
+function scoreFormQuality(form: any, classification: string, confidence: number): number {
+  const fields = form.fields || form.inputs || [];
+  const struct = analyzeFormStructure(form);
+  let score = 0;
+
+  if (struct.hasEmail) score += 10;
+  if (struct.hasName) score += 10;
+  if (struct.hasMessage) score += 8;
+  if (struct.hasPhone) score += 5;
+  if (struct.hasCompany) score += 5;
+  if (struct.hasSubject) score += 2;
+
+  const action = (form.action || "").toLowerCase();
+  if (action && action !== "#" && action !== "") score += 10;
+  const method = (form.method || "POST").toUpperCase();
+  if (method === "POST") score += 10;
+  const hiddenFields = form.hiddenFields || [];
+  if (hiddenFields.length > 0) score += 5;
+  if (fields.some((f: any) => f.required)) score += 5;
+
+  const actionableHigh = new Set(["contact", "demo", "quote", "consultation"]);
+  if (actionableHigh.has(classification)) score += 20;
+  else if (classification !== "other" && classification !== "search" && classification !== "login") score += 10;
+  if (confidence >= 80) score += 10;
+  else if (confidence >= 60) score += 5;
+
+  return Math.min(score, 100);
+}
+
+const COMPANY_SUFFIXES = /\b(corp|corporation|inc|incorporated|ltd|limited|llc|co|company|group|holdings|international|intl|plc|sa|ag|nv|se|gmbh|lp|enterprises|solutions|technologies|systems|services)\b\.?/gi;
+
+async function checkDomainExists(domain: string): Promise<boolean> {
+  try {
+    await dnsResolve(domain);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveCompanyDomain(companyName: string, ticker?: string | null): Promise<string | null> {
+  const candidates: Array<{ domain: string; source: string }> = [];
+
+  if (ticker) {
+    candidates.push({ domain: `${ticker.toLowerCase()}.com`, source: "ticker_match" });
+  }
+
+  const stripped = companyName.replace(COMPANY_SUFFIXES, "").replace(/[^a-zA-Z0-9\s]/g, "").trim();
+  const words = stripped.split(/\s+/).filter(w => w.length > 0);
+
+  if (words.length === 1) {
+    candidates.push({ domain: `${words[0].toLowerCase()}.com`, source: "name_guess" });
+  } else if (words.length >= 2) {
+    candidates.push({ domain: words.join("").toLowerCase() + ".com", source: "name_guess" });
+    candidates.push({ domain: words.slice(0, 2).join("").toLowerCase() + ".com", source: "name_guess" });
+    if (words.length > 2) {
+      candidates.push({ domain: (words[0][0] + words.slice(1).join("")).toLowerCase() + ".com", source: "name_guess" });
+    }
+  }
+
+  const seen = new Set<string>();
+  for (const c of candidates) {
+    if (seen.has(c.domain) || c.domain.length < 4) continue;
+    seen.add(c.domain);
+    try {
+      const exists = await checkDomainExists(c.domain);
+      if (exists) return c.domain;
+    } catch {}
+  }
+
+  return null;
 }
 
 export async function registerRoutes(
@@ -203,8 +362,9 @@ export async function registerRoutes(
               const fields = form.fields || form.inputs || [];
               const visibleFields = fields.filter((f: any) => (f.type || "").toLowerCase() !== "hidden");
               const hiddenFieldsInForm = fields.filter((f: any) => (f.type || "").toLowerCase() === "hidden");
-              const classified = classifyForm(form);
+              const { classification: classified, confidence: classConf } = classifyForm(form);
               formTypeBreakdown[classified] = (formTypeBreakdown[classified] || 0) + 1;
+              const qScore = scoreFormQuality(form, classified, classConf);
               forms.push({
                 action: form.action || form.url || "/",
                 method: (form.method || "POST").toUpperCase(),
@@ -213,6 +373,8 @@ export async function registerRoutes(
                 fieldCount: visibleFields.length,
                 hiddenFieldCount: hiddenFieldsInForm.length,
                 classification: classified,
+                classificationConfidence: classConf,
+                qualityScore: qScore,
                 source: fr.url,
               });
             }
@@ -654,18 +816,43 @@ export async function registerRoutes(
           for (const form of rawForms) {
             const fields = (form.fields || form.inputs || []).filter((f: any) => (f.type || "").toLowerCase() !== "hidden");
             const hiddenFields = (form.fields || form.inputs || []).filter((f: any) => (f.type || "").toLowerCase() === "hidden").map((f: any) => ({ name: f.name, value: f.value || "" }));
-            const classification = classifyForm(form);
-            if (!isActionableForm(classification)) continue;
+            const { classification, confidence: classConf } = classifyForm(form);
+            if (!isActionableForm(classification, classConf)) continue;
             forms.push({
               action: form.action || form.url || `https://${lead.domain}/contact`,
               method: (form.method || "POST").toUpperCase(),
               fields,
               hiddenFields,
               classification,
+              classificationConfidence: classConf,
               source: fr.url || `https://${lead.domain}`,
             });
           }
         }
+
+        const enrichedForms = ((lead.enrichmentData as any)?.discoveredForms || []) as any[];
+        for (const ef of enrichedForms) {
+          if (ef.classification && ef.fields?.length > 0) {
+            const conf = ef.classificationConfidence ?? 100;
+            if (isActionableForm(ef.classification, conf)) {
+              const alreadyHas = forms.some((f: FormTarget) => f.action === ef.action);
+              if (!alreadyHas) {
+                forms.push({
+                  action: ef.action || `https://${lead.domain}/contact`,
+                  method: (ef.method || "POST").toUpperCase(),
+                  fields: ef.fields,
+                  hiddenFields: (ef.hiddenFields || []).map((h: any) => ({ name: h.name, value: h.value || "" })),
+                  classification: ef.classification,
+                  classificationConfidence: conf,
+                  qualityScore: ef.qualityScore,
+                  source: ef.source || `https://${lead.domain}`,
+                });
+              }
+            }
+          }
+        }
+
+        forms.sort((a: any, b: any) => (b.qualityScore || 0) - (a.qualityScore || 0));
 
         if (forms.length === 0) continue;
 
@@ -748,9 +935,9 @@ export async function registerRoutes(
         for (const form of rawForms) {
           const fields = (form.fields || form.inputs || []).filter((f: any) => (f.type || "").toLowerCase() !== "hidden");
           const hiddenFields = (form.fields || form.inputs || []).filter((f: any) => (f.type || "").toLowerCase() === "hidden").map((f: any) => ({ name: f.name, value: f.value || "" }));
-          const classification = classifyForm(form);
-          if (isActionableForm(classification)) {
-            forms.push({ action: form.action || form.url || `https://${lead.domain}/contact`, method: (form.method || "POST").toUpperCase(), fields, hiddenFields, classification, source: fr.url || `https://${lead.domain}` });
+          const { classification, confidence: classConf } = classifyForm(form);
+          if (isActionableForm(classification, classConf)) {
+            forms.push({ action: form.action || form.url || `https://${lead.domain}/contact`, method: (form.method || "POST").toUpperCase(), fields, hiddenFields, classification, classificationConfidence: classConf, source: fr.url || `https://${lead.domain}` });
           }
         }
       }
@@ -1254,9 +1441,7 @@ export async function registerRoutes(
             const estimatedCreditLow = creditClaimed ? 0 : Math.round(effectiveRD * 0.065);
             const estimatedCreditHigh = creditClaimed ? 0 : Math.round(effectiveRD * 0.10);
 
-            const cleanName = companyName.replace(/[^a-zA-Z0-9\s]/g, "").trim().split(/\s+/);
-            const domainGuess = cleanName.length > 0 ? cleanName.slice(0, 2).join("").toLowerCase() + ".com" : "";
-            const domain = domainGuess;
+            const domain = await resolveCompanyDomain(companyName, ticker);
 
             const sicDesc = details.sicDescription || "";
             const applicableCredits = matchLeadCredits(sicDesc, industryConfig.category);
@@ -1797,48 +1982,102 @@ export async function registerRoutes(
           skipTotal++;
         } else {
           try {
-            const url = `https://${lead.domain}`;
-            const html = await smartGet(url, { timeout: 8000, stealth: true });
-            if (html) {
-              const $ = cheerio.load(html);
-              const forms: any[] = [];
-              $("form").each((_: any, el: any) => {
-                const action = $(el).attr("action") || "";
-                const method = ($(el).attr("method") || "POST").toUpperCase();
-                const fields: any[] = [];
-                const hiddenFields: any[] = [];
-                $(el).find("input, textarea, select").each((_: any, inp: any) => {
-                  const f = { tag: inp.tagName, name: $(inp).attr("name") || "", type: $(inp).attr("type") || "text", placeholder: $(inp).attr("placeholder") || "", required: $(inp).attr("required") !== undefined };
-                  if (f.type === "hidden") hiddenFields.push(f);
-                  else fields.push(f);
-                });
-                if (fields.length > 0) {
-                  let classification = "other";
-                  const text = (action + " " + fields.map(f => f.name + " " + f.placeholder).join(" ")).toLowerCase();
-                  if (text.includes("contact") || text.includes("inquiry")) classification = "contact";
-                  else if (text.includes("demo") || text.includes("trial")) classification = "demo";
-                  else if (text.includes("newsletter") || text.includes("subscribe")) classification = "newsletter";
-                  else if (text.includes("investor") || text.includes("ir")) classification = "investor";
-                  forms.push({ action, method, fields, hiddenFields, fieldCount: fields.length, hiddenFieldCount: hiddenFields.length, classification, source: url });
+            const contactPaths = ["", "/contact", "/contact-us", "/get-in-touch", "/reach-us", "/about/contact", "/company/contact", "/connect"];
+            const forms: any[] = [];
+            const seenActions = new Set<string>();
+            const adNetworks: string[] = [];
+            const trackingPixels: any[] = [];
+            let homepageHtml = "";
+            let scrapeMethod = "cheerio";
+
+            const rawDomain = lead.domain!;
+            const domainVariants = rawDomain.startsWith("www.") ? [rawDomain] : [rawDomain, `www.${rawDomain}`];
+            let activeDomain = rawDomain;
+            let blockedAll = false;
+
+            for (const tryDomain of domainVariants) {
+              if (forms.length > 0) break;
+              blockedAll = true;
+              activeDomain = tryDomain;
+
+              for (const p of contactPaths) {
+                if (forms.length >= 5) break;
+                const url = `https://${tryDomain}${p}`;
+                try {
+                  const resp = await smartGet(url, { timeout: 8000, stealthMode: "full_stealth" });
+                  if (!resp || !resp.data) continue;
+                  if (resp.captchaDetected || resp.blocked || resp.status >= 400) continue;
+                  blockedAll = false;
+                  const htmlBody = resp.data;
+                  if (p === "") homepageHtml = htmlBody;
+                  const $ = cheerio.load(htmlBody);
+                  $("form").each((_: any, el: any) => {
+                    const action = $(el).attr("action") || "";
+                    const method = ($(el).attr("method") || "POST").toUpperCase();
+                    const actionKey = action || url;
+                    if (seenActions.has(actionKey)) return;
+                    const fields: any[] = [];
+                    const hiddenFields: any[] = [];
+                    $(el).find("input, textarea, select").each((_: any, inp: any) => {
+                      const f = { tag: inp.tagName, name: $(inp).attr("name") || "", type: $(inp).attr("type") || "text", placeholder: $(inp).attr("placeholder") || "", required: $(inp).attr("required") !== undefined };
+                      if (f.type === "hidden") hiddenFields.push(f);
+                      else fields.push(f);
+                    });
+                    if (fields.length > 0) {
+                      seenActions.add(actionKey);
+                      const { classification, confidence } = classifyForm({ action, method, fields, hiddenFields });
+                      const qualityScore = scoreFormQuality({ action, method, fields, hiddenFields }, classification, confidence);
+                      forms.push({ action, method, fields, hiddenFields, fieldCount: fields.length, hiddenFieldCount: hiddenFields.length, classification, classificationConfidence: confidence, qualityScore, source: url });
+                    }
+                  });
+
+                  if (p === "") {
+                    if (htmlBody.includes("googleads") || htmlBody.includes("google_ad") || htmlBody.includes("adsbygoogle")) adNetworks.push("Google Ads");
+                    if (htmlBody.includes("fbevents") || htmlBody.includes("facebook.com/tr")) { adNetworks.push("Facebook"); trackingPixels.push({ platform: "Facebook", id: "pixel" }); }
+                    if (htmlBody.includes("linkedin.com/px") || htmlBody.includes("snap.licdn")) adNetworks.push("LinkedIn");
+                    if (htmlBody.includes("analytics.twitter") || htmlBody.includes("static.ads-twitter")) adNetworks.push("Twitter/X");
+                    if (htmlBody.includes("google-analytics") || htmlBody.includes("gtag") || htmlBody.includes("UA-")) trackingPixels.push({ platform: "Google Analytics", id: "ga" });
+                  }
+                } catch {}
+                if (contactPaths.indexOf(p) < contactPaths.length - 1 && forms.length < 5) {
+                  await new Promise(r => setTimeout(r, 200 + Math.random() * 200));
                 }
-              });
-
-              const adNetworks: string[] = [];
-              const trackingPixels: any[] = [];
-              const htmlStr = html.toString();
-              if (htmlStr.includes("googleads") || htmlStr.includes("google_ad") || htmlStr.includes("adsbygoogle")) adNetworks.push("Google Ads");
-              if (htmlStr.includes("fbevents") || htmlStr.includes("facebook.com/tr")) { adNetworks.push("Facebook"); trackingPixels.push({ platform: "Facebook", id: "pixel" }); }
-              if (htmlStr.includes("linkedin.com/px") || htmlStr.includes("snap.licdn")) adNetworks.push("LinkedIn");
-              if (htmlStr.includes("analytics.twitter") || htmlStr.includes("static.ads-twitter")) adNetworks.push("Twitter/X");
-              if (htmlStr.includes("google-analytics") || htmlStr.includes("gtag") || htmlStr.includes("UA-")) trackingPixels.push({ platform: "Google Analytics", id: "ga" });
-
-              foundForms = forms.length;
-              foundAds = adNetworks.length;
-
-              if (forms.length > 0 || adNetworks.length > 0) {
-                enrichment.discoveredForms = forms;
-                enrichment.adIntel = { adNetworks, trackingPixels, adsExchanges: [], adActivity: adNetworks.length > 0 ? "active" : "none" };
               }
+            }
+
+            const shouldTryHeadless = forms.length === 0 && (
+              blockedAll || (!blockedAll && homepageHtml && isSpaHtml(homepageHtml))
+            );
+            if (shouldTryHeadless) {
+              const reason = blockedAll ? "Blocked by WAF" : "SPA detected";
+              try {
+                send({ type: "progress", current: lead.company, index: i, total: validLeads.length, message: `${reason} — using headless browser` });
+                scrapeMethod = "headless";
+                const headlessTimeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Headless timeout (45s)")), 45000));
+                const headlessForms = await Promise.race([
+                  scrapeWithHeadless(activeDomain, contactPaths.slice(0, 3)),
+                  headlessTimeout,
+                ]);
+                for (const hf of headlessForms) {
+                  const { classification, confidence } = classifyForm(hf);
+                  const qualityScore = scoreFormQuality(hf, classification, confidence);
+                  forms.push({ ...hf, classification, classificationConfidence: confidence, qualityScore });
+                }
+              } catch (headlessErr: any) {
+                send({ type: "warning", company: lead.company, message: `Headless scrape failed: ${(headlessErr?.message || "").slice(0, 100)}` });
+                warnTotal++;
+              }
+            }
+
+            forms.sort((a: any, b: any) => (b.qualityScore || 0) - (a.qualityScore || 0));
+
+            foundForms = forms.length;
+            foundAds = adNetworks.length;
+
+            if (forms.length > 0 || adNetworks.length > 0) {
+              enrichment.discoveredForms = forms;
+              enrichment.scrapeMethod = scrapeMethod;
+              enrichment.adIntel = { adNetworks, trackingPixels, adsExchanges: [], adActivity: adNetworks.length > 0 ? "active" : "none" };
             }
           } catch (err: any) {
             send({ type: "error", company: lead.company, error: err.message?.slice(0, 100) });

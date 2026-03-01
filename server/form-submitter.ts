@@ -23,6 +23,8 @@ export interface FormTarget {
   fields: Array<{ tag?: string; name: string; type?: string; placeholder?: string; required?: boolean }>;
   hiddenFields: Array<{ name: string; value: string }>;
   classification: string;
+  classificationConfidence?: number;
+  qualityScore?: number;
   source: string;
 }
 
@@ -477,6 +479,10 @@ export async function* runBatchSubmission(
   yield { type: "complete", data: { ...progress } };
 }
 
-export function isActionableForm(classification: string): boolean {
-  return ACTIONABLE_CLASSIFICATIONS.has(classification);
+export function isActionableForm(classification: string, confidence?: number): boolean {
+  if (!ACTIONABLE_CLASSIFICATIONS.has(classification)) return false;
+  const conf = confidence ?? 100;
+  if (classification === "other" && conf < 70) return false;
+  if (conf < 60) return false;
+  return true;
 }
