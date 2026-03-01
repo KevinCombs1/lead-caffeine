@@ -204,7 +204,14 @@ async function checkDomainExists(domain: string): Promise<boolean> {
   }
 }
 
-async function resolveCompanyDomain(companyName: string, ticker?: string | null): Promise<string | null> {
+async function resolveCompanyDomain(companyName: string, ticker?: string | null, cik?: string | null): Promise<string | null> {
+  if (cik) {
+    const indexEntry = companyIndex.getEntry(cik);
+    if (indexEntry?.website) {
+      return indexEntry.website;
+    }
+  }
+
   const candidates: Array<{ domain: string; source: string }> = [];
 
   if (ticker) {
@@ -1456,7 +1463,7 @@ export async function registerRoutes(
             const estimatedCreditLow = creditClaimed ? 0 : Math.round(effectiveRD * 0.065);
             const estimatedCreditHigh = creditClaimed ? 0 : Math.round(effectiveRD * 0.10);
 
-            const domain = await resolveCompanyDomain(companyName, ticker);
+            const domain = await resolveCompanyDomain(companyName, ticker, c.cik);
 
             const sicDesc = details.sicDescription || "";
             const applicableCredits = matchLeadCredits(sicDesc, industryConfig.category);
@@ -1503,6 +1510,8 @@ export async function registerRoutes(
                 creditXRay: details.creditXRay || null,
                 creditPosition: creditPosition || null,
                 recentEvents: details.recentEvents || [],
+                tenKFilingHistory: details.tenKFilingHistory || [],
+                website: details.website || undefined,
               },
               applicableCredits: applicableCredits.length,
               creditHealthScore,

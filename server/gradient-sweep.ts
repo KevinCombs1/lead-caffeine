@@ -24,6 +24,8 @@ export interface CompanyIndexEntry {
   state?: string;
   fiscalYearEnd?: string;
   exchange?: string;
+  website?: string;
+  recentTenKs?: Array<{ form: string; filingDate: string; accessionNumber: string }>;
   revenue?: number;
   rdExpense?: number;
   totalAssets?: number;
@@ -107,6 +109,29 @@ class SecCompanyIndex {
           entry.state = subs.stateOfIncorporation || undefined;
           entry.fiscalYearEnd = subs.fiscalYearEnd || undefined;
           entry.exchange = subs.exchanges?.[0] || undefined;
+
+          if (subs.website && typeof subs.website === "string" && subs.website.trim().length > 0) {
+            entry.website = subs.website.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+          }
+
+          const recent = subs.filings?.recent;
+          if (recent?.form && recent?.filingDate && recent?.accessionNumber) {
+            const tenYearsAgo = new Date();
+            tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
+            const cutoff = tenYearsAgo.toISOString().slice(0, 10);
+            const tenKs: Array<{ form: string; filingDate: string; accessionNumber: string }> = [];
+            for (let fi = 0; fi < recent.form.length && tenKs.length < 20; fi++) {
+              const formType = recent.form[fi];
+              if (formType === "10-K" || formType === "10-K/A") {
+                const filingDate = recent.filingDate[fi];
+                if (filingDate >= cutoff) {
+                  tenKs.push({ form: formType, filingDate, accessionNumber: recent.accessionNumber[fi] });
+                }
+              }
+            }
+            if (tenKs.length > 0) entry.recentTenKs = tenKs;
+          }
+
           entry.enrichedAt = Date.now();
           this.enrichedCount++;
         }
@@ -174,11 +199,19 @@ class SecCompanyIndex {
     }));
   }
 
-  getStatus(): { total: number; enriched: number; financials: number; building: boolean; buildPhase: string; lastBuilt: number } {
+  getStatus(): { total: number; enriched: number; financials: number; withWebsite: number; withFilings: number; building: boolean; buildPhase: string; lastBuilt: number } {
+    let withWebsite = 0;
+    let withFilings = 0;
+    for (const e of this.entries.values()) {
+      if (e.website) withWebsite++;
+      if (e.recentTenKs && e.recentTenKs.length > 0) withFilings++;
+    }
     return {
       total: this.entries.size,
       enriched: this.enrichedCount,
       financials: this.financialsCount,
+      withWebsite,
+      withFilings,
       building: this.building,
       buildPhase: this.buildPhase,
       lastBuilt: this.lastBuilt,
@@ -1409,6 +1442,8 @@ export async function getCompanyDetails(cik: string): Promise<{
   lastFilingDate?: string; last10KDate?: string;
   last10KAccession?: string;
   recentEvents?: RecentEvent[];
+  tenKFilingHistory?: Array<{ form: string; filingDate: string; accessionNumber: string }>;
+  website?: string;
 } | null> {
   try {
     const [subRes, factsRes] = await Promise.all([
@@ -1421,6 +1456,8 @@ export async function getCompanyDetails(cik: string): Promise<{
     let lastFilingDate: string | undefined, last10KDate: string | undefined;
     let last10KAccession: string | undefined;
     let recentEvents: RecentEvent[] = [];
+    let tenKFilingHistory: Array<{ form: string; filingDate: string; accessionNumber: string }> = [];
+    let website: string | undefined;
 
     if (subRes.ok) {
       const subs = await subRes.json() as any;
@@ -1448,8 +1485,26 @@ export async function getCompanyDetails(cik: string): Promise<{
           }
         }
         recentEvents = extract8KSignals({ forms, dates, items });
+
+        const tenYearsAgo = new Date();
+        tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
+        const cutoff10 = tenYearsAgo.toISOString().slice(0, 10);
+        for (let fi = 0; fi < forms.length; fi++) {
+          const formType = forms[fi];
+          if ((formType === "10-K" || formType === "10-K/A") && dates[fi] >= cutoff10) {
+            tenKFilingHistory.push({ form: formType, filingDate: dates[fi], accessionNumber: accessions[fi] });
+          }
+        }
       }
+
+      website = subs.website && typeof subs.website === "string" && subs.website.trim().length > 0
+        ? subs.website.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
+        : undefined;
     }
+
+    const indexEntry = companyIndex.getEntry(cik);
+    if (!website && indexEntry?.website) website = indexEntry.website;
+    if (tenKFilingHistory.length === 0 && indexEntry?.recentTenKs) tenKFilingHistory = indexEntry.recentTenKs;
 
     let rdExpense: number | undefined, rdPeriod: string | undefined, revenue: number | undefined;
     let creditIndicator: number | undefined;
@@ -1500,7 +1555,7 @@ export async function getCompanyDetails(cik: string): Promise<{
       }
     }
 
-    return { sic, sicDescription, stateOfIncorporation, rdExpense, rdPeriod, revenue, creditIndicator, entityType, ein, employeeCount, totalAssets, creditXRay, multiYearXRay, footnoteInsights, lastFilingDate, last10KDate, last10KAccession, recentEvents };
+    return { sic, sicDescription, stateOfIncorporation, rdExpense, rdPeriod, revenue, creditIndicator, entityType, ein, employeeCount, totalAssets, creditXRay, multiYearXRay, footnoteInsights, lastFilingDate, last10KDate, last10KAccession, recentEvents, tenKFilingHistory: tenKFilingHistory.length > 0 ? tenKFilingHistory : undefined, website };
   } catch (e: any) {
     console.warn(`[BLOOM] getCompanyDetails error for CIK ${cik}:`, e.message || e);
     return null;

@@ -1874,6 +1874,43 @@ export default function LightEngine() {
                       </div>
                     )}
 
+                    {((lead as any).enrichmentData?.tenKFilingHistory?.length > 0) && (
+                      <div className="rounded-lg border border-blue-500/10 bg-blue-950/5 p-4 space-y-2" data-testid={`section-filings-${lead.leadId}`}>
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-3.5 h-3.5 text-blue-400/50" />
+                          <span className="text-xs font-medium text-blue-300/60">10-K Filing History</span>
+                          <span className="text-[10px] text-blue-400/30">{((lead as any).enrichmentData.tenKFilingHistory as any[]).length} filings</span>
+                        </div>
+                        <div className="space-y-1">
+                          {((lead as any).enrichmentData.tenKFilingHistory as Array<{ form: string; filingDate: string; accessionNumber: string }>).map((filing, fi) => {
+                            const cikNum = ((lead as any).enrichmentData?.cik || "").replace(/^0+/, "");
+                            const accNoDashes = filing.accessionNumber.replace(/-/g, "");
+                            const filingYear = filing.filingDate.slice(0, 4);
+                            const threeYearsAgo = new Date();
+                            threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
+                            const inAmendmentWindow = new Date(filing.filingDate) >= threeYearsAgo;
+                            return (
+                              <div key={fi} className={`flex items-center gap-3 py-1.5 px-3 rounded border ${inAmendmentWindow ? "border-blue-400/15 bg-blue-950/8" : "border-blue-500/5 bg-blue-950/3"}`}>
+                                <span className={`text-xs font-mono w-10 ${inAmendmentWindow ? "text-blue-300/70 font-semibold" : "text-blue-400/40"}`}>{filingYear}</span>
+                                <span className="text-[10px] text-blue-400/40">{filing.filingDate}</span>
+                                <span className="text-[10px] text-blue-400/25">{filing.form}</span>
+                                {inAmendmentWindow && <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-400/10 text-blue-300/60">amendable</span>}
+                                <a
+                                  href={`https://www.sec.gov/Archives/edgar/data/${cikNum}/${accNoDashes}/`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] text-blue-400/40 hover:text-blue-300/70 ml-auto"
+                                  data-testid={`link-filing-${lead.leadId}-${fi}`}
+                                >
+                                  SEC →
+                                </a>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {((lead as any).enrichmentData?.recentEvents?.length > 0) && (
                       <div className="rounded-lg border border-orange-500/10 bg-orange-950/5 p-4 space-y-2" data-testid={`section-events-${lead.leadId}`}>
                         <div className="flex items-center gap-2">
