@@ -756,6 +756,14 @@ function analyzeRdCredit(xray: CreditXRay, credit: TaxCredit, footnoteInsights?:
   const rdExpense = v(xray.supplemental?.rdExpense);
   const capitalizedRd = v(xray.deferredTaxPosition?.capitalizedRd);
 
+  const totalCarryforwards = v(xray.creditCarryforwards?.totalCarryforwards);
+  const generalCredits = v(xray.activeCredits?.generalCredits);
+  const generalCreditRateImpact = v(xray.effectiveRateBreakdown?.generalCreditRateImpact);
+
+  const grossDeferred = v(xray.deferredTaxPosition?.grossDeferredAssets);
+  const valAllowance = v(xray.deferredTaxPosition?.valuationAllowance);
+  const hasFullVA = grossDeferred !== null && valAllowance !== null && grossDeferred > 0 && (valAllowance / grossDeferred) > 0.9;
+
   let status: CreditStatus = "unknown";
   let evidence = "";
   let claimedAmount: number | null = null;
@@ -788,6 +796,28 @@ function analyzeRdCredit(xray: CreditXRay, credit: TaxCredit, footnoteInsights?:
     confidence = "xbrl_verified";
     classificationReason = "R&D credit impact visible in effective rate reconciliation";
     xbrlSignals.push("EffectiveIncomeTaxRateReconciliationTaxCreditsResearch");
+  } else if (generalCreditRateImpact !== null && generalCreditRateImpact !== 0 && rdExpense !== null && rdExpense > 0) {
+    status = "active";
+    evidence = `Aggregate tax credit rate impact of ${(Math.abs(generalCreditRateImpact) * 100).toFixed(2)}% with ${formatDollars(rdExpense)} R&D spending — R&D credits likely embedded in general credit line`;
+    confidence = "xbrl_verified";
+    classificationReason = "Generic credit rate impact visible in effective rate reconciliation combined with significant R&D expense — R&D credit likely included";
+    xbrlSignals.push("EffectiveIncomeTaxRateReconciliationTaxCredits", "ResearchAndDevelopmentExpense");
+    if (totalCarryforwards !== null && totalCarryforwards > 0) {
+      evidence += `. ${formatDollars(totalCarryforwards)} in total credit carryforwards (includes R&D)`;
+      xbrlSignals.push("DeferredTaxAssetsTaxCreditCarryforwards");
+    }
+  } else if (totalCarryforwards !== null && totalCarryforwards > 0 && rdExpense !== null && rdExpense > 0) {
+    status = "partial";
+    evidence = `${formatDollars(totalCarryforwards)} in generic credit carryforwards with ${formatDollars(rdExpense)} R&D spending — R&D credits likely included in generic carryforward bucket`;
+    confidence = "xbrl_verified";
+    classificationReason = "Company uses generic DeferredTaxAssetsTaxCreditCarryforwards (not research-specific tag) — combined with significant R&D expense, R&D credits are likely embedded";
+    xbrlSignals.push("DeferredTaxAssetsTaxCreditCarryforwards", "ResearchAndDevelopmentExpense");
+  } else if (generalCredits !== null && generalCredits > 0 && rdExpense !== null && rdExpense > 0) {
+    status = "partial";
+    evidence = `${formatDollars(generalCredits)} in general tax credits with ${formatDollars(rdExpense)} R&D spending — R&D credit may be embedded in general credits line`;
+    confidence = "inferred";
+    classificationReason = "General credits exist alongside significant R&D expense — R&D credit likely included but not separately tagged";
+    xbrlSignals.push("IncomeTaxReconciliationTaxCredits", "ResearchAndDevelopmentExpense");
   } else if (reconciliation === null && carryforward === null) {
     if (rdExpense !== null && rdExpense > 0) {
       status = "confirmed_unclaimed";
@@ -801,7 +831,7 @@ function analyzeRdCredit(xray: CreditXRay, credit: TaxCredit, footnoteInsights?:
         status = "structurally_limited";
         evidence += `. Note: ${formatDollars(capitalizedRd)} in capitalized R&D deferred asset — post-2022 §174 capitalization may reduce effective credit benefit`;
         classificationReason = `R&D expense exists without credit, but §174 capitalization (${formatDollars(capitalizedRd)} deferred asset) suggests structural limitation on credit availability`;
-        xbrlSignals.push("DeferredTaxAssetsDeferredResearchAndDevelopmentCosts");
+        xbrlSignals.push("DeferredTaxAssetsInProcessResearchAndDevelopment");
       }
     } else {
       status = "data_gap";
@@ -811,11 +841,25 @@ function analyzeRdCredit(xray: CreditXRay, credit: TaxCredit, footnoteInsights?:
     }
   }
 
+  if (hasFullVA && (status === "active" || status === "partial")) {
+    evidence += `. Full valuation allowance (${formatDollars(valAllowance!)} against ${formatDollars(grossDeferred!)} gross DTA) — credits are generated annually but not currently realizable due to pre-profitability`;
+    classificationReason += ". Full valuation allowance masks credit utilization — credits exist but are reserved";
+    xbrlSignals.push("DeferredTaxAssetsValuationAllowance");
+  } else if (hasFullVA && status === "confirmed_unclaimed" && totalCarryforwards !== null && totalCarryforwards > 0) {
+    status = "partial";
+    confidence = "inferred";
+    evidence += `. Note: full valuation allowance (${formatDollars(valAllowance!)}) with ${formatDollars(totalCarryforwards)} in credit carryforwards — credits may be generated but masked by VA`;
+    classificationReason = `Full valuation allowance with generic credit carryforwards suggests credits are being generated but not currently realizable — reclassified from unclaimed`;
+    xbrlSignals.push("DeferredTaxAssetsValuationAllowance", "DeferredTaxAssetsTaxCreditCarryforwards");
+  }
+
   const footnoteNote = footnoteInsights?.find(f => f.creditId === "rd_41");
   let footnoteExcerpt: string | undefined;
   if (footnoteNote) {
     footnoteExcerpt = footnoteNote.rawExcerpt;
-    if (status === "confirmed_unclaimed" || status === "likely_unclaimed" || status === "data_gap") {
+    if (footnoteNote.category === "credit_constraint") {
+      evidence += ` [Footnote: "${footnoteNote.signal}"]`;
+    } else if (status === "confirmed_unclaimed" || status === "likely_unclaimed" || status === "data_gap") {
       status = "partial";
       confidence = "footnote_confirmed";
       evidence += ` [Footnote: "${footnoteNote.signal}"]`;
@@ -846,15 +890,12 @@ function analyzeInvestmentEnergyCredit(xray: CreditXRay, credit: TaxCredit): Cre
     evidence = `${formatDollars(investmentCredit)} investment/energy credit claimed in latest 10-K`;
     confidence = "xbrl_verified";
   } else if (investmentCredit !== null && investmentCredit === 0) {
-    status = "unclaimed";
-    evidence = "Investment tax credit reported as $0 — energy property investments may qualify";
+    status = "data_gap";
+    evidence = "Investment tax credit reported as $0 — may indicate no qualifying energy property";
     confidence = "xbrl_verified";
   } else {
-    status = "likely_unclaimed";
-    evidence = "No investment/energy credit activity found in filings";
-    if (totalAssets !== null && totalAssets > 1e8) {
-      evidence += " — significant asset base suggests potential for energy property investments";
-    }
+    status = "data_gap";
+    evidence = "No investment/energy credit data found in filings — cannot determine eligibility without industry context";
     confidence = "estimated";
   }
 
@@ -970,27 +1011,36 @@ function analyzeDepreciationCredit(xray: CreditXRay, credit: TaxCredit): CreditA
   let potentialAmount: number | null = null;
   let confidence: CreditConfidence = "estimated";
 
+  const ppeRatio = (ppeNet !== null && totalAssets !== null && totalAssets > 0) ? ppeNet / totalAssets : null;
+  const isAssetLight = (ppeNet === null || ppeNet < 1e6) && (capex === null || capex < 5e5);
+
   if (ppeLiability !== null && ppeLiability > 0) {
     status = "active";
     evidence = `${formatDollars(ppeLiability)} deferred tax liability on PP&E indicates active accelerated depreciation`;
     if (ppeNet !== null) evidence += ` against ${formatDollars(ppeNet)} net PP&E`;
     if (capex !== null && capex > 0) evidence += `. ${formatDollars(capex)} annual capex`;
     confidence = "xbrl_verified";
+  } else if (isAssetLight) {
+    status = "data_gap";
+    evidence = "Company appears asset-light with minimal PP&E and capital expenditures — accelerated depreciation likely not applicable";
+    confidence = "estimated";
   } else if (ppeNet !== null && ppeNet > 1e6 && ppeLiability === null) {
-    status = "likely_unclaimed";
-    evidence = `${formatDollars(ppeNet)} in net PP&E but no accelerated depreciation detected`;
-    if (capex !== null && capex > 0) {
-      potentialAmount = Math.round(capex * 0.6 * 0.21);
-      evidence += ` — ${formatDollars(capex)} annual capex could generate ${formatDollars(potentialAmount)} in first-year tax savings via bonus depreciation`;
+    if (ppeRatio !== null && ppeRatio < 0.05) {
+      status = "unknown";
+      evidence = `${formatDollars(ppeNet)} in net PP&E but only ${(ppeRatio * 100).toFixed(1)}% of total assets — company appears asset-light, depreciation opportunity limited`;
+      confidence = "inferred";
+    } else {
+      status = "likely_unclaimed";
+      evidence = `${formatDollars(ppeNet)} in net PP&E but no accelerated depreciation detected`;
+      if (capex !== null && capex > 0) {
+        potentialAmount = Math.round(capex * 0.6 * 0.21);
+        evidence += ` — ${formatDollars(capex)} annual capex could generate ${formatDollars(potentialAmount)} in first-year tax savings via bonus depreciation`;
+      }
+      confidence = "inferred";
     }
-    confidence = "inferred";
-  } else if (totalAssets !== null && totalAssets > 5e6 && ppeLiability === null) {
-    status = "likely_unclaimed";
-    evidence = `No PP&E deferred tax liability found despite ${formatDollars(totalAssets)} in total assets — §179/bonus depreciation opportunity may exist`;
-    confidence = "inferred";
   } else {
-    status = "unknown";
-    evidence = "Insufficient data to assess depreciation credit utilization";
+    status = "data_gap";
+    evidence = "Insufficient PP&E data to assess depreciation credit utilization";
     if (accDepr !== null) evidence = `${formatDollars(accDepr)} accumulated depreciation on books — unable to determine if accelerated methods are used`;
     confidence = "estimated";
   }
@@ -1039,8 +1089,8 @@ function analyzeEmploymentCredit(xray: CreditXRay, credit: TaxCredit): CreditAna
     status = "unknown";
     confidence = "inferred";
   } else {
-    status = "likely_unclaimed";
-    evidence = `No credit activity found that would indicate ${credit.name} utilization`;
+    status = "data_gap";
+    evidence = `Insufficient employee/labor data to assess ${credit.name} utilization`;
     confidence = "estimated";
   }
 
@@ -1473,18 +1523,21 @@ export function applyInteractionAdjustments(creditAnalysis: CreditAnalysisItem[]
 
 export function computeIndustryBenchmarks(leads: any[]): Map<string, IndustryBenchmark> {
   const benchmarks = new Map<string, IndustryBenchmark>();
-  const groups = new Map<string, any[]>();
+  const groups3 = new Map<string, any[]>();
+  const groups2 = new Map<string, any[]>();
 
   for (const lead of leads) {
     if (!lead.deepAnalysisComplete || !lead.sic) continue;
-    const sic2 = String(lead.sic).slice(0, 2);
-    if (!groups.has(sic2)) groups.set(sic2, []);
-    groups.get(sic2)!.push(lead);
+    const sicStr = String(lead.sic);
+    const sic3 = sicStr.slice(0, 3);
+    const sic2 = sicStr.slice(0, 2);
+    if (!groups3.has(sic3)) groups3.set(sic3, []);
+    groups3.get(sic3)!.push(lead);
+    if (!groups2.has(sic2)) groups2.set(sic2, []);
+    groups2.get(sic2)!.push(lead);
   }
 
-  for (const [sic2, group] of groups) {
-    if (group.length < 3) continue;
-
+  const buildBenchmark = (sicKey: string, group: any[]) => {
     const healthScores: number[] = [];
     const effectiveRates: number[] = [];
     const rdIntensities: number[] = [];
@@ -1512,7 +1565,7 @@ export function computeIndustryBenchmarks(leads: any[]): Map<string, IndustryBen
         if (!creditCounts.has(ca.creditId)) creditCounts.set(ca.creditId, { active: 0, total: 0 });
         const entry = creditCounts.get(ca.creditId)!;
         entry.total++;
-        if (ca.status === "active" || ca.status === "partial" || ca.status === "maxed_out") entry.active++;
+        if (ca.status === "active" || ca.status === "maxed_out") entry.active++;
       }
     }
 
@@ -1529,9 +1582,9 @@ export function computeIndustryBenchmarks(leads: any[]): Map<string, IndustryBen
       if (counts.total > 0) creditClaimRates[creditId] = counts.active / counts.total;
     }
 
-    benchmarks.set(sic2, {
-      sic2,
-      industryName: group[0].sicDescription || `SIC ${sic2}xx`,
+    benchmarks.set(sicKey, {
+      sic2: sicKey,
+      industryName: group[0].sicDescription || `SIC ${sicKey}xx`,
       peerCount: group.length,
       avgCreditHealth: avg(healthScores),
       medianEffectiveRate: median(effectiveRates),
@@ -1539,6 +1592,18 @@ export function computeIndustryBenchmarks(leads: any[]): Map<string, IndustryBen
       creditClaimRates,
       avgUnclaimedValue: avg(unclaimedValues),
     });
+  };
+
+  for (const [sic3, group] of groups3) {
+    if (group.length >= 3) {
+      buildBenchmark(sic3, group);
+    }
+  }
+
+  for (const [sic2, group] of groups2) {
+    if (!benchmarks.has(sic2) && group.length >= 3) {
+      buildBenchmark(sic2, group);
+    }
   }
 
   return benchmarks;
@@ -1590,7 +1655,7 @@ export function compareToIndustryPeers(lead: any, benchmark: IndustryBenchmark):
     const peerRate = benchmark.creditClaimRates[ca.creditId];
     if (peerRate === undefined) continue;
 
-    const isUnclaimed = ca.status === "likely_unclaimed" || ca.status === "confirmed_unclaimed" || ca.status === "data_gap";
+    const isUnclaimed = ca.status === "likely_unclaimed" || ca.status === "confirmed_unclaimed";
     if (isUnclaimed && peerRate > 0.6) {
       comparisons.push({
         metric: `${ca.creditName} Peer Comparison`,

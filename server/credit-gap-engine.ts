@@ -21,6 +21,7 @@ interface FingerprintRule {
   weight?: number;
   negative?: boolean;
   revenueScaled?: boolean;
+  sicRanges?: number[][];
 }
 
 interface CompoundFingerprint {
@@ -30,6 +31,7 @@ interface CompoundFingerprint {
   evidenceTemplate: string;
   valueFormula?: string;
   weight?: number;
+  sicRanges?: number[][];
 }
 
 type FingerprintEntry = FingerprintRule | CompoundFingerprint;
@@ -79,56 +81,55 @@ const BUILT_IN_FINGERPRINTS: Record<string, FingerprintEntry[]> = {
     { field: "employeeCount", operator: "gt", value: 50, missingIndicator: "no_paid_leave", evidenceTemplate: "${company} with ${employeeCount} employees — paid family/medical leave credit opportunity", valueFormula: "employeeCount * 0.02 * 1000" },
   ],
   itc: [
-    { field: "capex", operator: "gt", value: 200000, missingIndicator: "no_itc", evidenceTemplate: "${company} has ${capex} in capital expenditures — 30% energy ITC (§48) opportunity on qualified energy property", valueFormula: "capex * 0.30", negative: false },
+    { field: "capex", operator: "gt", value: 200000, missingIndicator: "no_itc", evidenceTemplate: "${company} has ${capex} in capital expenditures — 30% energy ITC (§48) opportunity on qualified energy property", valueFormula: "capex * 0.30", negative: false, sicRanges: [[1000, 1499], [2000, 3999], [4900, 4999]] },
   ],
   ptc: [
-    { field: "revenue", operator: "gt", value: 1000000, missingIndicator: "no_ptc", evidenceTemplate: "${company} with ${revenue} revenue in energy sector — production tax credit (§45) opportunity at $0.0275/kWh", valueFormula: "revenue * 0.02" },
+    { field: "revenue", operator: "gt", value: 1000000, missingIndicator: "no_ptc", evidenceTemplate: "${company} with ${revenue} revenue in energy sector — production tax credit (§45) opportunity at $0.0275/kWh", valueFormula: "revenue * 0.02", sicRanges: [[4900, 4999], [1000, 1499]] },
   ],
   carbon_capture_45q: [
-    { field: "capex", operator: "gt", value: 500000, missingIndicator: "no_45q", evidenceTemplate: "${company} has ${capex} in capital expenditures — carbon capture credit (§45Q) opportunity at $85/ton", valueFormula: "capex * 0.15" },
+    { field: "capex", operator: "gt", value: 500000, missingIndicator: "no_45q", evidenceTemplate: "${company} has ${capex} in capital expenditures — carbon capture credit (§45Q) opportunity at $85/ton", valueFormula: "capex * 0.15", sicRanges: [[1000, 1499], [2000, 2999], [2900, 2999], [4900, 4999], [4600, 4699]] },
   ],
   hydrogen_45v: [
-    { field: "capex", operator: "gt", value: 500000, missingIndicator: "no_45v", evidenceTemplate: "${company} has ${capex} in capital expenditures — clean hydrogen production credit (§45V) up to $3/kg", valueFormula: "capex * 0.10" },
+    { field: "capex", operator: "gt", value: 500000, missingIndicator: "no_45v", evidenceTemplate: "${company} has ${capex} in capital expenditures — clean hydrogen production credit (§45V) up to $3/kg", valueFormula: "capex * 0.10", sicRanges: [[2800, 2899], [2900, 2999], [4900, 4999], [1000, 1499]] },
   ],
   nuclear_45u: [
-    { field: "revenue", operator: "gt", value: 5000000, missingIndicator: "no_45u", evidenceTemplate: "${company} with ${revenue} revenue — zero-emission nuclear power credit (§45U) at $0.015/kWh", valueFormula: "revenue * 0.015" },
+    { field: "revenue", operator: "gt", value: 5000000, missingIndicator: "no_45u", evidenceTemplate: "${company} with ${revenue} revenue — zero-emission nuclear power credit (§45U) at $0.015/kWh", valueFormula: "revenue * 0.015", sicRanges: [[4900, 4999]] },
   ],
   adv_mfg_45x: [
     { conditions: [
       { field: "capex", operator: "gt", value: 200000, missingIndicator: "no_45x", evidenceTemplate: "", weight: 0.7 },
       { field: "sic", operator: "in_range", value: [2000, 3999], missingIndicator: "", evidenceTemplate: "", weight: 0.5 },
-    ], mode: "any", missingIndicator: "no_45x", evidenceTemplate: "${company} has ${capex} in manufacturing capex — advanced manufacturing production credit (§45X) opportunity", valueFormula: "capex * 0.20", weight: 0.9 },
-    { field: "capex", operator: "gt", value: 200000, missingIndicator: "no_45x", evidenceTemplate: "${company} has ${capex} in manufacturing capex — advanced manufacturing production credit (§45X) opportunity", valueFormula: "capex * 0.20" },
+    ], mode: "all", missingIndicator: "no_45x", evidenceTemplate: "${company} has ${capex} in manufacturing capex — advanced manufacturing production credit (§45X) opportunity", valueFormula: "capex * 0.20", weight: 0.9 },
   ],
   adv_energy_48c: [
-    { field: "capex", operator: "gt", value: 300000, missingIndicator: "no_48c", evidenceTemplate: "${company} has ${capex} in capital expenditures — qualifying advanced energy project credit (§48C) at 30%", valueFormula: "capex * 0.30" },
+    { field: "capex", operator: "gt", value: 300000, missingIndicator: "no_48c", evidenceTemplate: "${company} has ${capex} in capital expenditures — qualifying advanced energy project credit (§48C) at 30%", valueFormula: "capex * 0.30", sicRanges: [[2000, 3999], [4900, 4999], [1000, 1499]] },
   ],
   biodiesel: [
-    { field: "revenue", operator: "gt", value: 1000000, missingIndicator: "no_biodiesel", evidenceTemplate: "${company} with ${revenue} revenue — biodiesel/alternative fuel credit (§40A) at $1.00/gallon", valueFormula: "revenue * 0.01" },
+    { field: "revenue", operator: "gt", value: 1000000, missingIndicator: "no_biodiesel", evidenceTemplate: "${company} with ${revenue} revenue — biodiesel/alternative fuel credit (§40A) at $1.00/gallon", valueFormula: "revenue * 0.01", sicRanges: [[2000, 2999], [2900, 2999], [4000, 4799], [5100, 5199]] },
   ],
   "45l": [
-    { field: "revenue", operator: "gt", value: 500000, missingIndicator: "no_45l", evidenceTemplate: "${company} with ${revenue} revenue in construction — new energy efficient home credit (§45L) $2,500-$5,000/unit", valueFormula: "revenue * 0.005" },
+    { field: "revenue", operator: "gt", value: 500000, missingIndicator: "no_45l", evidenceTemplate: "${company} with ${revenue} revenue in construction — new energy efficient home credit (§45L) $2,500-$5,000/unit", valueFormula: "revenue * 0.005", sicRanges: [[1500, 1799], [6500, 6599]] },
   ],
   "179d": [
-    { field: "ppeNet", operator: "gt", value: 1000000, missingIndicator: "no_179d", evidenceTemplate: "${company} has ${ppeNet} in PP&E — commercial building energy deduction (§179D) up to $5.36/sqft", valueFormula: "ppeNet * 0.005" },
+    { field: "ppeNet", operator: "gt", value: 1000000, missingIndicator: "no_179d", evidenceTemplate: "${company} has ${ppeNet} in PP&E — commercial building energy deduction (§179D) up to $5.36/sqft", valueFormula: "ppeNet * 0.005", sicRanges: [[1500, 1799], [6500, 6599], [6700, 6799]] },
   ],
   historic_rehab: [
-    { field: "capex", operator: "gt", value: 500000, missingIndicator: "no_rehab", evidenceTemplate: "${company} has ${capex} in capital expenditures — historic rehabilitation credit (§47) at 20% of qualified costs", valueFormula: "capex * 0.20" },
+    { field: "capex", operator: "gt", value: 500000, missingIndicator: "no_rehab", evidenceTemplate: "${company} has ${capex} in capital expenditures — historic rehabilitation credit (§47) at 20% of qualified costs", valueFormula: "capex * 0.20", sicRanges: [[1500, 1799], [6500, 6599], [6700, 6799], [7000, 7099]] },
   ],
   nmtc: [
-    { field: "totalAssets", operator: "gt", value: 5000000, missingIndicator: "no_nmtc", evidenceTemplate: "${company} has ${totalAssets} in total assets — New Markets Tax Credit (§45D) 39% over 7 years", valueFormula: "totalAssets * 0.005" },
+    { field: "totalAssets", operator: "gt", value: 5000000, missingIndicator: "no_nmtc", evidenceTemplate: "${company} has ${totalAssets} in total assets — New Markets Tax Credit (§45D) 39% over 7 years", valueFormula: "totalAssets * 0.005", sicRanges: [[6000, 6799]] },
   ],
   lihtc: [
-    { field: "totalAssets", operator: "gt", value: 10000000, missingIndicator: "no_lihtc", evidenceTemplate: "${company} has ${totalAssets} in total assets — Low-Income Housing Tax Credit (§42) opportunity", valueFormula: "totalAssets * 0.004" },
+    { field: "totalAssets", operator: "gt", value: 10000000, missingIndicator: "no_lihtc", evidenceTemplate: "${company} has ${totalAssets} in total assets — Low-Income Housing Tax Credit (§42) opportunity", valueFormula: "totalAssets * 0.004", sicRanges: [[6500, 6599], [6700, 6799], [1500, 1799]] },
   ],
   like_kind_1031: [
-    { field: "ppeNet", operator: "gt", value: 2000000, missingIndicator: "no_1031", evidenceTemplate: "${company} has ${ppeNet} in PP&E — like-kind exchange (§1031) tax deferral opportunity", valueFormula: "ppeNet * 0.05 * 0.21" },
+    { field: "ppeNet", operator: "gt", value: 5000000, missingIndicator: "no_1031", evidenceTemplate: "${company} has ${ppeNet} in PP&E — like-kind exchange (§1031) tax deferral opportunity", valueFormula: "ppeNet * 0.05 * 0.21", sicRanges: [[1500, 1799], [6500, 6599], [6700, 6799], [2000, 3999], [4000, 4999]] },
   ],
   cost_segregation: [
-    { field: "ppeNet", operator: "gt", value: 1000000, missingIndicator: "no_cost_seg", evidenceTemplate: "${company} has ${ppeNet} in PP&E — cost segregation study could accelerate depreciation deductions", valueFormula: "ppeNet * 0.25 * 0.21" },
+    { field: "ppeNet", operator: "gt", value: 5000000, missingIndicator: "no_cost_seg", evidenceTemplate: "${company} has ${ppeNet} in PP&E — cost segregation study could accelerate depreciation deductions", valueFormula: "ppeNet * 0.25 * 0.21", sicRanges: [[1500, 1799], [6500, 6599], [6700, 6799], [7000, 7099], [5800, 5899]] },
   ],
   tip_credit: [
-    { field: "employeeCount", operator: "gt", value: 10, missingIndicator: "no_tip_credit", evidenceTemplate: "${company} has ${employeeCount} employees — employer FICA tip credit (§45B) on tips exceeding minimum wage", valueFormula: "employeeCount * 0.3 * 2000" },
+    { field: "employeeCount", operator: "gt", value: 10, missingIndicator: "no_tip_credit", evidenceTemplate: "${company} has ${employeeCount} employees — employer FICA tip credit (§45B) on tips exceeding minimum wage", valueFormula: "employeeCount * 0.3 * 2000", sicRanges: [[5800, 5899], [7000, 7099], [7200, 7299], [7900, 7999]] },
   ],
   indian_employment: [
     { field: "employeeCount", operator: "gt", value: 20, missingIndicator: "no_indian_emp", evidenceTemplate: "${company} has ${employeeCount} employees — Indian Employment Credit (§45A) 20% of qualified wages", valueFormula: "employeeCount * 0.02 * 5000" },
@@ -140,35 +141,31 @@ const BUILT_IN_FINGERPRINTS: Record<string, FingerprintEntry[]> = {
     { field: "employeeCount", operator: "lt", value: 25, missingIndicator: "no_sbhctc", evidenceTemplate: "${company} has ${employeeCount} employees (<25 FTEs) — Small Business Health Care Credit (§45R) up to 50% of premiums", valueFormula: "employeeCount * 1200" },
   ],
   disabled_access: [
-    { field: "employeeCount", operator: "gt", value: 5, missingIndicator: "no_ada", evidenceTemplate: "${company} has ${employeeCount} employees — Disabled Access Credit (§44) up to $5,000/year for ADA improvements", valueFormula: "4000" },
+    { field: "employeeCount", operator: "gt", value: 5, missingIndicator: "no_ada", evidenceTemplate: "${company} has ${employeeCount} employees — Disabled Access Credit (§44) up to $5,000/year for ADA improvements", valueFormula: "4000", sicRanges: [[5800, 5899], [5200, 5999], [7000, 7999], [8000, 8999]] },
   ],
   clean_vehicle_30d: [
     { field: "employeeCount", operator: "gt", value: 20, missingIndicator: "no_ev", evidenceTemplate: "${company} has ${employeeCount} employees — Clean Vehicle Credit (§30D) $7,500 per qualifying vehicle", valueFormula: "min(employeeCount * 0.05, 20) * 7500" },
   ],
   commercial_ev_45w: [
-    { field: "employeeCount", operator: "gt", value: 10, missingIndicator: "no_cev", evidenceTemplate: "${company} has ${employeeCount} employees — Commercial Clean Vehicle Credit (§45W) up to $40,000/vehicle", valueFormula: "min(employeeCount * 0.03, 10) * 15000" },
+    { field: "employeeCount", operator: "gt", value: 10, missingIndicator: "no_cev", evidenceTemplate: "${company} has ${employeeCount} employees — Commercial Clean Vehicle Credit (§45W) up to $40,000/vehicle", valueFormula: "min(employeeCount * 0.03, 10) * 15000", sicRanges: [[4000, 4799], [4200, 4299], [5000, 5199], [2000, 3999]] },
   ],
   ev_refueling_30c: [
-    { field: "ppeNet", operator: "gt", value: 500000, missingIndicator: "no_evse", evidenceTemplate: "${company} has ${ppeNet} in PP&E — EV Refueling Infrastructure Credit (§30C) 30% up to $100K/location", valueFormula: "25000" },
+    { field: "ppeNet", operator: "gt", value: 5000000, missingIndicator: "no_evse", evidenceTemplate: "${company} has ${ppeNet} in PP&E — EV Refueling Infrastructure Credit (§30C) 30% up to $100K/location", valueFormula: "25000", sicRanges: [[4000, 4799], [5500, 5599], [5900, 5999], [7500, 7599]] },
   ],
   saf_40b: [
-    { field: "revenue", operator: "gt", value: 5000000, missingIndicator: "no_saf", evidenceTemplate: "${company} with ${revenue} revenue — Sustainable Aviation Fuel Credit (§40B) $1.25-$1.75/gallon", valueFormula: "revenue * 0.002" },
+    { field: "revenue", operator: "gt", value: 5000000, missingIndicator: "no_saf", evidenceTemplate: "${company} with ${revenue} revenue — Sustainable Aviation Fuel Credit (§40B) $1.25-$1.75/gallon", valueFormula: "revenue * 0.002", sicRanges: [[4500, 4599], [2900, 2999], [3720, 3729]] },
   ],
   mine_rescue: [
-    { field: "employeeCount", operator: "gt", value: 10, missingIndicator: "no_mine_rescue", evidenceTemplate: "${company} has ${employeeCount} employees — Mine Rescue Team Training Credit (§45N) $10,000/team member", valueFormula: "employeeCount * 0.1 * 10000" },
+    { field: "employeeCount", operator: "gt", value: 10, missingIndicator: "no_mine_rescue", evidenceTemplate: "${company} has ${employeeCount} employees — Mine Rescue Team Training Credit (§45N) $10,000/team member", valueFormula: "employeeCount * 0.1 * 10000", sicRanges: [[1000, 1499]] },
   ],
   orphan_drug: [
-    { field: "rdExpense", operator: "gt", value: 500000, missingIndicator: "no_orphan", evidenceTemplate: "${company} has R&D expense — Orphan Drug Credit (§45C) 25% of clinical testing for rare diseases", valueFormula: "rdExpense * 0.25" },
-  ],
-  qbi_199a: [
-    { field: "revenue", operator: "gt", value: 100000, missingIndicator: "no_qbi", evidenceTemplate: "${company} with ${revenue} revenue — Qualified Business Income deduction (§199A) up to 20% of QBI", valueFormula: "revenue * 0.20 * 0.21" },
+    { field: "rdExpense", operator: "gt", value: 500000, missingIndicator: "no_orphan", evidenceTemplate: "${company} has R&D expense — Orphan Drug Credit (§45C) 25% of clinical testing for rare diseases", valueFormula: "rdExpense * 0.25", sicRanges: [[2830, 2836], [2800, 2899], [8000, 8099], [3841, 3851]] },
   ],
   chips_act: [
     { conditions: [
       { field: "capex", operator: "gt", value: 1000000, missingIndicator: "no_chips", evidenceTemplate: "", weight: 0.7 },
       { field: "sic", operator: "in_range", value: [3670, 3679], missingIndicator: "", evidenceTemplate: "", weight: 0.8 },
-    ], mode: "any", missingIndicator: "no_chips", evidenceTemplate: "${company} has ${capex} in capital expenditures — CHIPS Act credit (§48D) 25% of qualified semiconductor investment", valueFormula: "capex * 0.25", weight: 1.0 },
-    { field: "capex", operator: "gt", value: 1000000, missingIndicator: "no_chips", evidenceTemplate: "${company} has ${capex} in capital expenditures — CHIPS Act credit (§48D) 25% of qualified semiconductor investment", valueFormula: "capex * 0.25" },
+    ], mode: "all", missingIndicator: "no_chips", evidenceTemplate: "${company} has ${capex} in capital expenditures — CHIPS Act credit (§48D) 25% of qualified semiconductor investment", valueFormula: "capex * 0.25", weight: 1.0 },
   ],
 };
 
@@ -800,6 +797,15 @@ async function scanXbrlLeads(registry: TaxCreditRegistryEntry[]): Promise<{ scan
   return { scanned: allScannableLeads.length, gaps };
 }
 
+function checkSicGating(sicRanges: number[][] | undefined, taxPosition: any): boolean {
+  if (!sicRanges || sicRanges.length === 0) return true;
+  const sic = getNestedField(taxPosition, "sic");
+  if (sic === null || sic === undefined) return true;
+  const sicNum = typeof sic === "string" ? parseInt(sic, 10) : Number(sic);
+  if (isNaN(sicNum)) return true;
+  return sicRanges.some(([min, max]) => sicNum >= min && sicNum <= max);
+}
+
 function applyFingerprints(creditId: string, company: string, taxPosition: any): {
   gapStatus: string; evidence: string; estimatedValue: number | null; matched: string[];
 } | null {
@@ -809,6 +815,8 @@ function applyFingerprints(creditId: string, company: string, taxPosition: any):
   let bestMatch: { evidence: string; estimatedValue: number | null; matched: string[]; weight: number } | null = null;
 
   for (const entry of rules) {
+    if (!checkSicGating(entry.sicRanges, taxPosition)) continue;
+
     if (isCompound(entry)) {
       const results = entry.conditions.map(cond => evaluateSingleRule(cond, taxPosition));
       const matches = entry.mode === "all"

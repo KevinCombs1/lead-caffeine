@@ -279,6 +279,7 @@ export interface CreditXRay {
     nondeductibleExpenses: XbrlValue | null;
     stockCompImpact: XbrlValue | null;
     otherAdjustments: XbrlValue | null;
+    generalCreditRateImpact: XbrlValue | null;
   };
   deferredTaxPosition: {
     grossDeferredAssets: XbrlValue | null;
@@ -1095,6 +1096,7 @@ export function extractCreditXRay(usGaap: Record<string, any>, dei: Record<strin
     nondeductibleExpenses: g("EffectiveIncomeTaxRateReconciliationNondeductibleExpense"),
     stockCompImpact: g("EffectiveIncomeTaxRateReconciliationShareBasedCompensationExcessTaxBenefitPercent"),
     otherAdjustments: g("EffectiveIncomeTaxRateReconciliationOtherAdjustments"),
+    generalCreditRateImpact: g("EffectiveIncomeTaxRateReconciliationTaxCredits"),
   };
   countNonNull(effectiveRateBreakdown);
 
@@ -1109,7 +1111,7 @@ export function extractCreditXRay(usGaap: Record<string, any>, dei: Record<strin
     inventory: g("DeferredTaxAssetsInventory"),
     otherDeferredAssets: g("DeferredTaxAssetsOther"),
     compensationAndBenefits: g("DeferredTaxAssetsTaxDeferredExpenseCompensationAndBenefits") || g("DeferredTaxAssetsTaxDeferredExpenseCompensationAndBenefitsShareBasedCompensationCost"),
-    capitalizedRd: g("DeferredTaxAssetsTaxDeferredExpenseReservesAndAccrualsResearchAndDevelopmentCosts") || g("DeferredTaxAssetsDeferredResearchAndDevelopmentCosts"),
+    capitalizedRd: g("DeferredTaxAssetsTaxDeferredExpenseReservesAndAccrualsResearchAndDevelopmentCosts") || g("DeferredTaxAssetsDeferredResearchAndDevelopmentCosts") || g("DeferredTaxAssetsInProcessResearchAndDevelopment"),
   };
   countNonNull(deferredTaxPosition);
 
@@ -1379,10 +1381,19 @@ export function extractFootnoteSignals(footnoteText: string | null): FootnoteIns
     { pattern: /orphan\s+drug/i, creditId: "orphan_drug_45c", label: "Orphan Drug Credit" },
   ];
 
+  const negationPattern = /\b(did\s+not|does\s+not|do\s+not|has\s+not|have\s+not|no\s+longer|not\s+eligible|not\s+qualify|not\s+qualified|terminated|discontinued|ineligible|unable\s+to\s+claim|not\s+entitled)\b/i;
+
   for (const { pattern, creditId, label } of creditPatterns) {
     const match = pattern.exec(text);
     if (match) {
       const context = footnoteText.slice(Math.max(0, match.index - 50), Math.min(footnoteText.length, match.index + 200));
+
+      const nearbyText = footnoteText.slice(Math.max(0, match.index - 80), Math.min(footnoteText.length, match.index + 80));
+      if (negationPattern.test(nearbyText)) {
+        insights.push({ category: "credit_constraint", signal: `${label} referenced with negative context — may not be actively claimed`, creditId, rawExcerpt: context.trim().slice(0, 200) });
+        continue;
+      }
+
       const dollarMatch = dollarRegex.exec(context);
       dollarRegex.lastIndex = 0;
       const extractedValue = dollarMatch ? parseDollar(dollarMatch) : undefined;
