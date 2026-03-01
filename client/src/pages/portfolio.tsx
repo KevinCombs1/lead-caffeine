@@ -16,7 +16,7 @@ import {
   Rocket, User, Mail, Briefcase, Phone,
   CheckCircle, ShieldAlert, XCircle, MinusCircle, Leaf, PauseCircle, Zap,
   Bug, Lock, ArrowDownCircle, BarChart3, HelpCircle, AlertTriangle, Info,
-  ScanLine, FileText, X, Clock, Shield, Database, ExternalLink,
+  ScanLine, FileText, X, Clock, Shield, Database, ExternalLink, Download,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -1391,19 +1391,117 @@ function SummaryModal({ lead, onClose }: { lead: any; onClose: () => void }) {
   const claimedStatements = statements.filter((s: any) => s.status === "claimed");
   const naStatements = statements.filter((s: any) => s.status === "not_applicable");
   const [showNA, setShowNA] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
+
+  const downloadPdf = useCallback(async () => {
+    if (!contentRef.current || generatingPdf) return;
+    setGeneratingPdf(true);
+
+    const prevShowNA = showNA;
+    setShowNA(true);
+
+    await new Promise(r => setTimeout(r, 100));
+
+    const el = contentRef.current;
+    const origMaxH = el.style.maxHeight;
+    const origOverflow = el.style.overflowY;
+    const origPosition = el.style.position;
+
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+
+      if (actionsRef.current) actionsRef.current.style.display = "none";
+      el.style.maxHeight = "none";
+      el.style.overflowY = "visible";
+
+      const captureScale = el.scrollHeight > 8000 ? 1.5 : 2;
+
+      const canvas = await html2canvas(el, {
+        scale: captureScale,
+        backgroundColor: "#0c0f14",
+        useCORS: true,
+        logging: false,
+        windowWidth: el.scrollWidth,
+        windowHeight: el.scrollHeight,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+
+      const pdfPageW = 215.9;
+      const pdfPageH = 279.4;
+      const marginX = 0;
+      const marginY = 0;
+      const contentW = pdfPageW - marginX * 2;
+      const scaleFactor = contentW / imgWidth;
+      const scaledH = imgHeight * scaleFactor;
+      const contentH = pdfPageH - marginY * 2;
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+
+      if (scaledH <= contentH) {
+        pdf.addImage(imgData, "PNG", marginX, marginY, contentW, scaledH);
+      } else {
+        const totalPages = Math.ceil(scaledH / contentH);
+        for (let page = 0; page < totalPages; page++) {
+          if (page > 0) pdf.addPage();
+
+          const srcY = (page * contentH) / scaleFactor;
+          const srcH = Math.min(contentH / scaleFactor, imgHeight - srcY);
+          const destH = srcH * scaleFactor;
+
+          const sliceCanvas = document.createElement("canvas");
+          sliceCanvas.width = imgWidth;
+          sliceCanvas.height = Math.round(srcH);
+          const ctx = sliceCanvas.getContext("2d");
+          if (ctx) {
+            ctx.fillStyle = "#0c0f14";
+            ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+            ctx.drawImage(canvas, 0, Math.round(srcY), imgWidth, Math.round(srcH), 0, 0, imgWidth, Math.round(srcH));
+          }
+          const sliceData = sliceCanvas.toDataURL("image/png");
+          pdf.addImage(sliceData, "PNG", marginX, marginY, contentW, destH);
+        }
+      }
+
+      const companyStr = (lead.company || "Company").toString().trim();
+      const safeName = (companyStr.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_") || "Company").substring(0, 80);
+      pdf.save(`${safeName}_Tax_Credit_Summary.pdf`);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+    } finally {
+      el.style.maxHeight = origMaxH;
+      el.style.overflowY = origOverflow;
+      el.style.position = origPosition;
+      if (actionsRef.current) actionsRef.current.style.display = "";
+      if (!prevShowNA) setShowNA(false);
+      setGeneratingPdf(false);
+    }
+  }, [generatingPdf, showNA, lead.company]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose} data-testid="modal-summary">
-      <div className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto bg-[#0c0f14] border border-emerald-500/10 rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div ref={contentRef} className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto bg-[#0c0f14] border border-emerald-500/10 rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 z-10 bg-[#0c0f14] border-b border-emerald-500/8 px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-foreground/90" data-testid="text-summary-company">{lead.company}</h2>
               <p className="text-xs text-muted-foreground/30 mt-0.5">Tax Credit Intelligence Summary</p>
             </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg border border-white/[0.04] flex items-center justify-center text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors" data-testid="button-close-summary">
-              <X className="w-4 h-4" />
-            </button>
+            <div ref={actionsRef} className="flex items-center gap-2">
+              <button onClick={downloadPdf} disabled={generatingPdf} data-testid="button-download-pdf"
+                className="h-8 px-3 rounded-lg border border-emerald-500/15 bg-emerald-500/8 flex items-center gap-1.5 text-xs text-emerald-200/60 hover:bg-emerald-500/15 hover:text-emerald-200/80 transition-colors disabled:opacity-50">
+                {generatingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                {generatingPdf ? "Generating..." : "Download PDF"}
+              </button>
+              <button onClick={onClose} className="w-8 h-8 rounded-lg border border-white/[0.04] flex items-center justify-center text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors" data-testid="button-close-summary">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3 mt-4">
@@ -1496,7 +1594,7 @@ function SummaryModal({ lead, onClose }: { lead: any; onClose: () => void }) {
           )}
         </div>
 
-        <div className="sticky bottom-0 bg-[#0c0f14] border-t border-emerald-500/6 px-6 py-3 flex items-center justify-between text-[10px] text-muted-foreground/20">
+        <div className="bg-[#0c0f14] border-t border-emerald-500/6 px-6 py-3 flex items-center justify-between text-[10px] text-muted-foreground/20">
           <div className="flex items-center gap-3">
             <span>{statements.length} credits analyzed</span>
             {metadata && <span>{Math.round(metadata.durationMs / 1000)}s analysis</span>}

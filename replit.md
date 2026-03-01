@@ -28,7 +28,7 @@ The application uses a dark mode default with a cyan "command center" aesthetic 
 -   **Bloom Discovery (Stage I)**: Utilizes multi-source SEC EDGAR sweeps and XBRL gating, with pre-filtering for active public filers.
 -   **Extrapolate (Stage II)**: Performs mid-level enrichment including form discovery via multi-path crawling, ad intelligence, and basic credit matching, streaming results via SSE.
 -   **DeepLogic64 (Stage III)**: Executes full enrichment with Credit X-Ray (~110+ XBRL concepts), a 1,800-line gap engine, multi-year trend analysis, credit interaction modeling, 10-K footnote extraction, industry benchmarking, and retroactive recovery analysis.
--   **Portfolio Dashboard**: Manages allocated companies, allowing grouping by industry, health, and geography, with batch allocation and associated APIs.
+-   **Portfolio Dashboard**: Manages allocated companies, allowing grouping by industry, health, and geography, with batch allocation and associated APIs. Includes Full Enrichment (9-phase, ~60-90s per company via SEC EDGAR + 11 deal source APIs) with SSE live progress, comprehensive credit analysis UI, and a Summary modal with PDF download (html2canvas + jspdf) preserving the dark frosted glass aesthetic.
 -   **Credit X-Ray**: Conducts financial scans to extract XBRL tax concepts for credit analysis, health scores, and estimated unclaimed value.
 -   **Multi-Year Trend Analysis**: Fetches 3 years of XBRL data to detect credit drop-offs, R&D growth divergence, and other financial trends.
 -   **Credit Interaction Modeling**: Detects and applies adjustments for cross-credit constraints and opportunities (e.g., FTC↔GILTI, ITC↔PTC).
