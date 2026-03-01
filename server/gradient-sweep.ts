@@ -15,6 +15,248 @@ async function secFetch(url: string, accept?: string): Promise<Response> {
   }
 }
 
+export interface CompanyIndexEntry {
+  cik: string;
+  ticker: string;
+  name: string;
+  sic?: string;
+  state?: string;
+  fiscalYearEnd?: string;
+  exchange?: string;
+  revenue?: number;
+  rdExpense?: number;
+  totalAssets?: number;
+  employees?: number;
+  effectiveTaxRate?: number;
+  preTaxIncome?: number;
+  taxesPaid?: number;
+  netIncome?: number;
+  enrichedAt?: number;
+}
+
+class SecCompanyIndex {
+  entries: Map<string, CompanyIndexEntry> = new Map();
+  enrichedCount = 0;
+  financialsCount = 0;
+  building = false;
+  buildPhase = "idle";
+  lastBuilt = 0;
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  async initialize(): Promise<void> {
+    try {
+      console.log("[INDEX] Phase 1: Loading company_tickers.json...");
+      this.buildPhase = "loading tickers";
+      this.building = true;
+      const res = await secFetch("https://www.sec.gov/files/company_tickers.json");
+      if (!res.ok) {
+        console.error("[INDEX] Failed to fetch company_tickers.json:", res.status);
+        this.building = false;
+        this.buildPhase = "error";
+        return;
+      }
+      const data = await res.json() as Record<string, { cik_str: number; ticker: string; title: string }>;
+      for (const entry of Object.values(data)) {
+        const cik = String(entry.cik_str).padStart(10, "0");
+        this.entries.set(cik, {
+          cik,
+          ticker: entry.ticker.toUpperCase(),
+          name: entry.title,
+        });
+      }
+      console.log(`[INDEX] Phase 1 complete: ${this.entries.size} companies loaded`);
+      this.enrichAll().catch(e => console.error("[INDEX] enrichAll error:", e));
+    } catch (e: any) {
+      console.error("[INDEX] initialize error:", e.message || e);
+      this.building = false;
+      this.buildPhase = "error";
+    }
+  }
+
+  private async enrichAll(): Promise<void> {
+    const ciks = Array.from(this.entries.keys());
+    const total = ciks.length;
+    let processed = 0;
+    console.log(`[INDEX] Phase 2: Enriching ${total} companies with SIC + financials...`);
+
+    const BATCH_SIZE = 3;
+    for (let i = 0; i < ciks.length; i += BATCH_SIZE) {
+      const batch = ciks.slice(i, i + BATCH_SIZE);
+      this.buildPhase = `enriching ${processed}/${total}`;
+
+      for (const cik of batch) {
+        try {
+          await new Promise(r => setTimeout(r, 200));
+          const subRes = await secFetch(`https://data.sec.gov/submissions/CIK${cik}.json`);
+          await new Promise(r => setTimeout(r, 200));
+          const factsRes = await secFetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`);
+
+          const entry = this.entries.get(cik);
+          if (!entry) continue;
+
+          if (!subRes.ok && processed < 10) {
+            console.warn(`[INDEX] Submissions failed for CIK ${cik}: ${subRes.status} ${subRes.statusText}`);
+          }
+
+          if (subRes.ok) {
+            const subs = await subRes.json() as any;
+            entry.sic = subs.sic || undefined;
+            entry.state = subs.stateOfIncorporation || undefined;
+            entry.fiscalYearEnd = subs.fiscalYearEnd || undefined;
+            entry.exchange = subs.exchanges?.[0] || undefined;
+            entry.enrichedAt = Date.now();
+            this.enrichedCount++;
+          }
+
+          if (factsRes.ok) {
+            const facts = await factsRes.json() as any;
+            const usGaap = facts?.facts?.["us-gaap"] || {};
+            const dei = facts?.facts?.["dei"] || {};
+
+            const getLatest = (concept: string, ns: Record<string, any>): number | undefined => {
+              const data = ns[concept];
+              if (!data) return undefined;
+              const units = data.units || {};
+              const vals = units["USD"] || units["pure"] || units["shares"] || Object.values(units)[0] || [];
+              const tenK = (vals as any[])
+                .filter((v: any) => v.form === "10-K")
+                .sort((a: any, b: any) => (b.end || "").localeCompare(a.end || ""));
+              return tenK.length > 0 ? tenK[0].val : undefined;
+            };
+
+            entry.revenue = getLatest("Revenues", usGaap)
+              ?? getLatest("RevenueFromContractWithCustomerExcludingAssessedTax", usGaap)
+              ?? getLatest("SalesRevenueNet", usGaap)
+              ?? getLatest("SalesRevenueGoodsNet", usGaap)
+              ?? getLatest("SalesRevenueServicesNet", usGaap);
+            entry.rdExpense = getLatest("ResearchAndDevelopmentExpense", usGaap)
+              ?? getLatest("ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost", usGaap);
+            entry.totalAssets = getLatest("Assets", usGaap);
+            entry.employees = getLatest("EntityNumberOfEmployees", dei);
+            entry.effectiveTaxRate = getLatest("EffectiveIncomeTaxRateContinuingOperations", usGaap);
+            entry.preTaxIncome = getLatest("IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest", usGaap)
+              ?? getLatest("IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments", usGaap);
+            entry.taxesPaid = getLatest("IncomeTaxesPaidNet", usGaap)
+              ?? getLatest("IncomeTaxesPaid", usGaap);
+            entry.netIncome = getLatest("NetIncomeLoss", usGaap)
+              ?? getLatest("ProfitLoss", usGaap);
+
+            const hasFinancials = entry.revenue !== undefined || entry.totalAssets !== undefined || entry.netIncome !== undefined;
+            if (hasFinancials) this.financialsCount++;
+          }
+        } catch (e: any) {
+          // skip failed enrichments silently
+        }
+      }
+
+      processed += batch.length;
+
+      if (processed % 500 === 0 || processed === total) {
+        console.log(`[INDEX] Progress: ${processed}/${total} enriched (${this.enrichedCount} with SIC, ${this.financialsCount} with financials)`);
+      }
+    }
+
+    this.building = false;
+    this.buildPhase = "complete";
+    this.lastBuilt = Date.now();
+    console.log(`[INDEX] Build complete: ${this.enrichedCount} enriched, ${this.financialsCount} with financials out of ${this.entries.size} total`);
+  }
+
+  async refresh(): Promise<void> {
+    if (this.building) return;
+    console.log("[INDEX] Starting 24h refresh...");
+    const newIndex = new SecCompanyIndex();
+    await newIndex.initialize();
+
+    const waitForBuild = () => new Promise<void>((resolve) => {
+      const check = setInterval(() => {
+        if (!newIndex.building) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 5000);
+    });
+    await waitForBuild();
+
+    if (newIndex.enrichedCount > 0) {
+      this.entries = newIndex.entries;
+      this.enrichedCount = newIndex.enrichedCount;
+      this.financialsCount = newIndex.financialsCount;
+      this.lastBuilt = newIndex.lastBuilt;
+      this.buildPhase = "complete";
+      console.log(`[INDEX] Refresh complete: swapped in ${this.entries.size} entries`);
+    } else {
+      console.warn("[INDEX] Refresh produced 0 enriched entries, keeping old index");
+    }
+  }
+
+  startAutoRefresh(): void {
+    if (this.refreshTimer) return;
+    this.refreshTimer = setInterval(() => this.refresh(), 24 * 60 * 60 * 1000);
+  }
+
+  findBySIC(sicCodes: string[], maxResults: number = 500): { cik: string; name: string; sic: string; state?: string }[] {
+    const sicSet = new Set(sicCodes);
+    const results: { cik: string; name: string; sic: string; state?: string }[] = [];
+    for (const entry of this.entries.values()) {
+      if (!entry.sic || !sicSet.has(entry.sic)) continue;
+      results.push({ cik: entry.cik, name: entry.name, sic: entry.sic, state: entry.state });
+      if (results.length >= maxResults) break;
+    }
+    return results;
+  }
+
+  findByState(stateCode: string, maxResults: number = 200): { cik: string; name: string; sic: string; state?: string; source: string }[] {
+    const upper = stateCode.toUpperCase();
+    const results: { cik: string; name: string; sic: string; state?: string; source: string }[] = [];
+    for (const entry of this.entries.values()) {
+      if (entry.state?.toUpperCase() !== upper) continue;
+      results.push({ cik: entry.cik, name: entry.name, sic: entry.sic || "", state: entry.state, source: "index" });
+      if (results.length >= maxResults) break;
+    }
+    return results;
+  }
+
+  search(query: string, maxResults: number = 50): CompanyIndexEntry[] {
+    const q = query.toLowerCase();
+    const results: CompanyIndexEntry[] = [];
+    for (const entry of this.entries.values()) {
+      if (entry.name.toLowerCase().includes(q) || entry.ticker.toLowerCase().includes(q) || entry.cik.includes(q)) {
+        results.push(entry);
+        if (results.length >= maxResults) break;
+      }
+    }
+    return results;
+  }
+
+  getEntry(cik: string): CompanyIndexEntry | undefined {
+    return this.entries.get(cik);
+  }
+
+  getAllTickers(): { cik: string; ticker: string; title: string; sic?: string; state?: string }[] {
+    return Array.from(this.entries.values()).map(e => ({
+      cik: e.cik,
+      ticker: e.ticker,
+      title: e.name,
+      sic: e.sic,
+      state: e.state,
+    }));
+  }
+
+  getStatus(): { total: number; enriched: number; financials: number; building: boolean; buildPhase: string; lastBuilt: number } {
+    return {
+      total: this.entries.size,
+      enriched: this.enrichedCount,
+      financials: this.financialsCount,
+      building: this.building,
+      buildPhase: this.buildPhase,
+      lastBuilt: this.lastBuilt,
+    };
+  }
+}
+
+export const companyIndex = new SecCompanyIndex();
+
 export interface XbrlValue {
   value: number;
   period: string;
@@ -647,142 +889,90 @@ export const US_STATES: Record<string, string> = {
   DC: "District of Columbia",
 };
 
-let tickerData: { cik: string; ticker: string; title: string; sic?: string; state?: string }[] | null = null;
-let tickerDataTime = 0;
-
 export async function loadAllCompanies(): Promise<{ cik: string; ticker: string; title: string; sic?: string; state?: string }[]> {
-  if (tickerData && Date.now() - tickerDataTime < 24 * 60 * 60 * 1000) return tickerData;
+  if (companyIndex.entries.size > 0) return companyIndex.getAllTickers();
   try {
     const res = await secFetch("https://www.sec.gov/files/company_tickers.json");
-    if (!res.ok) return tickerData || [];
+    if (!res.ok) return [];
     const data = await res.json() as Record<string, { cik_str: number; ticker: string; title: string }>;
-    tickerData = Object.values(data).map(entry => ({
+    return Object.values(data).map(entry => ({
       cik: String(entry.cik_str).padStart(10, "0"),
       ticker: entry.ticker.toUpperCase(),
       title: entry.title,
     }));
-    tickerDataTime = Date.now();
-    return tickerData;
   } catch {
-    return tickerData || [];
+    return [];
   }
 }
 
-const sicCache = new Map<string, { cik: string; name: string; sic: string; state?: string }[]>();
-const SIC_CACHE_TTL = 12 * 60 * 60 * 1000;
-let sicCacheTime = 0;
-
-export async function findCompaniesBySIC(sicCodes: string[], maxResults: number = 500): Promise<{ cik: string; name: string; sic: string; state?: string }[]> {
-  const cacheKey = sicCodes.sort().join(",");
-  const cached = sicCache.get(cacheKey);
-  if (cached && Date.now() - sicCacheTime < SIC_CACHE_TTL) return cached;
-
+async function eftsFallbackBySIC(sicCodes: string[], maxResults: number): Promise<{ cik: string; name: string; sic: string; state?: string }[]> {
   const results: { cik: string; name: string; sic: string; state?: string }[] = [];
   const seenCIKs = new Set<string>();
-
   for (const sic of sicCodes) {
     try {
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 2);
+      const startDate = oneYearAgo.toISOString().slice(0, 10);
+      const endDate = new Date().toISOString().slice(0, 10);
       const res = await secFetch(
-        `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&SIC=${sic}&owner=include&count=100&output=atom`,
-        "application/atom+xml",
+        `https://efts.sec.gov/LATEST/search-index?q=%22%22&forms=10-K&dateRange=custom&startdt=${startDate}&enddt=${endDate}`,
       );
       if (!res.ok) continue;
-      const text = await res.text();
-
-      const entryRegex = /<entry>[\s\S]*?<\/entry>/g;
-      let match;
-      while ((match = entryRegex.exec(text)) !== null) {
-        const entry = match[0];
-        const cikMatch = entry.match(/<cik>(\d+)<\/cik>/);
-        const nameMatch = entry.match(/<name>([^<]+)<\/name>/);
-        const stateMatch = entry.match(/<state>([^<]+)<\/state>/);
-        const sicMatch = entry.match(/<sic>(\d+)<\/sic>/);
-
-        if (cikMatch) {
-          const cik = cikMatch[1].padStart(10, "0");
-          if (!seenCIKs.has(cik)) {
-            seenCIKs.add(cik);
-            results.push({
-              cik,
-              name: (nameMatch?.[1] || "").replace(/&amp;/g, "&"),
-              sic: sicMatch?.[1] || sic,
-              state: stateMatch?.[1],
-            });
-          }
-        }
+      const data = await res.json() as any;
+      const hits = data?.hits?.hits || [];
+      for (const hit of hits) {
+        const source = hit._source || {};
+        const cik = String(source.entity_id || "").padStart(10, "0");
+        if (!cik || cik === "0000000000") continue;
+        if (seenCIKs.has(cik)) continue;
+        const hitSic = String(source.sics?.[0] || "");
+        if (!sicCodes.includes(hitSic)) continue;
+        seenCIKs.add(cik);
+        results.push({
+          cik,
+          name: (source.entity_name || source.display_names?.[0] || "").replace(/&amp;/g, "&"),
+          sic: hitSic,
+          state: source.inc_states?.[0] || undefined,
+        });
+        if (results.length >= maxResults) break;
       }
     } catch (e: any) {
-      console.warn(`[BLOOM] findCompaniesBySIC error for SIC ${sic}:`, e.message || e);
+      console.warn(`[BLOOM] EFTS fallback error for SIC ${sic}:`, e.message || e);
     }
     if (results.length >= maxResults) break;
   }
-
-  if (results.length > 0) {
-    sicCache.set(cacheKey, results);
-    sicCacheTime = Date.now();
-  }
+  console.log(`[BLOOM] EFTS SIC fallback returned ${results.length} candidates`);
   return results;
 }
 
-const formDCache = new Map<string, { cik: string; name: string; sic: string; state?: string; source: string }[]>();
-let formDCacheTime = 0;
+export async function findCompaniesBySIC(sicCodes: string[], maxResults: number = 500): Promise<{ cik: string; name: string; sic: string; state?: string }[]> {
+  if (companyIndex.enrichedCount > 0) {
+    const results = companyIndex.findBySIC(sicCodes, maxResults);
+    console.log(`[BLOOM] findCompaniesBySIC via index: ${results.length} matches for SIC [${sicCodes.join(",")}]`);
+    return results;
+  }
+  console.log(`[BLOOM] Index not ready (${companyIndex.enrichedCount} enriched), falling back to EFTS`);
+  return eftsFallbackBySIC(sicCodes, maxResults);
+}
 
 export async function findCompaniesByFormD(maxResults: number = 200, stateFilter?: string): Promise<{ cik: string; name: string; sic: string; state?: string; source: string }[]> {
-  const cacheKey = `formD_${stateFilter || "ALL"}`;
-  const cached = formDCache.get(cacheKey);
-  if (cached && Date.now() - formDCacheTime < SIC_CACHE_TTL) return cached;
-
-  const results: { cik: string; name: string; sic: string; state?: string; source: string }[] = [];
-  const seenCIKs = new Set<string>();
-
-  try {
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    const startDate = oneYearAgo.toISOString().slice(0, 10);
-    const endDate = new Date().toISOString().slice(0, 10);
-
-    const stateParam = stateFilter ? `&State=${stateFilter.toUpperCase()}` : "";
-    const res = await secFetch(
-      `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=D&dateb=${endDate.replace(/-/g, "")}&owner=include&count=${Math.min(maxResults, 100)}&search_text=&action=getcompany${stateParam}&output=atom`,
-      "application/atom+xml",
-    );
-    if (res.ok) {
-      const text = await res.text();
-      const entryRegex = /<entry>[\s\S]*?<\/entry>/g;
-      let match;
-      while ((match = entryRegex.exec(text)) !== null) {
-        const entry = match[0];
-        const cikMatch = entry.match(/<cik>(\d+)<\/cik>/);
-        const nameMatch = entry.match(/<name>([^<]+)<\/name>/);
-        const stateMatch = entry.match(/<state>([^<]+)<\/state>/);
-        const sicMatch = entry.match(/<sic>(\d+)<\/sic>/);
-
-        if (cikMatch) {
-          const cik = cikMatch[1].padStart(10, "0");
-          if (!seenCIKs.has(cik)) {
-            seenCIKs.add(cik);
-            results.push({
-              cik,
-              name: (nameMatch?.[1] || "").replace(/&amp;/g, "&"),
-              sic: sicMatch?.[1] || "",
-              state: stateMatch?.[1],
-              source: "formD",
-            });
-          }
-        }
-        if (results.length >= maxResults) break;
-      }
+  if (companyIndex.enrichedCount > 0 && stateFilter) {
+    const results = companyIndex.findByState(stateFilter, maxResults);
+    console.log(`[BLOOM] findCompaniesByFormD via index (state=${stateFilter}): ${results.length} matches`);
+    return results;
+  }
+  if (companyIndex.entries.size > 0) {
+    const results: { cik: string; name: string; sic: string; state?: string; source: string }[] = [];
+    for (const entry of companyIndex.entries.values()) {
+      if (stateFilter && entry.state?.toUpperCase() !== stateFilter.toUpperCase()) continue;
+      results.push({ cik: entry.cik, name: entry.name, sic: entry.sic || "", state: entry.state, source: "index" });
+      if (results.length >= maxResults) break;
     }
-  } catch (e: any) {
-    console.warn(`[BLOOM] findCompaniesByFormD error:`, e.message || e);
+    console.log(`[BLOOM] findCompaniesByFormD via base index: ${results.length} matches`);
+    return results;
   }
-
-  if (results.length > 0) {
-    formDCache.set(cacheKey, results);
-    formDCacheTime = Date.now();
-  }
-  console.log(`[BLOOM] Form D search returned ${results.length} candidates`);
-  return results;
+  console.log(`[BLOOM] Index empty, Form D returning 0 (deprecated CGI removed)`);
+  return [];
 }
 
 const eftsCache = new Map<string, { cik: string; name: string; sic: string; state?: string; source: string }[]>();

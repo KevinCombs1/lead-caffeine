@@ -25,7 +25,7 @@ import {
   XCircle, MinusCircle, Leaf,
   BarChart3, MapPin, TrendingUp, DollarSign, Users, FileText, Factory,
   GitBranch, Brain, FolderOpen, ArrowDown, Layers, Target,
-  ArrowDownCircle, HelpCircle, AlertTriangle, Info,
+  ArrowDownCircle, HelpCircle, AlertTriangle, Info, Database,
 } from "lucide-react";
 import { Shape4DCanvas } from "@/components/shapes-4d";
 import { HowToGuide } from "@/components/how-to-guide";
@@ -641,6 +641,10 @@ export default function LightEngine() {
   const deltaQuery = useQuery<DeltaMap>({ queryKey: ["/api/light/delta"] });
   const industryQuery = useQuery<IndustryTree>({ queryKey: ["/api/light/industries"] });
   const creditsQuery = useQuery<{ credits: Array<{ id: string; name: string; section: string; description: string; maxValue: string; applicableCategories: string[]; neglectLevel: string }> }>({ queryKey: ["/api/light/credits"] });
+  const indexStatusQuery = useQuery<{ total: number; enriched: number; financials: number; building: boolean; buildPhase: string; lastBuilt: number }>({
+    queryKey: ["/api/gradient/index-status"],
+    refetchInterval: (query) => query.state.data?.building ? 5000 : 60000,
+  });
 
   const securityQuery = useQuery<SecurityProfile>({
     queryKey: ["/api/light/security", securityDomain],
@@ -947,6 +951,33 @@ export default function LightEngine() {
                     <p className="text-[11px] text-amber-400/20 mt-0.5">See credits, check defenses, fill forms</p>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {indexStatusQuery.data && (
+              <div className="flex items-center gap-2 py-1.5 px-3 rounded-md border border-amber-500/10 bg-amber-500/[0.03]" data-testid="index-status-indicator">
+                {indexStatusQuery.data.building ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin text-amber-400/50" />
+                    <span className="text-[10px] text-amber-300/50">
+                      Building company index... {indexStatusQuery.data.enriched.toLocaleString()} / {indexStatusQuery.data.total.toLocaleString()} enriched
+                      {indexStatusQuery.data.financials > 0 && ` (${indexStatusQuery.data.financials.toLocaleString()} with financials)`}
+                    </span>
+                  </>
+                ) : indexStatusQuery.data.enriched > 0 ? (
+                  <>
+                    <Database className="w-3 h-3 text-emerald-400/60" />
+                    <span className="text-[10px] text-emerald-300/50">
+                      Index ready — {indexStatusQuery.data.enriched.toLocaleString()} companies
+                      {indexStatusQuery.data.financials > 0 && ` (${indexStatusQuery.data.financials.toLocaleString()} with financials)`}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-3 h-3 text-red-400/60" />
+                    <span className="text-[10px] text-red-300/50">Index not available — EFTS fallback active</span>
+                  </>
+                )}
               </div>
             )}
 

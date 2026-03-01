@@ -1,0 +1,84 @@
+Objective
+Replace the broken SEC browse-edgar CGI endpoint with a local company index built from SEC's modern APIs. The index downloads the full SEC company dataset with SIC codes, caches it in-memory, and refreshes every 24 hours (only discarding old data once the new download completes). All findCompaniesBySIC callers (gradient sweep, Bloom discovery, prospect discovery, pyramid discovery) become instant local lookups. The /api/light/search endpoint gets enriched with SIC codes for free.
+
+Architecture
+Index Build Strategy (two-phase):
+
+Phase 1 — Instant base: Fetch company_tickers.json (~500KB, 10,412 entries with CIK, ticker, name). Available in <1 second.
+Phase 2 — SIC enrichment: For each company, fetch submissions/CIK*.json to get SIC code + state. Rate-limited at 8 parallel / 1s delay between batches. ~18 minutes for full build, but the index is usable immediately (entries without SIC are simply skipped in SIC-based queries until enriched).
+Refresh cycle:
+
+Every 24 hours, trigger a full rebuild in the background
+Old index stays active until new one completes
+Atomic swap: newIndex → activeIndex only after 100% enrichment
+Pivots enabled by local index:
+
+findCompaniesBySIC → instant local filter (was: broken CGI call)
+searchCompanies / /api/light/search → enriched with SIC code, state, industry category (was: no SIC data)
+sicCache → eliminated (the full index IS the cache)
+loadAllCompanies → merged into the index (no separate ticker data fetch)
+Data Shape
+CompanyIndexEntry {
+  cik: string        // 10-digit zero-padded
+  ticker: string     // e.g. "AAPL"
+  name: string       // e.g. "Apple Inc."
+  sic?: string       // 4-digit SIC code (null until enriched)
+  state?: string     // 2-letter state code (null until enriched)
+  exchange?: string  // from company_tickers_exchange.json
+}
+Tasks
+T001: Build the SEC Company Index engine
+Blocked By: []
+Details:
+In server/gradient-sweep.ts, create a SecCompanyIndex class:
+entries: Map<string, CompanyIndexEntry>— keyed by CIK
+enrichedCount: number — how many have SIC data
+building: boolean — whether enrichment is in progress
+lastBuilt: number — timestamp of last completed build
+buildPhase: string — "loading tickers" | "enriching X/Y" | "complete"
+async initialize(): Fetch company_tickers.json, populate base entries (CIK, ticker, name). Then kick off enrichAll() in background.
+async enrichAll(): For all entries missing SIC, fetch submissions/CIK*.json in batches of 8 with 1s delay between batches. Update entries in-place with sic and state. Track progress. On complete, set lastBuilt = Date.now().
+async refresh(): Build a NEW index in parallel. Once complete, atomically swap it in. Called every 24 hours by a setInterval.
+findBySIC(sicCodes: string[], maxResults: number): Filter entries by SIC code, return matches. Only returns enriched entries.
+search(query: string, maxResults: number): Search by name/ticker (replaces searchCompanies). Includes SIC/state in results.
+getStatus(): Returns { total, enriched, building, buildPhase, lastBuilt }
+Export a singleton: export const companyIndex = new SecCompanyIndex()
+Files: server/gradient-sweep.ts
+Acceptance: Index loads tickers instantly, enriches in background, provides fast local SIC lookups
+T002: Replace findCompaniesBySIC and searchCompanies with index lookups
+Blocked By: [T001]
+Details:
+Rewrite findCompaniesBySIC to call companyIndex.findBySIC(sicCodes, maxResults):
+If index has 0 enriched entries (still building), fall back to EFTS API query as a temporary bridge:https://efts.sec.gov/LATEST/search-index?q=%22%22&forms=10-K&sics={codes}&from=0&size=100
+Parse EFTS: extract unique companies from hits.hits[]._source (ciks, display_names, sics, inc_states)
+Once index is enriched, EFTS fallback is never used
+Rewrite searchCompanies to call companyIndex.search(query, maxResults):
+Results now include sic and state fields (enrichment from the index)
+Remove loadAllCompanies function — callers that used it for ticker lookup now use companyIndex.entries
+Remove sicCache, sicCacheTime, SIC_CACHE_TTL — no longer needed
+Remove tickerData, tickerDataTime — replaced by index
+Update all callers in server/routes.ts:
+loadAllCompanies() calls → companyIndex.getAll() or inline ticker lookup from index
+The function signature of findCompaniesBySIC stays the same, so most callers need no changes
+Files: server/gradient-sweep.ts, server/routes.ts
+Acceptance: All gradient sweep, Bloom, prospect, and pyramid discovery flows work with the local index; search results include SIC/state
+T003: Add index status API and auto-initialization
+Blocked By: [T001, T002]
+Details:
+In server/routes.ts:
+Add GET /api/gradient/index-status: Returns companyIndex.getStatus() — { total, enriched, building, buildPhase, lastBuilt }
+On app startup (in registerRoutes): Call companyIndex.initialize() to begin building the index immediately
+Set up 24-hour refresh interval: setInterval(() => companyIndex.refresh(), 24 * 60 * 60 * 1000)
+Files: server/routes.ts
+Acceptance: Index starts building on server boot; status endpoint returns current progress; 24h auto-refresh active
+T004: Add index status indicator in FI Deploy Gradient card
+Blocked By: [T003]
+Details:
+In client/src/pages/fiscal.tsx, in the Deploy Gradient card area:
+Query GET /api/gradient/index-status(poll every 5s while building, every 60s otherwise)
+While building: show a small progress bar/text "Building company index... X / Y companies enriched"
+When complete: show subtle green indicator "Index ready — X companies"
+If the index has 0 enriched entries and is not building (error state), show warning
+Deploy Gradient button remains functional at all times (EFTS fallback handles the case where index isn't ready yet)
+Files: client/src/pages/fiscal.tsx
+Acceptance: Users see index build progress on first use; clear status indicator when ready

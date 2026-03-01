@@ -9,7 +9,7 @@ import { sql } from "drizzle-orm";
 import { scrapedResults, scrapeJobs, domainSecurityProfiles } from "@shared/schema";
 import { TAX_CREDIT_UNIVERSE, matchLeadCredits, analyzeCompanyCreditPosition, analyzeMultiYearTrends, analyzeCreditInteractions, applyInteractionAdjustments, computeIndustryBenchmarks, compareToIndustryPeers } from "./credit-universe";
 import { scanSingleLead, type SingleLeadGapResult } from "./credit-gap-engine";
-import { SIC_INDUSTRIES, findCompaniesBySIC, findCompaniesByFormD, findCompaniesByFilingText, getCompanyDetails, loadAllCompanies, type RecentEvent } from "./gradient-sweep";
+import { SIC_INDUSTRIES, findCompaniesBySIC, findCompaniesByFormD, findCompaniesByFilingText, getCompanyDetails, loadAllCompanies, companyIndex, type RecentEvent } from "./gradient-sweep";
 import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-blocklist";
 import { submitSingleForm, runBatchSubmission, isActionableForm, type SenderProfile, type FormTarget, type BatchItem } from "./form-submitter";
 import * as cheerio from "cheerio";
@@ -311,6 +311,13 @@ export async function registerRoutes(
     req.session.destroy(() => {
       res.json({ success: true });
     });
+  });
+
+  companyIndex.initialize().catch(e => console.error("[INDEX] Auto-init failed:", e));
+  companyIndex.startAutoRefresh();
+
+  app.get("/api/gradient/index-status", requireAuth, async (_req, res) => {
+    res.json(companyIndex.getStatus());
   });
 
   app.get("/api/light/delta", requireAuth, async (req, res) => {
