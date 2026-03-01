@@ -1,0 +1,243 @@
+Objective
+Add a "Full Enrichment" action on each Portfolio company card that runs the most comprehensive, methodical tax credit analysis possible — one company at a time. Uses every engine, every API, every data source in the system. No web scraping. Methodical pacing with generous delays to eliminate any rate-limiting risk.
+
+After enrichment completes, all data is displayed accurately and visually appealing. A "Summary" button opens a polished, client-ready intelligence brief — no methodology shown, no data source references. Just authoritative, matter-of-fact financial statements connecting the company's own numbers to specific credit eligibility with dollar amounts. Smart, concise, professional.
+
+What Gets Analyzed (Per Company)
+SEC EDGAR (4 endpoints): submissions, companyfacts (105 XBRL concepts across 16 categories), 10-K footnote HTML extraction (up to 3 most recent 10-Ks), 8-K material event signal mapping
+All 39 Tax Credits: Each analyzed with specialized analyzers (R&D, Foreign, Depreciation, Employment, Energy, Generic), per-credit confidence %, evidence chains, diagnostic notes
+43 Fingerprint Rules: BUILT_IN_FINGERPRINTS for heuristic gap detection, cascade/exclusion rule application, priority scoring
+Credit Interactions: Mutual exclusion detection (ITC↔PTC), structural limits (GILTI/BEAT), redundancy checks (§179↔Bonus Depreciation), interaction adjustments applied to values
+Multi-Year Trends: 3-year time series for 12 financial metrics, credit drop-off detection, R&D growth divergence, NOL accumulation/utilization patterns
+Industry Benchmarking: Peer comparison against same 2-digit SIC group, outlier detection for under-utilized credits
+10-K Footnote NLP: §382 limitation detection, valuation allowance analysis, credit-specific keyword extraction, carryforward identification
+Company-Specific Deal Sources (11 targeted API queries):
+USASpending: government contracts by recipient name
+USPTO PatentsView: patents by assignee organization
+Federal Register: industry-relevant regulations by SIC/NAICS
+OpenFEMA: disaster declarations in company's state
+openFDA: drug approvals/device clearances if pharma/medical SIC
+FDIC: bank financial data if financial SIC
+Congress.gov: recent tax legislation relevant to company's industry
+FRED: economic indicators relevant to company sector
+BLS: industry employment statistics
+Census: industry demographics and trade data
+Treasury: fiscal policy data
+Local Intelligence: Query dealEvents/dealEntities for pre-harvested data matching this company, convergence point analysis for company's sector/geography
+Retroactive Recovery: Per-credit 3-year IRS lookback with year-by-year value estimation
+Legislative Triggers: Map recent congressional actions to company-specific credit opportunities
+Pacing Strategy (Zero Rate-Limit Risk)
+10-second minimum between SEC API calls
+3-second delays between deal source API calls
+Total enrichment time: ~2-4 minutes per company (methodical, not rushed)
+One company at a time (global lock, reject if another is running)
+Every API call reported to user in real-time via SSE
+Tasks
+T001: Build the Full Enrichment engine
+Blocked By: []
+Details:
+Create server/full-enrichment.ts — the master enrichment engine
+Define types:
+FullEnrichmentResult with all output fields
+EnrichmentProgress for streaming updates (phase, step, percent, message, creditId?)
+DealSourceSignal for external API hits (source, entityName, eventType, value, relevantCredits, metadata)
+EnrichedCreditItem extending CreditAnalysisItem with confidence%, diagnostics[], dealSourceEvidence[], trendInsight, peerContext, interactionWarning
+SummaryStatement for the client-ready brief (creditName, section, statement, amount, status)
+Implement runFullEnrichment(params: { cik, companyName, ticker, sic, state }, onProgress):
+Phase 1 — SEC Data Collection (0-15%, ~30-40s):
+Fetch submissions/CIK*.json → filing history, SIC, state, fiscal year
+10s delay
+Fetch companyfacts/CIK*.json → all XBRL data (us-gaap + dei)
+10s delay
+Identify 3 most recent 10-K accession numbers
+For each 10-K: fetchFilingFootnotes → tax footnote + commitments section
+Run extractFootnoteSignals on each footnote
+10s delay between each footnote fetch
+Run extract8KSignals on recent filings
+Progress: "Fetching SEC submissions...", "Extracting 105 XBRL concepts...", "Reading 10-K footnotes (2024)...", "Scanning 8-K material events..."
+Phase 2 — XBRL Deep Analysis (15-25%, ~5s):
+extractCreditXRay(usGaap, dei) — 105 concepts across 16 categories
+extractMultiYearXRay(usGaap, dei, 3) — 3-year trends for 12 metrics
+Compute xbrlDepth, dataQuality rating
+Progress: "Deep-scanning 105 XBRL tax concepts...", "Building 3-year financial trend model..."
+Phase 3 — Full 39-Credit Analysis (25-50%, ~10s):
+getApplicableCredits for company's SIC/industry
+analyzeCompanyCreditPosition(creditXRay, applicableCredits, allFootnoteInsights)
+For each credit, emit progress: "Analyzing R&D Tax Credit (IRC §41)..."
+analyzeMultiYearTrends(multiYearXRay) → credit drop-offs, divergence patterns
+analyzeCreditInteractions(creditXRay, creditAnalysis) → detect conflicts/redundancy
+applyInteractionAdjustments(creditAnalysis, interactions) → adjust values
+For each credit result, compute enhanced confidence % (0-100) from:
+XBRL verification depth (which fields found)
+Footnote corroboration (did 10-K mention this credit across multiple years?)
+Multi-year consistency (was it claimed before?)
+8-K signal alignment
+Generate per-credit diagnostics: data found, data missing, inference basis
+Phase 4 — Credit Gap Engine (50-60%, ~5s):
+scanSingleLead with full enrichment data → 43 fingerprint rules
+Cross-reference gap results with Phase 3 → upgrade confidence where corroborated
+Apply CREDIT_EXCLUSION_RULES and CREDIT_CASCADE_RULES
+computeCascadeBonus for complementary credits
+computePriorityScore for each gap finding
+Progress: "Running 43 credit fingerprint rules...", "Applying cascade and exclusion logic..."
+Phase 5 — Industry Benchmarking (60-65%, ~3s):
+Query portfolio leads with same 2-digit SIC → build peer set
+computeIndustryBenchmarks(peerLeads) → industry averages
+compareToIndustryPeers(thisLead, benchmark) → outlier detection
+Add peer context to each credit result
+Progress: "Benchmarking against [N] industry peers..."
+Phase 6 — Deal Source Intelligence (65-85%, ~60s):
+Company-targeted queries to external APIs (3s between each):
+USASpending: POST search by recipient_name for government contracts
+USPTO: GET patents by assignee_organization → R&D evidence
+Federal Register: GET rules by agency/topic for company's SIC
+OpenFEMA: GET disaster declarations for company's state → disaster credits
+openFDA: GET drug/device data if pharma/medical SIC
+FDIC: GET bank data if financial SIC (6000-6199)
+Congress.gov: GET recent bills with tax/credit keywords
+FRED: GET industry-relevant economic indicators
+BLS: GET industry employment stats
+Census: GET industry demographics
+Treasury: GET fiscal data
+Also query local dealEvents/dealEntities for pre-harvested matches
+mapLegislativeChanges for company-specific legislative triggers
+Each hit maps to specific credit(s) and adjusts confidence
+Progress per source: "Searching USASpending for government contracts...", "Checking USPTO for patents...", etc.
+Phase 7 — Retroactive Recovery (85-90%, ~3s):
+For each unclaimed/likely_unclaimed credit:
+Use multi-year XBRL to estimate value for each of 3 prior years
+Calculate total lookback recovery
+Tag with IRS amendment deadline
+Progress: "Calculating retroactive recovery potential..."
+Phase 8 — Summary Generation (90-95%, ~2s):
+For each credit, generate a smart, matter-of-fact SummaryStatement:
+Uses the company's ACTUAL financial figures (revenue, R&D spend, capex, employees, etc.)
+Connects the figure to the credit's eligibility formula
+States the dollar amount they're eligible for or already claiming
+Written in plain business English, no methodology or source references
+Examples:
+"Your $142M in R&D expenditures qualifies under IRC §41. At the current federal rate of 6.5%, this represents a $9.2M annual credit that does not appear to have been claimed."
+"With 12,400 employees across 3 states, your qualified wage base of $38M generates a potential Work Opportunity Tax Credit of $2.4M annually under IRC §51."
+"Your $67M capital expenditure on manufacturing equipment qualifies for 80% first-year Bonus Depreciation under IRC §168(k), representing $53.6M in accelerated deductions."
+"Your Foreign-Derived Intangible Income of $89M qualifies for a 37.5% deduction under IRC §250, reducing your effective tax on foreign income by approximately $8.3M."
+For actively claimed credits: "You are currently claiming $X under IRC §Y, which appears correctly applied based on your reported [metric]."
+Sort order: confidently unclaimed (highest $ first) → lower confidence unclaimed → confidently claimed
+Progress: "Generating intelligence summary..."
+Phase 9 — Final Scoring & Assembly (95-100%, ~2s):
+Recalculate creditHealthScore with full data via computeCreditHealthScore
+computeTaxPositionSummary for enhanced tax position
+Total estimated unclaimed value
+Total retroactive recovery potential
+Data quality score (xbrlDepth + footnote depth + deal source coverage)
+Package into FullEnrichmentResult including summaryStatements array
+Progress: "Computing final scores...", "Enrichment complete."
+Files: server/full-enrichment.ts
+Acceptance: Engine runs ~2-4 minutes, methodically hits every API with safe pacing, produces comprehensive per-credit analysis with confidence %, diagnostics, deal source signals, industry benchmarks, interaction warnings, retroactive recovery, AND smart summary statements using actual company financials
+T002: Add the Full Enrichment API endpoint with SSE streaming
+Blocked By: [T001]
+Details:
+In server/routes.ts, add GET /api/portfolio/:leadId/full-enrichment (SSE endpoint):
+Validate lead exists in portfolio allocations
+Enforce one-at-a-time: reject if another enrichment is already running (global lock)
+Extract CIK, companyName, ticker, SIC, state from lead data
+Set up SSE response headers (text/event-stream, no-cache, keep-alive)
+Call runFullEnrichment() with progress callback sending SSE events:
+event: progress → { phase, step, percent, message }
+event: credit → { creditId, creditName, status, confidence } (per-credit as analyzed)
+event: source → { source, hits, relevantCredits } (per deal source)
+event: complete → full FullEnrichmentResult
+event: error → error details
+On completion, merge results into lead's enrichmentData:
+Replace creditAnalysis with full enrichment version
+Add dealSourceSignals, industryBenchmarks, creditInteractions, summaryStatements
+Add retroactiveRecovery with per-credit detail
+Set fullEnrichmentTimestamp, fullEnrichmentDuration, isFullyEnriched: true
+Save updated lead back to storage
+Files: server/routes.ts
+Acceptance: SSE streams real-time progress; one-at-a-time enforcement; lead fully updated on completion
+T003: Full Enrichment UI — button, live progress, comprehensive results display, and Summary view
+Blocked By: [T002]
+Details:
+In client/src/pages/portfolio.tsx, enhance each PortfolioCard:
+Full Enrichment Button:
+Prominent button in card header (styled distinctly — "Run Full Enrichment" with scan icon)
+Disabled + animated spinner during enrichment
+If already enriched: "Re-Enrich" variant with last enrichment timestamp
+"Fully Enriched" badge on enriched cards with duration and timestamp
+Live Progress Panel (during enrichment):
+Inline expandable section showing:
+Phase name and step description (real-time text updates)
+Progress bar 0-100% with percentage label
+Credit-by-credit updates as each is analyzed (credit name + status + confidence appearing in list)
+Deal source hits appearing as they're found
+Elapsed time counter
+Comprehensive Credit Analysis Display (after enrichment — always visible, visually polished):
+Show ALL analyzed credits (up to 39), grouped by category:
+Active & Claimed credits (green section)
+Unclaimed / Likely Unclaimed — Opportunities (amber/yellow section)
+Not Applicable (muted/gray section, collapsed by default)
+Each credit row:
+Credit name + IRC section
+Status badge (active/unclaimed/likely_unclaimed/not_applicable/maxed_out/dropped)
+Confidence % bar (0-100%, color-coded: green >80, yellow 40-80, red <40)
+Estimated value (claimed or potential), formatted ($1.2M, $500K, etc.)
+Expandable diagnostics panel:
+Evidence chain (XBRL fields found, footnote excerpts, fingerprint matches)
+Trend insight (3-year pattern)
+Peer context (industry comparison — "78% of peers claim this credit")
+Interaction warnings (conflicts with other credits)
+Deal source evidence (contracts, patents, regulations supporting this credit)
+Classification reason
+Credit Interactions Section:
+Detected interactions: mutual exclusions, structural limits, cascade bonuses
+Visual indicators of which credits affect each other
+Deal Source Intelligence Section:
+Government contracts (USASpending) with amounts and agencies
+Patents found (USPTO) with patent numbers and titles
+Regulatory actions (Federal Register) relevant to company
+Disaster declarations (OpenFEMA) in company's state
+FDA clearances (openFDA) if applicable
+Banking data (FDIC) if applicable
+Legislative triggers (Congress.gov) mapped to credits
+Economic context (FRED/BLS/Census/Treasury) summary
+Each signal shows which credit(s) it supports
+Enhanced Retroactive Recovery:
+Per-credit lookback with year-by-year breakdown
+Total recovery prominently displayed
+IRS amendment deadline dates
+Enrichment Metadata Footer:
+Data quality score and XBRL depth indicator
+Number of APIs consulted and data points analyzed
+Duration and timestamp
+Phase completion summary
+Summary Button & Summary View (the client-ready intelligence brief):
+"Summary" button in card header, opens a clean modal/overlay
+NO methodology shown. NO data source references. NO "we analyzed XBRL" language.
+Purely matter-of-fact financial intelligence using the company's own numbers.
+Summary header:
+Company name (large, prominent)
+Total Unclaimed Opportunity dollar amount
+Total Retroactive Recovery potential
+Credit Health Score with label
+Summary body — sorted list of ALL eligible credits in this order:
+Unclaimed Credits (highest confidence + highest $ first, descending):
+Each entry is a smart, authoritative paragraph:
+"Your $142M in R&D expenditures qualifies under IRC §41. At the current federal rate of 6.5%, this represents a $9.2M annual credit that does not appear to have been claimed."
+"With 12,400 employees across 3 states, your qualified wage base of $38M generates a potential Work Opportunity Tax Credit of $2.4M annually under IRC §51."
+Uses ACTUAL company financial figures, ACTUAL rates, ACTUAL IRC sections
+Dollar amount prominently displayed
+One statement per credit — concise, smart, professional
+Sorted by: confidence DESC, then potentialAmount DESC
+Currently Claimed Credits (highest $ first, descending):
+Each entry confirms what they're already doing right:
+"You are currently utilizing the R&D Tax Credit under IRC §41, claiming $4.8M against your $142M R&D spend. This appears correctly applied."
+Sorted by claimedAmount DESC
+Not Applicable — collapsed/hidden by default, brief one-liners explaining why
+Summary footer:
+"Analysis period: FY2023-FY2025" (based on actual filing dates)
+Total number of credits analyzed
+Date of analysis
+Print-friendly / clean design (could be screenshot for a client)
+data-testid attributes on all interactive and display elements
+Files: client/src/pages/portfolio.tsx
+Acceptance: Full Enrichment produces visually appealing, accurate data display; Summary button opens a polished, client-ready intelligence brief with smart financial statements using actual company numbers — sorted by unclaimed (highest $ first) down to claimed — no methodology or source references shown
