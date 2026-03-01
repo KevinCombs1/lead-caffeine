@@ -1,6 +1,6 @@
 # D.A.T.A. Cloudware — Manifesto
 
-**Date:** February 28, 2026
+**Date:** March 1, 2026
 
 ---
 
@@ -10,7 +10,12 @@ D.A.T.A. Cloudware is a tax credit intelligence platform. It discovers companies
 
 The platform operates in two phases:
 
-**Phase 1 — Light Engine** (operational): Company discovery and outreach. Find companies by industry and revenue size via SEC EDGAR. Use Bloom — the outreach engine — to contact them through their website forms with precocious, elegant, gentle bees that give grace.
+**Phase 1 — Light Engine** (operational): A 3-stage progressive enrichment pipeline plus Portfolio Dashboard.
+- **Stage I: Discovery (Bloom)** — Find companies by industry via SEC EDGAR (SIC, Form D, EFTS). Results stream in real-time.
+- **Stage II: Extrapolate** — Mid-level enrichment: form discovery, ad intelligence, basic credit matching.
+- **Stage III: DeepLogic64** — Full intelligence: Credit X-Ray (76 XBRL), Gap Matrix (38 credits), retroactive recovery, credit health scoring.
+- **Portfolio Dashboard** — Allocated companies organized by industry, credit health tier, and geography with aggregate intelligence metrics.
+- **Bloom Engine** — Outreach via website forms with precocious, elegant, gentle bees that give grace.
 
 **Phase 2 — Credit Scanner** (operational): The intelligence machine. Scans companies against 38 tax credit programs using 76 XBRL financial concepts. Tracks 17 government data sources across 3,300+ data streams. Detects convergence patterns, legislative triggers, and credit gaps. Produces Credit Health Scores, estimated unclaimed values, and priority targeting.
 
@@ -28,12 +33,33 @@ Outreach is human-timed, domain-specific, and non-intrusive. Dry Run mode is alw
 
 ## Architecture
 
-### Light Engine (Phase 1)
+### Light Engine (Phase 1) — 3-Stage Pipeline
 
-**Company Discovery** — Three SEC EDGAR sources:
+**Stage I: Discovery (Bloom)** — Three SEC EDGAR sources:
 - SIC Industry: Searches by Standard Industrial Classification codes, pre-filtered against ~13,000 active public filers
 - Form D: Companies actively raising capital via private placements
 - EFTS (Filing Search): Full-text search across recent SEC filings
+- Companies stream in real-time as discovered
+
+**Stage II: Extrapolate** — Mid-level enrichment via SSE streaming:
+- Form Discovery: Crawls company websites for contact forms
+- Ad Intelligence: Detects ad networks and tracking pixels
+- Basic credit matching against industry and financials
+- Results appear as enriched cards with form counts and ad badges
+
+**Stage III: DeepLogic64** — Full intelligence analysis:
+- Credit X-Ray: 76 XBRL tax concepts scanned per company
+- Credit Gap Matrix: All 38 credits checked for eligibility
+- Retroactive Recovery: 3-year lookback for amendable prior-year credits
+- Credit Health Score: 0-100 composite scoring
+- Fully enriched cards with expandable credit analysis
+
+**Portfolio Dashboard** — Org-chart grouped view:
+- Companies allocated from Stage III via `portfolioAllocations` table
+- Grouped by industry, credit health tier, and geography
+- Aggregate intelligence: total unclaimed value, avg credit health, distribution charts
+- Expandable cards with full enrichment detail
+- Remove from portfolio capability
 
 **Bloom Engine** — Outreach orchestration:
 - Sender Profile: Name, email, phone, company, title (persisted in browser)
@@ -161,12 +187,13 @@ Outreach is human-timed, domain-specific, and non-intrusive. Dry Run mode is alw
 ### Client (frontend)
 | File | Lines | Purpose |
 |------|------:|---------|
-| client/src/pages/light.tsx | 2,895 | Light Engine — full discovery + Bloom outreach interface |
+| client/src/pages/light.tsx | ~3,100 | Light Engine — 3-stage pipeline (Discovery → Extrapolate → DeepLogic64) + Recent Results |
+| client/src/pages/portfolio.tsx | ~450 | Portfolio Dashboard — org-chart grouped view with intelligence metrics |
 | client/src/pages/deals.tsx | 2,182 | Credit Scanner — deal intelligence dashboard |
 | client/src/index.css | 1,296 | Global styles, 10 themes, dark/light mode, max contrast |
 | client/src/components/shapes-4d.tsx | 368 | 4D hypershape Three.js visualizations |
-| client/src/components/how-to-guide.tsx | 244 | Draggable floating How-To Guide |
-| client/src/App.tsx | 134 | Router and app shell |
+| client/src/components/how-to-guide.tsx | ~310 | Draggable floating How-To Guide (3-stage pipeline docs) |
+| client/src/App.tsx | ~140 | Router and app shell (Light Engine, Portfolio, Credit Scanner, Shapes) |
 | client/src/pages/login.tsx | 66 | Authentication page |
 | client/src/pages/shapes.tsx | 9 | Shape viewer page |
 | 50+ UI components | ~3,000 | shadcn/ui component library |
@@ -205,4 +232,4 @@ The application starts on port 5000 with Express serving the API and Vite servin
 
 ---
 
-*This archive preserves the complete D.A.T.A. Cloudware codebase as of February 28, 2026. Every source file is included in full, unabridged. Dependencies are restored via `npm install` using the locked versions in package-lock.json.*
+*This archive preserves the complete D.A.T.A. Cloudware codebase as of March 1, 2026. Every source file is included in full, unabridged. Dependencies are restored via `npm install` using the locked versions in package-lock.json.*

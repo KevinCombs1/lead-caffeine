@@ -24,6 +24,7 @@ import {
   Coins, Sparkles, TreePine, Landmark,
   Rocket, User, Mail, Briefcase, XCircle, MinusCircle, PauseCircle, Leaf,
   BarChart3, MapPin, TrendingUp, DollarSign, Users, FileText, Factory,
+  GitBranch, Brain, FolderOpen, ArrowDown, Layers, Target,
 } from "lucide-react";
 import { Shape4DCanvas } from "@/components/shapes-4d";
 import { HowToGuide } from "@/components/how-to-guide";
@@ -432,6 +433,16 @@ export default function LightEngine() {
   const [formDiscoveryProgress, setFormDiscoveryProgress] = useState<{ found: number; failed: number; total: number; current?: string }>({ found: 0, failed: 0, total: 0 });
   const [formDiscoveryLog, setFormDiscoveryLog] = useState<string[]>([]);
 
+  const [extrapolateRunning, setExtrapolateRunning] = useState(false);
+  const [extrapolateLog, setExtrapolateLog] = useState<string[]>([]);
+  const [extrapolateProgress, setExtrapolateProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+  const [deeplogicRunning, setDeeplogicRunning] = useState(false);
+  const [deeplogicLog, setDeeplogicLog] = useState<string[]>([]);
+  const [deeplogicProgress, setDeeplogicProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+  const [selectedStage2, setSelectedStage2] = useState<Set<string>>(new Set());
+  const [selectedStage3, setSelectedStage3] = useState<Set<string>>(new Set());
+  const [pipelineView, setPipelineView] = useState<"stages" | "all">("stages");
+
   const startFormDiscovery = useCallback(async () => {
     if (formDiscoveryRunning) return;
     setFormDiscoveryRunning(true);
@@ -488,6 +499,116 @@ export default function LightEngine() {
 
     setFormDiscoveryRunning(false);
   }, [formDiscoveryRunning, queryClient, toast]);
+
+  const startExtrapolate = useCallback(async (leadIds: string[]) => {
+    if (extrapolateRunning || !leadIds.length) return;
+    setExtrapolateRunning(true);
+    setExtrapolateLog([]);
+    setExtrapolateProgress({ current: 0, total: leadIds.length });
+    try {
+      const res = await fetch("/api/light/extrapolate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ leadIds }),
+      });
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No stream");
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === "phase") setExtrapolateLog(p => [...p, evt.message]);
+            else if (evt.type === "progress") {
+              setExtrapolateProgress({ current: evt.index + 1, total: evt.total });
+              setExtrapolateLog(p => [...p, `Processing: ${evt.current}`]);
+            } else if (evt.type === "enriched") {
+              setExtrapolateLog(p => [...p, `${evt.company}: ${evt.forms} forms, ${evt.ads} ad networks`]);
+            } else if (evt.type === "error") {
+              setExtrapolateLog(p => [...p, `Error: ${evt.company} — ${evt.error}`]);
+            } else if (evt.type === "complete") {
+              setExtrapolateLog(p => [...p, `Complete: ${evt.total} companies extrapolated (${evt.forms} forms, ${evt.ads} ad networks, ${evt.credits} credits)`]);
+              toast({ title: "Extrapolation Complete", description: `${evt.total} companies enriched` });
+              queryClient.invalidateQueries({ queryKey: ["/api/light/delta"] });
+            }
+          } catch {}
+        }
+      }
+    } catch (err: any) {
+      toast({ title: "Extrapolation failed", description: err.message, variant: "destructive" });
+    }
+    setExtrapolateRunning(false);
+  }, [extrapolateRunning, queryClient, toast]);
+
+  const startDeepLogic64 = useCallback(async (leadIds: string[]) => {
+    if (deeplogicRunning || !leadIds.length) return;
+    setDeeplogicRunning(true);
+    setDeeplogicLog([]);
+    setDeeplogicProgress({ current: 0, total: leadIds.length });
+    try {
+      const res = await fetch("/api/light/deeplogic64", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ leadIds }),
+      });
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No stream");
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === "phase") setDeeplogicLog(p => [...p, evt.message]);
+            else if (evt.type === "progress") {
+              setDeeplogicProgress({ current: evt.index + 1, total: evt.total });
+              setDeeplogicLog(p => [...p, `${evt.phase === "xray" ? "X-Ray" : "Analyzing"}: ${evt.current}`]);
+            } else if (evt.type === "xray") {
+              setDeeplogicLog(p => [...p, `${evt.company}: Health ${evt.healthScore}/100, ${formatCurrency(evt.unclaimed)} unclaimed`]);
+            } else if (evt.type === "retro") {
+              setDeeplogicLog(p => [...p, `${evt.company}: ${evt.opportunities} retroactive opportunities (${formatCurrency(evt.totalValue)})`]);
+            } else if (evt.type === "error") {
+              setDeeplogicLog(p => [...p, `Error: ${evt.company} — ${evt.error}`]);
+            } else if (evt.type === "complete") {
+              setDeeplogicLog(p => [...p, `DeepLogic64 complete: ${evt.total} companies, ${evt.xrayed} X-Rayed, ${evt.gaps} gaps found, ${evt.retroactive} retroactive`]);
+              toast({ title: "DeepLogic64 Complete", description: `${evt.total} companies fully analyzed` });
+              queryClient.invalidateQueries({ queryKey: ["/api/light/delta"] });
+            }
+          } catch {}
+        }
+      }
+    } catch (err: any) {
+      toast({ title: "DeepLogic64 failed", description: err.message, variant: "destructive" });
+    }
+    setDeeplogicRunning(false);
+  }, [deeplogicRunning, queryClient, toast]);
+
+  const allocateToPortfolio = useCallback(async (leadIds: string[]) => {
+    if (!leadIds.length) return;
+    try {
+      const res = await apiRequest("POST", "/api/portfolio/allocate", { leadIds });
+      const data = await res.json();
+      toast({ title: "Allocated to Portfolio", description: `${data.allocated} companies added` });
+      setSelectedStage3(new Set());
+    } catch (err: any) {
+      toast({ title: "Allocation failed", description: err.message, variant: "destructive" });
+    }
+  }, [toast]);
 
   const startReXray = useCallback(async (force?: boolean) => {
     if (xrayRunning) return;
@@ -897,6 +1018,18 @@ export default function LightEngine() {
     return list;
   }, [deltaQuery.data, sortBy, searchTerm, selectedCategory, selectedSubIndustry, minCredit, minRdScore, hideDead, intelFilter]);
 
+  const stage1Leads = useMemo(() => leads.filter(l => !l.pipelineStage || l.pipelineStage === "discovered"), [leads]);
+  const stage2Leads = useMemo(() => leads.filter(l => l.pipelineStage === "extrapolated"), [leads]);
+  const stage3Leads = useMemo(() => leads.filter(l => l.pipelineStage === "enriched" || (l as any).deepAnalysisComplete === true), [leads]);
+  const recentLeads = useMemo(() => {
+    if (!deltaQuery.data?.leads) return [];
+    return [...deltaQuery.data.leads].sort((a, b) => {
+      const aDate = (a as any).updatedAt || "";
+      const bDate = (b as any).updatedAt || "";
+      return bDate.localeCompare(aDate);
+    }).slice(0, 20);
+  }, [deltaQuery.data]);
+
   const openCompose = useCallback((lead: LeadDelta, form: DiscoveredForm) => {
     setComposeForm({ lead, form });
     const prefill: Record<string, string> = {};
@@ -1017,7 +1150,7 @@ export default function LightEngine() {
             </div>
             <div>
               <h1 className="text-lg font-semibold text-amber-100/90" data-testid="text-light-engine-title">Light Engine</h1>
-              <p className="text-xs text-amber-400/30">{hasLeads ? "Lead forms, ad networks, and credit health across all leads" : "Tax credit intelligence — start by discovering leads"}</p>
+              <p className="text-xs text-amber-400/30">{hasLeads ? "3-Stage Pipeline — Discovery, Extrapolation, Enrichment" : "Tax credit intelligence — start by discovering leads"}</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -2192,8 +2325,179 @@ export default function LightEngine() {
         </div>
       )}
 
+      {hasLeads && (
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center border border-amber-500/10 rounded-md overflow-hidden">
+            <button onClick={() => setPipelineView("stages")} data-testid="button-view-stages"
+              className={`px-3 py-1.5 text-xs transition-colors ${pipelineView === "stages" ? "bg-amber-500/15 text-amber-200" : "text-amber-400/30"}`}>
+              <Layers className="w-3 h-3 inline mr-1" />Pipeline
+            </button>
+            <button onClick={() => setPipelineView("all")} data-testid="button-view-all"
+              className={`px-3 py-1.5 text-xs transition-colors ${pipelineView === "all" ? "bg-amber-500/15 text-amber-200" : "text-amber-400/30"}`}>
+              All ({leads.length})
+            </button>
+          </div>
+          <div className="flex items-center gap-3 ml-auto text-[11px]">
+            <span className="text-amber-300/40 flex items-center gap-1"><Flower2 className="w-3 h-3" /> {stage1Leads.length} discovered</span>
+            <ArrowRight className="w-3 h-3 text-amber-400/15" />
+            <span className="text-cyan-300/40 flex items-center gap-1"><GitBranch className="w-3 h-3" /> {stage2Leads.length} extrapolated</span>
+            <ArrowRight className="w-3 h-3 text-amber-400/15" />
+            <span className="text-emerald-300/40 flex items-center gap-1"><Brain className="w-3 h-3" /> {stage3Leads.length} enriched</span>
+          </div>
+        </div>
+      )}
+
+      {hasLeads && pipelineView === "stages" && (
+        <div className="space-y-6">
+          {stage1Leads.length > 0 && (
+            <div className="space-y-3" data-testid="section-stage-1">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-400/15 bg-amber-950/5 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-full bg-amber-400/15 border border-amber-400/20 flex items-center justify-center">
+                    <span className="text-xs font-bold text-amber-300/70">I</span>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-amber-200/70">Discovery</h3>
+                    <p className="text-[11px] text-amber-400/30">{stage1Leads.length} companies discovered — ready for mid-level enrichment</p>
+                  </div>
+                </div>
+                <Button onClick={() => startExtrapolate(stage1Leads.map(l => l.leadId))} disabled={extrapolateRunning} data-testid="button-extrapolate"
+                  className="h-9 px-5 text-xs font-medium border border-amber-400/20 bg-amber-500/15 text-amber-100/80">
+                  {extrapolateRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <GitBranch className="w-3.5 h-3.5 mr-1.5" />}
+                  {extrapolateRunning ? "Extrapolating..." : "Extrapolate All"}
+                </Button>
+              </div>
+              {(extrapolateRunning || extrapolateLog.length > 0) && (
+                <div className="rounded-lg border border-amber-500/10 bg-amber-950/3 p-3 space-y-2">
+                  {extrapolateProgress.total > 0 && (
+                    <div className="w-full h-1 bg-amber-950/10 rounded-full overflow-hidden">
+                      <div className="h-full bg-amber-400/30 rounded-full transition-all" style={{ width: `${Math.round((extrapolateProgress.current / extrapolateProgress.total) * 100)}%` }} />
+                    </div>
+                  )}
+                  <div className="max-h-24 overflow-y-auto space-y-0.5">
+                    {extrapolateLog.map((line, i) => (
+                      <p key={i} className="text-[11px] text-amber-400/30 font-mono">{line}</p>
+                    ))}
+                  </div>
+                  {!extrapolateRunning && <button onClick={() => setExtrapolateLog([])} className="text-[10px] text-amber-400/20 hover:text-amber-400/40" data-testid="button-clear-extrapolate-log">Clear</button>}
+                </div>
+              )}
+              <div className="space-y-1.5">
+                {stage1Leads.slice(0, 20).map(lead => (
+                  <div key={lead.leadId} className="flex items-center gap-3 px-3 py-2 rounded border border-amber-500/6 bg-card/30 text-xs" data-testid={`stage1-lead-${lead.leadId}`}>
+                    <Building2 className="w-3 h-3 text-amber-300/40 shrink-0" />
+                    <span className="text-amber-200/70 font-medium truncate flex-1">{lead.company}</span>
+                    <span className="text-amber-400/25 truncate w-28">{lead.domain}</span>
+                    <span className="text-amber-400/20 w-20 truncate">{lead.sicDescription?.slice(0, 20)}</span>
+                    <span className="text-amber-400/20 w-8">{lead.state}</span>
+                  </div>
+                ))}
+                {stage1Leads.length > 20 && <p className="text-[11px] text-amber-400/20 text-center">...and {stage1Leads.length - 20} more</p>}
+              </div>
+            </div>
+          )}
+
+          {stage1Leads.length > 0 && stage2Leads.length > 0 && (
+            <div className="flex justify-center"><ArrowDown className="w-5 h-5 text-amber-400/15" /></div>
+          )}
+
+          {stage2Leads.length > 0 && (
+            <div className="space-y-3" data-testid="section-stage-2">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-cyan-400/15 bg-cyan-950/5 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-full bg-cyan-400/15 border border-cyan-400/20 flex items-center justify-center">
+                    <span className="text-xs font-bold text-cyan-300/70">II</span>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-cyan-200/70">Extrapolated</h3>
+                    <p className="text-[11px] text-cyan-400/30">{stage2Leads.length} companies enriched — select for DeepLogic64 analysis</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setSelectedStage2(prev => prev.size === stage2Leads.length ? new Set() : new Set(stage2Leads.map(l => l.leadId)))}
+                    className="text-[10px] text-cyan-400/30 hover:text-cyan-400/50 transition-colors" data-testid="button-select-all-stage2">
+                    {selectedStage2.size === stage2Leads.length ? "Deselect all" : "Select all"}
+                  </button>
+                  <Button onClick={() => startDeepLogic64(selectedStage2.size > 0 ? Array.from(selectedStage2) : stage2Leads.map(l => l.leadId))}
+                    disabled={deeplogicRunning} data-testid="button-deeplogic64"
+                    className="h-9 px-5 text-xs font-medium border border-cyan-400/20 bg-cyan-500/15 text-cyan-100/80">
+                    {deeplogicRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Brain className="w-3.5 h-3.5 mr-1.5" />}
+                    {deeplogicRunning ? "Analyzing..." : `DeepLogic64${selectedStage2.size > 0 ? ` (${selectedStage2.size})` : ""}`}
+                  </Button>
+                </div>
+              </div>
+              {(deeplogicRunning || deeplogicLog.length > 0) && (
+                <div className="rounded-lg border border-cyan-500/10 bg-cyan-950/3 p-3 space-y-2">
+                  {deeplogicProgress.total > 0 && (
+                    <div className="w-full h-1 bg-cyan-950/10 rounded-full overflow-hidden">
+                      <div className="h-full bg-cyan-400/30 rounded-full transition-all" style={{ width: `${Math.round((deeplogicProgress.current / deeplogicProgress.total) * 100)}%` }} />
+                    </div>
+                  )}
+                  <div className="max-h-24 overflow-y-auto space-y-0.5">
+                    {deeplogicLog.map((line, i) => (
+                      <p key={i} className="text-[11px] text-cyan-400/30 font-mono">{line}</p>
+                    ))}
+                  </div>
+                  {!deeplogicRunning && <button onClick={() => setDeeplogicLog([])} className="text-[10px] text-cyan-400/20 hover:text-cyan-400/40" data-testid="button-clear-deeplogic-log">Clear</button>}
+                </div>
+              )}
+              <div className="space-y-1.5">
+                {stage2Leads.map(lead => (
+                  <div key={lead.leadId} className="flex items-center gap-3 px-3 py-2 rounded border border-cyan-500/8 bg-card/30 text-xs cursor-pointer hover:border-cyan-400/20 transition-colors"
+                    onClick={() => setExpandedId(expandedId === lead.leadId ? null : lead.leadId)} data-testid={`stage2-lead-${lead.leadId}`}>
+                    <input type="checkbox" checked={selectedStage2.has(lead.leadId)}
+                      onChange={e => { e.stopPropagation(); setSelectedStage2(prev => { const n = new Set(prev); if (n.has(lead.leadId)) n.delete(lead.leadId); else n.add(lead.leadId); return n; }); }}
+                      onClick={e => e.stopPropagation()}
+                      className="rounded border-cyan-500/20" data-testid={`checkbox-lead-${lead.leadId}`} />
+                    <Building2 className="w-3 h-3 text-cyan-300/40 shrink-0" />
+                    <span className="text-cyan-200/70 font-medium truncate flex-1">{lead.company}</span>
+                    <span className="text-cyan-400/25 truncate w-24">{lead.domain}</span>
+                    {lead.formCount > 0 && <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-amber-500/15 text-amber-300/50">{lead.formCount}f</Badge>}
+                    {lead.adNetworkCount > 0 && <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-emerald-500/15 text-emerald-300/50">{lead.adNetworkCount} ads</Badge>}
+                    {lead.applicableCredits.length > 0 && <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-amber-500/15 text-amber-400/50">{lead.applicableCredits.length}cr</Badge>}
+                    <ChevronRight className={`w-3 h-3 text-cyan-400/20 transition-transform ${expandedId === lead.leadId ? "rotate-90" : ""}`} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {stage2Leads.length > 0 && stage3Leads.length > 0 && (
+            <div className="flex justify-center"><ArrowDown className="w-5 h-5 text-cyan-400/15" /></div>
+          )}
+
+          {stage3Leads.length > 0 && (
+            <div className="space-y-3" data-testid="section-stage-3">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-400/15 bg-emerald-950/5 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-full bg-emerald-400/15 border border-emerald-400/20 flex items-center justify-center">
+                    <span className="text-xs font-bold text-emerald-300/70">III</span>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-emerald-200/70">Fully Enriched</h3>
+                    <p className="text-[11px] text-emerald-400/30">{stage3Leads.length} companies fully analyzed — select to allocate to Portfolio</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setSelectedStage3(prev => prev.size === stage3Leads.length ? new Set() : new Set(stage3Leads.map(l => l.leadId)))}
+                    className="text-[10px] text-emerald-400/30 hover:text-emerald-400/50 transition-colors" data-testid="button-select-all-stage3">
+                    {selectedStage3.size === stage3Leads.length ? "Deselect all" : "Select all"}
+                  </button>
+                  <Button onClick={() => allocateToPortfolio(selectedStage3.size > 0 ? Array.from(selectedStage3) : stage3Leads.map(l => l.leadId))}
+                    data-testid="button-allocate-portfolio"
+                    className="h-9 px-5 text-xs font-medium border border-emerald-400/20 bg-emerald-500/15 text-emerald-100/80">
+                    <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
+                    Allocate to Portfolio{selectedStage3.size > 0 ? ` (${selectedStage3.size})` : ""}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="space-y-3">
-        {leads.map(lead => {
+        {(pipelineView === "all" ? leads : stage3Leads.length > 0 ? stage3Leads : stage2Leads.length > 0 ? stage2Leads : leads).map(lead => {
           const expanded = expandedId === lead.leadId;
           const phase = getLightPhase(lead.outreachHistory);
           const hasForms = lead.formCount > 0;
@@ -2707,6 +3011,29 @@ export default function LightEngine() {
           );
         })}
       </div>
+
+      {hasLeads && recentLeads.length > 0 && (
+        <div className="rounded-lg border border-zinc-500/8 bg-zinc-950/3 p-4 space-y-3 mt-6" data-testid="section-recent-results">
+          <div className="flex items-center gap-2">
+            <Target className="w-3.5 h-3.5 text-zinc-400/40" />
+            <span className="text-xs font-medium text-zinc-300/50">Recent Results</span>
+            <span className="text-[10px] text-zinc-500/30">Last {recentLeads.length} companies processed</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
+            {recentLeads.slice(0, 20).map(lead => (
+              <div key={lead.leadId} className="flex items-center gap-2 px-2 py-1.5 rounded border border-zinc-500/6 text-[11px]">
+                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  lead.pipelineStage === "enriched" ? "bg-emerald-400/60" :
+                  lead.pipelineStage === "extrapolated" ? "bg-cyan-400/60" :
+                  "bg-amber-400/40"
+                }`} />
+                <span className="text-zinc-300/50 truncate">{lead.company}</span>
+                {lead.creditHealthScore > 0 && <span className="text-zinc-500/30 tabular-nums ml-auto">{lead.creditHealthScore}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <Dialog open={!!composeForm} onOpenChange={open => { if (!open) setComposeForm(null); }}>
         <DialogContent className="max-w-md border-amber-500/10 bg-card">

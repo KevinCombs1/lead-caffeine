@@ -847,6 +847,24 @@ export const insertFiscalLeadSchema = createInsertSchema(fiscalLeads).omit({ id:
 export type FiscalLead = typeof fiscalLeads.$inferSelect;
 export type InsertFiscalLead = z.infer<typeof insertFiscalLeadSchema>;
 
+export const portfolioAllocations = pgTable("portfolio_allocations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  company: varchar("company").notNull(),
+  domain: varchar("domain"),
+  groupTag: varchar("group_tag"),
+  notes: text("notes"),
+  allocatedAt: timestamp("allocated_at").defaultNow(),
+}, (table) => [
+  index("pa_lead_idx").on(table.leadId),
+  index("pa_company_idx").on(table.company),
+  index("pa_group_idx").on(table.groupTag),
+]);
+
+export const insertPortfolioAllocationSchema = createInsertSchema(portfolioAllocations).omit({ id: true, allocatedAt: true });
+export type PortfolioAllocation = typeof portfolioAllocations.$inferSelect;
+export type InsertPortfolioAllocation = z.infer<typeof insertPortfolioAllocationSchema>;
+
 export const DEAL_CURRENTS = {
   TRANSACTIONS: "transactions",
   TRENDS: "trends",

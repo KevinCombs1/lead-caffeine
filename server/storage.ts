@@ -10,6 +10,7 @@ import {
   discoveryGraphs, type DiscoveryGraph, type InsertDiscoveryGraph,
   fiscalIntel, type FiscalIntel, type InsertFiscalIntel,
   fiscalLeads, type FiscalLead, type InsertFiscalLead,
+  portfolioAllocations, type PortfolioAllocation, type InsertPortfolioAllocation,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -64,6 +65,13 @@ export interface IStorage {
   getFiscalLeadsCount(filters?: { opportunityLevel?: string; pipelineStage?: string }): Promise<number>;
   updateFiscalLead(id: string, updates: Partial<FiscalLead>): Promise<FiscalLead | undefined>;
   deleteFiscalLead(id: string): Promise<void>;
+
+  allocateToPortfolio(allocation: InsertPortfolioAllocation): Promise<PortfolioAllocation>;
+  allocateToPortfolioBatch(allocations: InsertPortfolioAllocation[]): Promise<void>;
+  getPortfolioAllocations(): Promise<PortfolioAllocation[]>;
+  getPortfolioAllocation(leadId: string): Promise<PortfolioAllocation | undefined>;
+  removeFromPortfolio(leadId: string): Promise<void>;
+  clearPortfolio(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -358,6 +366,33 @@ export class DatabaseStorage implements IStorage {
 
   async deleteFiscalLead(id: string): Promise<void> {
     await db.delete(fiscalLeads).where(eq(fiscalLeads.id, id));
+  }
+
+  async allocateToPortfolio(allocation: InsertPortfolioAllocation): Promise<PortfolioAllocation> {
+    const [created] = await db.insert(portfolioAllocations).values(allocation).returning();
+    return created;
+  }
+
+  async allocateToPortfolioBatch(allocations: InsertPortfolioAllocation[]): Promise<void> {
+    if (allocations.length === 0) return;
+    await db.insert(portfolioAllocations).values(allocations);
+  }
+
+  async getPortfolioAllocations(): Promise<PortfolioAllocation[]> {
+    return db.select().from(portfolioAllocations).orderBy(desc(portfolioAllocations.allocatedAt));
+  }
+
+  async getPortfolioAllocation(leadId: string): Promise<PortfolioAllocation | undefined> {
+    const [alloc] = await db.select().from(portfolioAllocations).where(eq(portfolioAllocations.leadId, leadId));
+    return alloc;
+  }
+
+  async removeFromPortfolio(leadId: string): Promise<void> {
+    await db.delete(portfolioAllocations).where(eq(portfolioAllocations.leadId, leadId));
+  }
+
+  async clearPortfolio(): Promise<void> {
+    await db.delete(portfolioAllocations);
   }
 }
 

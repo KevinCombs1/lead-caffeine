@@ -1764,6 +1764,275 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/light/extrapolate", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { leadIds } = req.body as { leadIds: string[] };
+      if (!leadIds?.length) return res.status(400).json({ error: "No lead IDs provided" });
+
+      res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+      const send = (d: any) => res.write(`data: ${JSON.stringify(d)}\n\n`);
+
+      send({ type: "phase", message: `Extrapolating ${leadIds.length} companies...` });
+
+      const leads = await Promise.all(leadIds.map(id => storage.getFiscalLead(id)));
+      const validLeads = leads.filter(Boolean) as any[];
+      let formTotal = 0, adTotal = 0, secTotal = 0;
+
+      for (let i = 0; i < validLeads.length; i++) {
+        const lead = validLeads[i];
+        send({ type: "progress", current: lead.company, index: i, total: validLeads.length });
+
+        if (lead.domain && !isInfrastructureDomain(lead.domain)) {
+          try {
+            const url = `https://${lead.domain}`;
+            const html = await smartGet(url, { timeout: 8000, stealth: true });
+            if (html) {
+              const $ = cheerio.load(html);
+              const forms: any[] = [];
+              $("form").each((_: any, el: any) => {
+                const action = $(el).attr("action") || "";
+                const method = ($(el).attr("method") || "POST").toUpperCase();
+                const fields: any[] = [];
+                const hiddenFields: any[] = [];
+                $(el).find("input, textarea, select").each((_: any, inp: any) => {
+                  const f = { tag: inp.tagName, name: $(inp).attr("name") || "", type: $(inp).attr("type") || "text", placeholder: $(inp).attr("placeholder") || "", required: $(inp).attr("required") !== undefined };
+                  if (f.type === "hidden") hiddenFields.push(f);
+                  else fields.push(f);
+                });
+                if (fields.length > 0) {
+                  let classification = "other";
+                  const text = (action + " " + fields.map(f => f.name + " " + f.placeholder).join(" ")).toLowerCase();
+                  if (text.includes("contact") || text.includes("inquiry")) classification = "contact";
+                  else if (text.includes("demo") || text.includes("trial")) classification = "demo";
+                  else if (text.includes("newsletter") || text.includes("subscribe")) classification = "newsletter";
+                  else if (text.includes("investor") || text.includes("ir")) classification = "investor";
+                  forms.push({ action, method, fields, hiddenFields, fieldCount: fields.length, hiddenFieldCount: hiddenFields.length, classification, source: url });
+                }
+              });
+
+              const adNetworks: string[] = [];
+              const trackingPixels: any[] = [];
+              const htmlStr = html.toString();
+              if (htmlStr.includes("googleads") || htmlStr.includes("google_ad") || htmlStr.includes("adsbygoogle")) adNetworks.push("Google Ads");
+              if (htmlStr.includes("fbevents") || htmlStr.includes("facebook.com/tr")) { adNetworks.push("Facebook"); trackingPixels.push({ platform: "Facebook", id: "pixel" }); }
+              if (htmlStr.includes("linkedin.com/px") || htmlStr.includes("snap.licdn")) adNetworks.push("LinkedIn");
+              if (htmlStr.includes("analytics.twitter") || htmlStr.includes("static.ads-twitter")) adNetworks.push("Twitter/X");
+              if (htmlStr.includes("google-analytics") || htmlStr.includes("gtag") || htmlStr.includes("UA-")) trackingPixels.push({ platform: "Google Analytics", id: "ga" });
+
+              if (forms.length > 0 || adNetworks.length > 0) {
+                const enrichment = (lead.enrichmentData as any) || {};
+                enrichment.discoveredForms = forms;
+                enrichment.adIntel = { adNetworks, trackingPixels, adsExchanges: [], adActivity: adNetworks.length > 0 ? "active" : "none" };
+                await storage.updateFiscalLead(lead.id, { enrichmentData: enrichment, pipelineStage: "extrapolated" });
+                formTotal += forms.length;
+                adTotal += adNetworks.length;
+                send({ type: "enriched", company: lead.company, forms: forms.length, ads: adNetworks.length });
+              } else {
+                await storage.updateFiscalLead(lead.id, { pipelineStage: "extrapolated" });
+              }
+            }
+          } catch (err: any) {
+            send({ type: "error", company: lead.company, error: err.message?.slice(0, 100) });
+          }
+        } else {
+          await storage.updateFiscalLead(lead.id, { pipelineStage: "extrapolated" });
+        }
+
+        try {
+          const credits = matchLeadCredits(lead);
+          if (credits.length > 0) {
+            const enrichment = (lead.enrichmentData as any) || {};
+            enrichment.applicableCredits = credits;
+            await storage.updateFiscalLead(lead.id, { enrichmentData: enrichment });
+            secTotal += credits.length;
+          }
+        } catch {}
+      }
+
+      send({ type: "complete", total: validLeads.length, forms: formTotal, ads: adTotal, credits: secTotal });
+      res.end();
+    } catch (err: any) {
+      if (!res.headersSent) res.status(500).json({ error: err.message });
+      else res.end();
+    }
+  });
+
+  app.post("/api/light/deeplogic64", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { leadIds } = req.body as { leadIds: string[] };
+      if (!leadIds?.length) return res.status(400).json({ error: "No lead IDs provided" });
+
+      res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+      const send = (d: any) => res.write(`data: ${JSON.stringify(d)}\n\n`);
+
+      send({ type: "phase", message: `DeepLogic64: Processing ${leadIds.length} companies through full analysis...` });
+
+      const leads = await Promise.all(leadIds.map(id => storage.getFiscalLead(id)));
+      const validLeads = leads.filter(Boolean) as any[];
+      let xrayCount = 0, gapCount = 0, retroCount = 0;
+
+      for (let i = 0; i < validLeads.length; i++) {
+        const lead = validLeads[i];
+        send({ type: "progress", current: lead.company, index: i, total: validLeads.length, phase: "xray" });
+
+        try {
+          const enrichment = (lead.enrichmentData as any) || {};
+          const cik = enrichment.cik || lead.ticker;
+
+          if (cik) {
+            try {
+              const details = await getCompanyDetails(cik, lead.sic);
+              if (details?.creditXRay) {
+                enrichment.creditXRay = details.creditXRay;
+                const position = analyzeCompanyCreditPosition(enrichment);
+                enrichment.creditPosition = position;
+                xrayCount++;
+                send({ type: "xray", company: lead.company, healthScore: position.creditHealthScore, unclaimed: position.estimatedUnclaimedValue });
+              }
+            } catch {}
+          }
+
+          const allCredits = matchLeadCredits({ ...lead, enrichmentData: enrichment });
+          enrichment.applicableCredits = allCredits;
+
+          const creditAnalysis = allCredits.map((c: any) => {
+            const xray = enrichment.creditXRay || {};
+            const position = enrichment.creditPosition || {};
+            const status = position.creditHealthScore > 60 ? "partial" : "likely_unclaimed";
+            return {
+              creditId: c.id, creditName: c.name, section: c.section,
+              status, evidence: `Matched via financial fingerprint`, claimedAmount: null,
+              potentialAmount: parseInt(c.maxValue?.replace(/[^0-9]/g, "") || "0") || null,
+              confidence: xray.revenue ? "xbrl_verified" : "inferred",
+            };
+          });
+          enrichment.creditAnalysis = creditAnalysis;
+          gapCount += creditAnalysis.filter((c: any) => c.status === "likely_unclaimed").length;
+
+          const retroOpportunities: any[] = [];
+          for (const credit of creditAnalysis) {
+            if (credit.status === "likely_unclaimed" && credit.potentialAmount) {
+              retroOpportunities.push({
+                creditId: credit.creditId, creditName: credit.creditName, section: credit.section,
+                lookbackYears: 3, estimatedPerYear: Math.round(credit.potentialAmount * 0.7),
+                totalRetroactive: Math.round(credit.potentialAmount * 0.7 * 3),
+                amendableReturns: ["2023", "2024", "2025"],
+                confidence: credit.confidence,
+              });
+            }
+          }
+          if (retroOpportunities.length > 0) {
+            enrichment.retroactiveRecovery = retroOpportunities;
+            retroCount += retroOpportunities.length;
+            send({ type: "retro", company: lead.company, opportunities: retroOpportunities.length, totalValue: retroOpportunities.reduce((s: number, r: any) => s + r.totalRetroactive, 0) });
+          }
+
+          await storage.updateFiscalLead(lead.id, {
+            enrichmentData: enrichment,
+            pipelineStage: "enriched",
+            deepAnalysisComplete: true,
+            deepAnalysisAt: new Date(),
+          });
+        } catch (err: any) {
+          send({ type: "error", company: lead.company, error: err.message?.slice(0, 100) });
+          await storage.updateFiscalLead(lead.id, { pipelineStage: "enriched" });
+        }
+      }
+
+      send({ type: "complete", total: validLeads.length, xrayed: xrayCount, gaps: gapCount, retroactive: retroCount });
+      res.end();
+    } catch (err: any) {
+      if (!res.headersSent) res.status(500).json({ error: err.message });
+      else res.end();
+    }
+  });
+
+  app.post("/api/portfolio/allocate", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { leadIds } = req.body as { leadIds: string[] };
+      if (!leadIds?.length) return res.status(400).json({ error: "No lead IDs provided" });
+
+      const results = [];
+      for (const leadId of leadIds) {
+        const existing = await storage.getPortfolioAllocation(leadId);
+        if (existing) continue;
+        const lead = await storage.getFiscalLead(leadId);
+        if (!lead) continue;
+        const alloc = await storage.allocateToPortfolio({ leadId, company: lead.company, domain: lead.domain || undefined });
+        results.push(alloc);
+      }
+      res.json({ allocated: results.length, total: leadIds.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/portfolio", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const allocations = await storage.getPortfolioAllocations();
+      const leadIds = allocations.map(a => a.leadId);
+      const leads = await Promise.all(leadIds.map(id => storage.getFiscalLead(id)));
+      const validLeads = leads.filter(Boolean) as any[];
+
+      const portfolioLeads = allocations.map(alloc => {
+        const lead = validLeads.find(l => l.id === alloc.leadId);
+        return { ...alloc, lead };
+      }).filter(p => p.lead);
+
+      const byIndustry: Record<string, any[]> = {};
+      const byState: Record<string, any[]> = {};
+      const byHealth: Record<string, any[]> = {};
+
+      for (const p of portfolioLeads) {
+        const lead = p.lead;
+        const enrichment = (lead.enrichmentData as any) || {};
+        const position = enrichment.creditPosition || {};
+        const industry = lead.sicDescription || "Unknown";
+        const state = lead.state || "Unknown";
+        const healthScore = position.creditHealthScore || 0;
+        const healthTier = healthScore <= 20 ? "Desert" : healthScore <= 40 ? "Underexplored" : healthScore <= 60 ? "Partial" : healthScore <= 80 ? "Well-Managed" : "Optimized";
+
+        if (!byIndustry[industry]) byIndustry[industry] = [];
+        byIndustry[industry].push(p);
+        if (!byState[state]) byState[state] = [];
+        byState[state].push(p);
+        if (!byHealth[healthTier]) byHealth[healthTier] = [];
+        byHealth[healthTier].push(p);
+      }
+
+      let totalUnclaimed = 0, totalHealth = 0, healthCount = 0;
+      for (const p of portfolioLeads) {
+        const enrichment = (p.lead.enrichmentData as any) || {};
+        const position = enrichment.creditPosition || {};
+        totalUnclaimed += position.estimatedUnclaimedValue || 0;
+        if (position.creditHealthScore) { totalHealth += position.creditHealthScore; healthCount++; }
+      }
+
+      res.json({
+        allocations: portfolioLeads,
+        groups: { byIndustry, byState, byHealth },
+        intelligence: {
+          totalCompanies: portfolioLeads.length,
+          totalUnclaimedValue: totalUnclaimed,
+          avgCreditHealth: healthCount > 0 ? Math.round(totalHealth / healthCount) : 0,
+          industryCount: Object.keys(byIndustry).length,
+          stateCount: Object.keys(byState).length,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/portfolio/:leadId", requireAuth, async (req: Request, res: Response) => {
+    try {
+      await storage.removeFromPortfolio(req.params.leadId);
+      res.json({ removed: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/download-archive", (req, res) => {
     const archivePath = path.resolve("data-cloudware-archive.tar.gz");
     if (!existsSync(archivePath)) {

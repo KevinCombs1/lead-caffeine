@@ -4,7 +4,7 @@ import {
   X, GripHorizontal, Flower2, Send, ArrowRight,
   Sun, Zap, Rocket, PauseCircle, Copy, Pencil,
   ShieldCheck, User, Mail, Phone, Building2, Briefcase,
-  TreePine, Landmark, Search, Leaf,
+  TreePine, Landmark, Search, Leaf, GitBranch, Brain, FolderOpen, Layers,
 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
@@ -57,14 +57,18 @@ export function HowToGuide({ onClose }: HowToGuideProps) {
 
         <div className="px-4 py-3 border-b border-amber-500/8 shrink-0">
           <p className="text-[11px] text-amber-300/40 leading-relaxed">
-            The Light Engine has two jobs: find companies, then reach out to them.
+            The Light Engine is a 3-stage pipeline: discover companies, extrapolate their data, then deep-analyze for full credit intelligence.
           </p>
-          <div className="flex items-center gap-2 mt-2 text-[10px] font-medium">
-            <span className="px-2 py-0.5 rounded-full bg-cyan-400/10 text-cyan-300/60 border border-cyan-400/10">Discovery</span>
+          <div className="flex items-center gap-2 mt-2 text-[10px] font-medium flex-wrap">
+            <span className="px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-300/60 border border-amber-400/10">I: Discovery</span>
             <ArrowRight className="w-3 h-3 text-amber-400/20" />
-            <span className="px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-300/60 border border-amber-400/10">Bloom</span>
+            <span className="px-2 py-0.5 rounded-full bg-cyan-400/10 text-cyan-300/60 border border-cyan-400/10">II: Extrapolate</span>
+            <ArrowRight className="w-3 h-3 text-amber-400/20" />
+            <span className="px-2 py-0.5 rounded-full bg-emerald-400/10 text-emerald-300/60 border border-emerald-400/10">III: DeepLogic64</span>
+            <ArrowRight className="w-3 h-3 text-amber-400/20" />
+            <span className="px-2 py-0.5 rounded-full bg-violet-400/10 text-violet-300/60 border border-violet-400/10">Portfolio</span>
           </div>
-          <p className="text-[10px] text-amber-400/20 mt-1.5">All scanning, X-Ray, credit analysis, gap matrix, and intelligence enrichment are Phase 2: Credit Scanner.</p>
+          <p className="text-[10px] text-amber-400/20 mt-1.5">Enriched companies can be allocated to the Portfolio Dashboard for organized tracking.</p>
         </div>
 
         <div className="overflow-y-auto flex-1 px-4 py-1 scrollbar-thin">
@@ -141,7 +145,65 @@ export function HowToGuide({ onClose }: HowToGuideProps) {
             </AccordionItem>
 
             <div className="pt-4 pb-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/40">Part 2 — Bloom Engine</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-400/40">Part 2 — Pipeline Stages</p>
+            </div>
+
+            <AccordionItem value="pipeline-extrapolate" className="border-amber-500/8">
+              <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
+                <span className="flex items-center gap-2">
+                  <GitBranch className="w-3.5 h-3.5 text-cyan-400/50" /> Stage II: Extrapolate
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
+                <p>After discovering companies in Stage I, hit <Btn icon={<GitBranch className="w-2.5 h-2.5" />} label="Extrapolate All" /> to run mid-level enrichment on all discovered leads.</p>
+                <div className="space-y-1.5">
+                  <p className="text-amber-200/50 font-medium">What it does:</p>
+                  <p><strong className="text-amber-200/50">Form Discovery</strong> — Crawls company websites to find contact forms (contact, demo, investor, newsletter).</p>
+                  <p><strong className="text-amber-200/50">Ad Intelligence</strong> — Detects ad networks (Google, Facebook, LinkedIn, Twitter/X) and tracking pixels.</p>
+                  <p><strong className="text-amber-200/50">Basic Credit Matching</strong> — Runs initial credit eligibility against the company's industry and financials.</p>
+                </div>
+                <p>Results stream in real-time. Extrapolated companies move to Stage II cards with form counts, ad networks, and credit badges.</p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="pipeline-deeplogic" className="border-amber-500/8">
+              <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
+                <span className="flex items-center gap-2">
+                  <Brain className="w-3.5 h-3.5 text-emerald-400/50" /> Stage III: DeepLogic64
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
+                <p>Select companies in Stage II (or use Select All) and hit <Btn icon={<Brain className="w-2.5 h-2.5" />} label="DeepLogic64" /> for full intelligence analysis.</p>
+                <div className="space-y-1.5">
+                  <p className="text-amber-200/50 font-medium">What it does:</p>
+                  <p><strong className="text-amber-200/50">Credit X-Ray</strong> — Full XBRL analysis with 76 financial concepts.</p>
+                  <p><strong className="text-amber-200/50">Credit Gap Matrix</strong> — Scans all 38 tax credits for eligibility and unclaimed opportunities.</p>
+                  <p><strong className="text-amber-200/50">Retroactive Recovery</strong> — Checks 3-year lookback for amendable prior-year credits.</p>
+                  <p><strong className="text-amber-200/50">Credit Health Score</strong> — Assigns a 0-100 score based on credit utilization depth.</p>
+                </div>
+                <p>Fully enriched companies appear in Stage III with expandable credit analysis, health gauges, and detailed tax position summaries.</p>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="pipeline-portfolio" className="border-amber-500/8">
+              <AccordionTrigger className="py-3 text-xs font-medium text-amber-200/60 hover:no-underline hover:text-amber-200/80">
+                <span className="flex items-center gap-2">
+                  <FolderOpen className="w-3.5 h-3.5 text-violet-400/50" /> Portfolio Allocation
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="text-[11px] text-amber-300/40 leading-relaxed space-y-2.5">
+                <p>Select fully enriched companies in Stage III and hit <Btn icon={<FolderOpen className="w-2.5 h-2.5" />} label="Allocate to Portfolio" /> to move them to the Portfolio Dashboard.</p>
+                <div className="space-y-1.5">
+                  <p className="text-amber-200/50 font-medium">Portfolio Dashboard features:</p>
+                  <p><strong className="text-amber-200/50">Grouping</strong> — Companies organized by industry, credit health tier, or geographic region.</p>
+                  <p><strong className="text-amber-200/50">Intelligence</strong> — Aggregate metrics: total unclaimed value, average credit health, industry distribution.</p>
+                  <p><strong className="text-amber-200/50">Expandable cards</strong> — Full enrichment detail for each company including credit analysis, retroactive recovery, forms, and ad intel.</p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <div className="pt-4 pb-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/40">Part 3 — Bloom Engine</p>
             </div>
 
             <AccordionItem value="bloom-profile" className="border-amber-500/8">

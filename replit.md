@@ -1,9 +1,13 @@
-# D.A.T.A. Cloudware — Light Engine + Credit Scanner
+# D.A.T.A. Cloudware — Light Engine + Portfolio + Credit Scanner
 
 ## Overview
 D.A.T.A. Cloudware is a tax credit intelligence platform designed to discover tax credit opportunities for companies. It operates in two phases:
 
-**Phase 1 — Light Engine**: Focuses on tax credit discovery and non-intrusive outreach. It identifies companies through SEC EDGAR sweeps, matches them against 38 tax credit programs using financial data analysis (Credit X-Ray), and performs gentle outreach via website lead forms.
+**Phase 1 — Light Engine (3-Stage Pipeline + Portfolio)**:
+- **Stage I: Discovery (Bloom)** — Discovers companies through SEC EDGAR sweeps (SIC, Form D, EFTS). Results stream in real-time.
+- **Stage II: Extrapolate** — Mid-level enrichment: form discovery, ad intelligence, basic credit matching. Companies become selectable for deep analysis.
+- **Stage III: DeepLogic64** — Full intelligence: Credit X-Ray (76 XBRL), Gap Matrix (38 credits), retroactive recovery, credit health scoring. Fully enriched companies can be allocated to Portfolio.
+- **Portfolio Dashboard** — Org-chart grouped view of allocated companies by industry, credit health tier, and geography. Aggregate intelligence metrics.
 
 **Phase 2 — Credit Scanner**: This phase functions as a Tax Credit Opportunity Machine with three core layers:
 1.  **Gap Matrix**: Identifies companies that qualify for but have not claimed specific tax credits.
@@ -20,7 +24,10 @@ The agent should prioritize iterative development and ask before making major ch
 The application features a dark mode default with a cyan "command center" aesthetic, using `hsl(192, 90%, 50%)` as the primary accent. An amber/emerald/yellow palette is used for various indicators. Branding is consistent across the application. The user interface leverages 4D rendering via Three.js and react-three-fiber, creating an interactive experience. A theme switcher offers 10 color themes (6 dark + 4 light) persisted to localStorage. Dark themes: Command (cyan), Arctic (sky), Emerald (green), Crimson (rose), Nebula (violet), Solar (amber). Light themes: Daylight (blue), Blossom (rose), Meadow (green), Sunrise (orange). Light themes remove the `dark` class from `<html>` and use comprehensive CSS overrides in `index.css` via `:root:not(.dark)` selectors to invert dark-mode Tailwind colors for readability on white backgrounds. A separate **Max Contrast** toggle (`button-max-contrast`) adds the `.max-contrast` class to `<html>`, forcing all text/icons to black (#000) and all backgrounds to white (#fff) — a pure black-on-white document mode. Both theme and max-contrast state persist via localStorage.
 
 ### Technical Implementations
--   **Bloom Discovery**: Uses multi-source SEC EDGAR sweeps, XBRL gating, and 8-K event signals to identify credit opportunities. SIC-sourced candidates are pre-filtered against the SEC `company_tickers.json` active filers list (~13k public companies) before enrichment API calls, ensuring only active public filers consume API quota. FormD and EFTS candidates bypass this filter since they inherently target recent filers.
+-   **Bloom Discovery (Stage I)**: Uses multi-source SEC EDGAR sweeps, XBRL gating, and 8-K event signals to identify credit opportunities. SIC-sourced candidates are pre-filtered against the SEC `company_tickers.json` active filers list (~13k public companies) before enrichment API calls, ensuring only active public filers consume API quota. FormD and EFTS candidates bypass this filter since they inherently target recent filers.
+-   **Extrapolate (Stage II)**: Mid-level enrichment via `POST /api/light/extrapolate` — form discovery, ad intelligence, basic credit matching. SSE streaming results.
+-   **DeepLogic64 (Stage III)**: Full enrichment via `POST /api/light/deeplogic64` — Credit X-Ray, Gap Matrix, retroactive recovery, credit health scoring. SSE streaming results.
+-   **Portfolio Dashboard**: Allocated companies grouped by industry/health/geography via `portfolioAllocations` table. Routes: `POST /api/portfolio/allocate`, `GET /api/portfolio`, `DELETE /api/portfolio/:leadId`.
 -   **Credit X-Ray**: Conducts per-company financial scans, extracting over 76 XBRL tax concepts for credit analysis, health scores, and estimated unclaimed value.
 -   **Delta Map**: Integrates fiscal leads with scraped forms, advertisements, tracking data, and Credit X-Ray results for a comprehensive outreach view.
 -   **Grace Check**: A security protocol to ensure non-intrusive form submission by checking for honeypots, WAF confidence, and bot scripts.
