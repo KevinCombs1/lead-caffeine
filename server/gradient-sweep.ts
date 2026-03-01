@@ -1,6 +1,6 @@
 const USER_AGENT = "SurfingIsland/1.0 (intelligence@surfingisland.com)";
 const SEC_RATE_LIMIT_MS = 120;
-const ENRICH_DELAY_MS = 4500;
+const ENRICH_DELAY_MS = 8000;
 
 async function secFetch(url: string, accept?: string): Promise<Response> {
   await new Promise(r => setTimeout(r, SEC_RATE_LIMIT_MS));
