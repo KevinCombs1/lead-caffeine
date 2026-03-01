@@ -794,7 +794,42 @@ function analyzeRdCredit(intel: Record<string, SourceResult>): CreditDeterminati
     };
   }
 
+  const totalCarryforwards = xbrl.totalCarryforwards || xbrl.creditCarryforwards;
+  const generalCredits = xbrl.generalCredits;
+  const valuationAllowance = xbrl.valuationAllowance;
+  const grossDeferredAssets = xbrl.grossDeferredAssets;
+  const hasFullVA = grossDeferredAssets > 0 && valuationAllowance > 0 && (valuationAllowance / grossDeferredAssets) > 0.9;
+
+  if (totalCarryforwards > 0 && rdExpense !== null && rdExpense > 0) {
+    let evidence = `${formatDollar(totalCarryforwards)} in credit carryforwards with ${formatDollar(rdExpense)} R&D spending — R&D credits likely embedded in generic carryforward`;
+    if (hasFullVA) evidence += `. Full valuation allowance (${formatDollar(valuationAllowance)}) — credits generated but not currently realizable`;
+    return {
+      status: "filed",
+      evidence,
+      estimatedValue: null,
+      confidence: 0.75,
+    };
+  }
+
+  if (generalCredits > 0 && rdExpense !== null && rdExpense > 0) {
+    return {
+      status: "filed",
+      evidence: `${formatDollar(generalCredits)} in general credits with ${formatDollar(rdExpense)} R&D spending — R&D credits likely included in general credit line`,
+      estimatedValue: null,
+      confidence: 0.65,
+    };
+  }
+
   if (rdExpense !== null && rdExpense > 100000) {
+    if (hasFullVA) {
+      return {
+        status: "potential_opportunity",
+        evidence: `R&D expense of ${formatDollar(rdExpense)} with full valuation allowance — credits may be generated but masked by VA`,
+        estimatedValue: null,
+        confidence: 0.5,
+      };
+    }
+
     const estimatedCredit = Math.round(rdExpense * 0.065);
     let evidence = `R&D expense of ${formatDollar(rdExpense)} detected but NO research credit filed`;
     if (patents > 0) evidence += `. ${patents} patents found (strong R&D indicator)`;
@@ -931,13 +966,19 @@ function analyzeBonusDepreciation(intel: Record<string, SourceResult>): CreditDe
   const xbrl = intel.sec_xbrl?.data;
   const capex = xbrl?.capex;
   const investmentCredit = xbrl?.investmentCredit;
+  const deferredTaxLiabilityPPE = xbrl?.deferredTaxLiabilityPPE;
+  const revenue = xbrl?.revenue;
   if (capex === null || capex === undefined) {
     return { status: "insufficient_data", evidence: "No capital expenditure data available", estimatedValue: null, confidence: 0 };
   }
   if (investmentCredit !== null && investmentCredit > 0) {
     return { status: "filed", evidence: `Investment/depreciation credit of ${formatDollar(investmentCredit)} detected. Capex: ${formatDollar(capex)}`, estimatedValue: null, confidence: 0.8 };
   }
-  if (capex > 500000) {
+  if (deferredTaxLiabilityPPE !== null && deferredTaxLiabilityPPE > 0) {
+    return { status: "filed", evidence: `${formatDollar(deferredTaxLiabilityPPE)} deferred tax liability on PP&E indicates active accelerated depreciation. Capex: ${formatDollar(capex)}`, estimatedValue: null, confidence: 0.8 };
+  }
+  const isAssetLight = revenue && revenue > 0 && capex / revenue < 0.01;
+  if (capex > 500000 && !isAssetLight) {
     const estimated = Math.round(capex * 0.6 * 0.21);
     return {
       status: "likely_eligible",
@@ -945,6 +986,9 @@ function analyzeBonusDepreciation(intel: Record<string, SourceResult>): CreditDe
       estimatedValue: estimated,
       confidence: 0.65,
     };
+  }
+  if (isAssetLight) {
+    return { status: "not_applicable", evidence: `Capex (${formatDollar(capex)}) is less than 1% of revenue — company appears asset-light, bonus depreciation unlikely to be material`, estimatedValue: null, confidence: 0.6 };
   }
   return { status: "not_applicable", evidence: `Capex (${formatDollar(capex)}) below $500K threshold for significant bonus depreciation`, estimatedValue: null, confidence: 0.5 };
 }
@@ -969,38 +1013,21 @@ function analyzeSec179(intel: Record<string, SourceResult>): CreditDetermination
 }
 
 function analyzeQsbs(intel: Record<string, SourceResult>): CreditDetermination {
-  const xbrl = intel.sec_xbrl?.data;
-  const totalAssets = xbrl?.totalAssets;
-  if (totalAssets === null || totalAssets === undefined) {
-    return { status: "insufficient_data", evidence: "No total assets data available", estimatedValue: null, confidence: 0 };
-  }
-  if (totalAssets < 50000000) {
-    return {
-      status: "potential_opportunity",
-      evidence: `Total assets of ${formatDollar(totalAssets)} (under $50M) — potential Qualified Small Business Stock (§1202) exclusion for investors`,
-      estimatedValue: null,
-      confidence: 0.4,
-    };
-  }
-  return { status: "not_applicable", evidence: `Total assets (${formatDollar(totalAssets)}) exceed $50M QSBS threshold`, estimatedValue: null, confidence: 0.6 };
+  return {
+    status: "not_applicable",
+    evidence: "QSBS §1202 is an investor benefit (capital gains exclusion for shareholders), not a company-level tax credit — not applicable to the filing entity",
+    estimatedValue: null,
+    confidence: 0.95,
+  };
 }
 
 function analyzeErc(intel: Record<string, SourceResult>): CreditDetermination {
-  const xbrl = intel.sec_xbrl?.data;
-  const employeeCount = xbrl?.employeeCount;
-  if (employeeCount === null || employeeCount === undefined) {
-    return { status: "insufficient_data", evidence: "No employee count data available", estimatedValue: null, confidence: 0 };
-  }
-  if (employeeCount > 10) {
-    const estimated = Math.round(employeeCount * 5000);
-    return {
-      status: "potential_opportunity",
-      evidence: `${employeeCount} employees — may qualify for retroactive Employee Retention Credit (§3134) via amended returns. Estimated: ${formatDollar(estimated)}`,
-      estimatedValue: estimated,
-      confidence: 0.35,
-    };
-  }
-  return { status: "not_applicable", evidence: `Employee count (${employeeCount}) below threshold for ERC`, estimatedValue: null, confidence: 0.5 };
+  return {
+    status: "not_applicable",
+    evidence: "ERC program suspended — IRS moratorium on new claims since September 2023; subsequent legislation effectively disallowed new filings. Existing claims under review.",
+    estimatedValue: null,
+    confidence: 0.95,
+  };
 }
 
 function analyzeOpportunityZones(intel: Record<string, SourceResult>): CreditDetermination {

@@ -2195,7 +2195,7 @@ export async function registerRoutes(
 
           const gapResults = scanSingleLead(lead, enrichment);
 
-          const creditAnalysis = gapResults.map((g: SingleLeadGapResult) => ({
+          const gapAnalysis = gapResults.map((g: SingleLeadGapResult) => ({
             creditId: g.creditId,
             creditName: g.creditName,
             section: g.section,
@@ -2208,6 +2208,42 @@ export async function registerRoutes(
             priorityScore: g.priorityScore,
             legislativeTrigger: g.legislativeTrigger,
           }));
+
+          const xbrlAnalysis = enrichment.creditPosition?.creditAnalysis || [];
+          const xbrlByCredit = new Map<string, any>();
+          for (const ca of xbrlAnalysis) {
+            xbrlByCredit.set(ca.creditId, ca);
+          }
+
+          const strongStatuses = new Set(["active", "partial", "structurally_limited", "confirmed_unclaimed", "likely_unclaimed", "dropped"]);
+          const creditAnalysis: any[] = [];
+          const seenCredits = new Set<string>();
+
+          for (const xbrlItem of xbrlAnalysis) {
+            seenCredits.add(xbrlItem.creditId);
+            const gapItem = gapAnalysis.find((g: any) => g.creditId === xbrlItem.creditId);
+
+            if (strongStatuses.has(xbrlItem.status)) {
+              const merged = { ...xbrlItem };
+              if (gapItem && gapItem.fingerprintsMatched?.length > 0) {
+                merged.fingerprintsMatched = gapItem.fingerprintsMatched;
+                merged.priorityScore = gapItem.priorityScore;
+              }
+              creditAnalysis.push(merged);
+            } else if (gapItem && gapItem.status !== "unknown") {
+              creditAnalysis.push(gapItem);
+            } else {
+              creditAnalysis.push(xbrlItem);
+            }
+          }
+
+          for (const gapItem of gapAnalysis) {
+            if (!seenCredits.has(gapItem.creditId)) {
+              creditAnalysis.push(gapItem);
+              seenCredits.add(gapItem.creditId);
+            }
+          }
+
           enrichment.creditAnalysis = creditAnalysis;
 
           const gaps = creditAnalysis.filter((c: any) => c.status !== "claimed");
