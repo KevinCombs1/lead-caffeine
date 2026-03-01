@@ -1393,6 +1393,15 @@ export default function LightEngine() {
                     <span className="text-amber-400/25 truncate w-28">{lead.domain}</span>
                     <span className="text-amber-400/20 w-20 truncate">{lead.sicDescription?.slice(0, 20)}</span>
                     <span className="text-amber-400/20 w-8">{lead.state}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); startExtrapolate([lead.leadId]); }}
+                      disabled={extrapolateRunning}
+                      className="shrink-0 px-2 py-0.5 rounded bg-amber-500/10 text-amber-300/60 hover:bg-amber-500/20 hover:text-amber-200/80 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
+                      data-testid={`button-extrapolate-${lead.leadId}`}
+                    >
+                      <GitBranch className="w-2.5 h-2.5" />
+                      <span className="text-[10px]">Extrapolate</span>
+                    </button>
                   </div>
                 ))}
                 {stage1Leads.length > 20 && <p className="text-[11px] text-amber-400/20 text-center">...and {stage1Leads.length - 20} more</p>}
