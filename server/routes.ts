@@ -8,6 +8,7 @@ import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { scrapedResults, scrapeJobs, domainSecurityProfiles } from "@shared/schema";
 import { TAX_CREDIT_UNIVERSE, matchLeadCredits, analyzeCompanyCreditPosition } from "./credit-universe";
+import { scanSingleLead, type SingleLeadGapResult } from "./credit-gap-engine";
 import { SIC_INDUSTRIES, findCompaniesBySIC, findCompaniesByFormD, findCompaniesByFilingText, getCompanyDetails, loadAllCompanies, type RecentEvent } from "./gradient-sweep";
 import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-blocklist";
 import { submitSingleForm, runBatchSubmission, isActionableForm, type SenderProfile, type FormTarget, type BatchItem } from "./form-submitter";
@@ -1776,13 +1777,25 @@ export async function registerRoutes(
 
       const leads = await Promise.all(leadIds.map(id => storage.getFiscalLead(id)));
       const validLeads = leads.filter(Boolean) as any[];
-      let formTotal = 0, adTotal = 0, secTotal = 0;
+      let formTotal = 0, adTotal = 0, secTotal = 0, skipTotal = 0, warnTotal = 0;
 
       for (let i = 0; i < validLeads.length; i++) {
         const lead = validLeads[i];
         send({ type: "progress", current: lead.company, index: i, total: validLeads.length });
 
-        if (lead.domain && !isInfrastructureDomain(lead.domain)) {
+        let foundForms = 0, foundAds = 0, foundCredits = 0;
+        let skipped = false;
+        const enrichment = (lead.enrichmentData as any) || {};
+
+        if (!lead.domain) {
+          send({ type: "skip", company: lead.company, reason: "No domain available — skipped" });
+          skipped = true;
+          skipTotal++;
+        } else if (isInfrastructureDomain(lead.domain)) {
+          send({ type: "skip", company: lead.company, reason: `Infrastructure domain (${lead.domain}) — skipped` });
+          skipped = true;
+          skipTotal++;
+        } else {
           try {
             const url = `https://${lead.domain}`;
             const html = await smartGet(url, { timeout: 8000, stealth: true });
@@ -1819,37 +1832,46 @@ export async function registerRoutes(
               if (htmlStr.includes("analytics.twitter") || htmlStr.includes("static.ads-twitter")) adNetworks.push("Twitter/X");
               if (htmlStr.includes("google-analytics") || htmlStr.includes("gtag") || htmlStr.includes("UA-")) trackingPixels.push({ platform: "Google Analytics", id: "ga" });
 
+              foundForms = forms.length;
+              foundAds = adNetworks.length;
+
               if (forms.length > 0 || adNetworks.length > 0) {
-                const enrichment = (lead.enrichmentData as any) || {};
                 enrichment.discoveredForms = forms;
                 enrichment.adIntel = { adNetworks, trackingPixels, adsExchanges: [], adActivity: adNetworks.length > 0 ? "active" : "none" };
-                await storage.updateFiscalLead(lead.id, { enrichmentData: enrichment, pipelineStage: "extrapolated" });
-                formTotal += forms.length;
-                adTotal += adNetworks.length;
-                send({ type: "enriched", company: lead.company, forms: forms.length, ads: adNetworks.length });
-              } else {
-                await storage.updateFiscalLead(lead.id, { pipelineStage: "extrapolated" });
               }
             }
           } catch (err: any) {
             send({ type: "error", company: lead.company, error: err.message?.slice(0, 100) });
           }
-        } else {
-          await storage.updateFiscalLead(lead.id, { pipelineStage: "extrapolated" });
         }
 
-        try {
-          const credits = matchLeadCredits(lead);
-          if (credits.length > 0) {
-            const enrichment = (lead.enrichmentData as any) || {};
-            enrichment.applicableCredits = credits;
-            await storage.updateFiscalLead(lead.id, { enrichmentData: enrichment });
-            secTotal += credits.length;
+        if (!skipped) {
+          try {
+            const credits = matchLeadCredits(lead.sicDescription, lead.industryCategory);
+            if (credits.length > 0) {
+              enrichment.applicableCredits = credits;
+              foundCredits = credits.length;
+            }
+          } catch (creditErr: any) {
+            const reason = creditErr?.message || "Unknown error";
+            send({ type: "warning", company: lead.company, message: `Credit matching failed: ${reason.slice(0, 150)}` });
+            warnTotal++;
           }
-        } catch {}
+        }
+
+        if (!skipped && (foundForms > 0 || foundAds > 0 || foundCredits > 0)) {
+          await storage.updateFiscalLead(lead.id, { enrichmentData: enrichment, pipelineStage: "extrapolated" });
+          formTotal += foundForms;
+          adTotal += foundAds;
+          secTotal += foundCredits;
+          send({ type: "enriched", company: lead.company, forms: foundForms, ads: foundAds, credits: foundCredits });
+        } else if (!skipped) {
+          send({ type: "skip", company: lead.company, reason: "No enrichment data found (no forms, ads, or credits detected)" });
+          skipTotal++;
+        }
       }
 
-      send({ type: "complete", total: validLeads.length, forms: formTotal, ads: adTotal, credits: secTotal });
+      send({ type: "complete", total: validLeads.length, forms: formTotal, ads: adTotal, credits: secTotal, skipped: skipTotal, warnings: warnTotal });
       res.end();
     } catch (err: any) {
       if (!res.headersSent) res.status(500).json({ error: err.message });
@@ -1869,7 +1891,7 @@ export async function registerRoutes(
 
       const leads = await Promise.all(leadIds.map(id => storage.getFiscalLead(id)));
       const validLeads = leads.filter(Boolean) as any[];
-      let xrayCount = 0, gapCount = 0, retroCount = 0;
+      let xrayCount = 0, gapCount = 0, retroCount = 0, cascadeCount = 0;
 
       for (let i = 0; i < validLeads.length; i++) {
         const lead = validLeads[i];
@@ -1884,47 +1906,86 @@ export async function registerRoutes(
               const details = await getCompanyDetails(cik, lead.sic);
               if (details?.creditXRay) {
                 enrichment.creditXRay = details.creditXRay;
-                const position = analyzeCompanyCreditPosition(enrichment);
+                if (details.revenue) enrichment.revenue = details.revenue;
+                if (details.rdExpense) enrichment.rdExpense = details.rdExpense;
+                if (details.totalAssets) enrichment.totalAssets = details.totalAssets;
+                if (details.employeeCount) enrichment.employeeCount = details.employeeCount;
+                const applicableCredits = matchLeadCredits(lead.sicDescription, lead.industryCategory);
+                const position = analyzeCompanyCreditPosition(details.creditXRay, applicableCredits);
                 enrichment.creditPosition = position;
+                enrichment.applicableCredits = applicableCredits;
                 xrayCount++;
                 send({ type: "xray", company: lead.company, healthScore: position.creditHealthScore, unclaimed: position.estimatedUnclaimedValue });
               }
-            } catch {}
+            } catch (xrayErr: any) {
+              send({ type: "warning", company: lead.company, message: `X-Ray fetch failed: ${xrayErr.message?.slice(0, 80)}` });
+            }
+          } else {
+            send({ type: "warning", company: lead.company, message: "No CIK available — X-Ray skipped, using fingerprint-only analysis" });
           }
 
-          const allCredits = matchLeadCredits({ ...lead, enrichmentData: enrichment });
-          enrichment.applicableCredits = allCredits;
+          send({ type: "progress", current: lead.company, index: i, total: validLeads.length, phase: "gap" });
 
-          const creditAnalysis = allCredits.map((c: any) => {
-            const xray = enrichment.creditXRay || {};
-            const position = enrichment.creditPosition || {};
-            const status = position.creditHealthScore > 60 ? "partial" : "likely_unclaimed";
-            return {
-              creditId: c.id, creditName: c.name, section: c.section,
-              status, evidence: `Matched via financial fingerprint`, claimedAmount: null,
-              potentialAmount: parseInt(c.maxValue?.replace(/[^0-9]/g, "") || "0") || null,
-              confidence: xray.revenue ? "xbrl_verified" : "inferred",
-            };
-          });
+          const gapResults = scanSingleLead(lead, enrichment);
+
+          const creditAnalysis = gapResults.map((g: SingleLeadGapResult) => ({
+            creditId: g.creditId,
+            creditName: g.creditName,
+            section: g.section,
+            status: g.gapStatus,
+            evidence: g.evidence,
+            claimedAmount: g.gapStatus === "claimed" ? g.estimatedUnclaimedValue : null,
+            potentialAmount: g.gapStatus !== "claimed" ? g.estimatedUnclaimedValue : null,
+            confidence: g.confidence,
+            fingerprintsMatched: g.fingerprintsMatched,
+            priorityScore: g.priorityScore,
+            legislativeTrigger: g.legislativeTrigger,
+          }));
           enrichment.creditAnalysis = creditAnalysis;
-          gapCount += creditAnalysis.filter((c: any) => c.status === "likely_unclaimed").length;
+
+          const gaps = creditAnalysis.filter((c: any) => c.status !== "claimed");
+          gapCount += gaps.length;
+          const cascades = creditAnalysis.filter((c: any) => c.evidence?.includes("[cascade bonus"));
+          cascadeCount += cascades.length;
+
+          send({
+            type: "gap",
+            company: lead.company,
+            creditsScanned: creditAnalysis.length,
+            gapsFound: gaps.length,
+            cascadeOpportunities: cascades.length,
+            topGaps: gaps.slice(0, 3).map((g: any) => ({ credit: g.creditName, value: g.potentialAmount, evidence: g.evidence?.slice(0, 120) })),
+          });
+
+          const lastFilingDate = enrichment.creditXRay?.supplemental?.lastFilingDate || enrichment.lastFilingDate;
+          const currentYear = new Date().getFullYear();
+          const filingYear = lastFilingDate ? new Date(lastFilingDate).getFullYear() : currentYear;
+          const lookbackYears = Math.min(3, currentYear - (filingYear - 3));
+          const amendableReturns: string[] = [];
+          for (let y = 1; y <= lookbackYears; y++) {
+            amendableReturns.push(String(currentYear - y));
+          }
 
           const retroOpportunities: any[] = [];
           for (const credit of creditAnalysis) {
-            if (credit.status === "likely_unclaimed" && credit.potentialAmount) {
+            if ((credit.status === "confirmed_unclaimed" || credit.status === "likely_unclaimed") && credit.potentialAmount) {
               retroOpportunities.push({
-                creditId: credit.creditId, creditName: credit.creditName, section: credit.section,
-                lookbackYears: 3, estimatedPerYear: Math.round(credit.potentialAmount * 0.7),
-                totalRetroactive: Math.round(credit.potentialAmount * 0.7 * 3),
-                amendableReturns: ["2023", "2024", "2025"],
+                creditId: credit.creditId,
+                creditName: credit.creditName,
+                section: credit.section,
+                lookbackYears,
+                estimatedPerYear: credit.potentialAmount,
+                totalRetroactive: credit.potentialAmount * lookbackYears,
+                amendableReturns,
                 confidence: credit.confidence,
+                evidence: credit.evidence,
               });
             }
           }
           if (retroOpportunities.length > 0) {
             enrichment.retroactiveRecovery = retroOpportunities;
             retroCount += retroOpportunities.length;
-            send({ type: "retro", company: lead.company, opportunities: retroOpportunities.length, totalValue: retroOpportunities.reduce((s: number, r: any) => s + r.totalRetroactive, 0) });
+            send({ type: "retro", company: lead.company, opportunities: retroOpportunities.length, totalValue: retroOpportunities.reduce((s: number, r: any) => s + r.totalRetroactive, 0), amendableYears: amendableReturns });
           }
 
           await storage.updateFiscalLead(lead.id, {
@@ -1935,11 +1996,10 @@ export async function registerRoutes(
           });
         } catch (err: any) {
           send({ type: "error", company: lead.company, error: err.message?.slice(0, 100) });
-          await storage.updateFiscalLead(lead.id, { pipelineStage: "enriched" });
         }
       }
 
-      send({ type: "complete", total: validLeads.length, xrayed: xrayCount, gaps: gapCount, retroactive: retroCount });
+      send({ type: "complete", total: validLeads.length, xrayed: xrayCount, gaps: gapCount, retroactive: retroCount, cascades: cascadeCount });
       res.end();
     } catch (err: any) {
       if (!res.headersSent) res.status(500).json({ error: err.message });

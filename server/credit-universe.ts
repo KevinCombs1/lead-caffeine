@@ -691,10 +691,10 @@ function getCreditHealthLabel(score: number): string {
 }
 
 function analyzeRdCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
-  const reconciliation = v(xray.activeCredits.researchCredit);
-  const carryforward = v(xray.creditCarryforwards.researchCarryforward);
-  const rateImpact = v(xray.effectiveRateBreakdown.researchRateImpact);
-  const rdExpense = v(xray.supplemental.rdExpense);
+  const reconciliation = v(xray.activeCredits?.researchCredit);
+  const carryforward = v(xray.creditCarryforwards?.researchCarryforward);
+  const rateImpact = v(xray.effectiveRateBreakdown?.researchRateImpact);
+  const rdExpense = v(xray.supplemental?.rdExpense);
 
   let status: CreditStatus = "unknown";
   let evidence = "";
@@ -736,8 +736,8 @@ function analyzeRdCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisIte
 }
 
 function analyzeInvestmentEnergyCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
-  const investmentCredit = v(xray.activeCredits.investmentCredit);
-  const totalAssets = v(xray.supplemental.totalAssets);
+  const investmentCredit = v(xray.activeCredits?.investmentCredit);
+  const totalAssets = v(xray.supplemental?.totalAssets);
 
   let status: CreditStatus = "unknown";
   let evidence = "";
@@ -767,9 +767,9 @@ function analyzeInvestmentEnergyCredit(xray: CreditXRay, credit: TaxCredit): Cre
 }
 
 function analyzeForeignCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
-  const foreignCredit = v(xray.activeCredits.foreignTaxCredit);
-  const foreignCarryforward = v(xray.creditCarryforwards.foreignCarryforward);
-  const foreignIncome = v(xray.preTaxIncome.foreignPreTax);
+  const foreignCredit = v(xray.activeCredits?.foreignTaxCredit);
+  const foreignCarryforward = v(xray.creditCarryforwards?.foreignCarryforward);
+  const foreignIncome = v(xray.preTaxIncome?.foreignPreTax);
 
   let status: CreditStatus = "unknown";
   let evidence = "";
@@ -891,9 +891,9 @@ function analyzeEmploymentCredit(xray: CreditXRay, credit: TaxCredit): CreditAna
 }
 
 function analyzeGenericCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysisItem {
-  const totalGeneralCredits = v(xray.activeCredits.generalCredits);
-  const otherCarryforward = v(xray.creditCarryforwards.otherCarryforward);
-  const totalCarryforwards = v(xray.creditCarryforwards.totalCarryforwards);
+  const totalGeneralCredits = v(xray.activeCredits?.generalCredits);
+  const otherCarryforward = v(xray.creditCarryforwards?.otherCarryforward);
+  const totalCarryforwards = v(xray.creditCarryforwards?.totalCarryforwards);
 
   let status: CreditStatus = "unknown";
   let evidence = "";
@@ -937,32 +937,32 @@ function analyzeSingleCredit(xray: CreditXRay, credit: TaxCredit): CreditAnalysi
 }
 
 function computeTaxPositionSummary(xray: CreditXRay): TaxPositionSummary {
-  const effectiveRate = v(xray.effectiveRateBreakdown.effectiveRate);
-  const statutoryRate = v(xray.effectiveRateBreakdown.statutoryRate) ?? 0.21;
+  const effectiveRate = v(xray.effectiveRateBreakdown?.effectiveRate);
+  const statutoryRate = v(xray.effectiveRateBreakdown?.statutoryRate) ?? 0.21;
   const rateGap = effectiveRate !== null ? statutoryRate - effectiveRate : null;
 
-  const taxesPaid = v(xray.taxCashFlow.taxesPaidNet) ?? v(xray.taxCashFlow.taxesPaid);
-  const preTaxIncome = v(xray.preTaxIncome.totalPreTax);
+  const taxesPaid = v(xray.taxCashFlow?.taxesPaidNet) ?? v(xray.taxCashFlow?.taxesPaid);
+  const preTaxIncome = v(xray.preTaxIncome?.totalPreTax);
   const cashTaxRate = (taxesPaid !== null && preTaxIncome !== null && preTaxIncome !== 0)
     ? taxesPaid / preTaxIncome
     : null;
 
-  const grossDeferred = v(xray.deferredTaxPosition.grossDeferredAssets);
-  const valAllowance = v(xray.deferredTaxPosition.valuationAllowance);
+  const grossDeferred = v(xray.deferredTaxPosition?.grossDeferredAssets);
+  const valAllowance = v(xray.deferredTaxPosition?.valuationAllowance);
   const valuationAllowanceRatio = (valAllowance !== null && grossDeferred !== null && grossDeferred !== 0)
     ? valAllowance / grossDeferred
     : null;
 
-  const rdExpense = v(xray.supplemental.rdExpense);
-  const revenue = v(xray.supplemental.revenue);
+  const rdExpense = v(xray.supplemental?.rdExpense);
+  const revenue = v(xray.supplemental?.revenue);
   const rdIntensity = (rdExpense !== null && revenue !== null && revenue !== 0)
     ? rdExpense / revenue
     : null;
 
-  const totalCredits = (v(xray.activeCredits.researchCredit) ?? 0) +
-    (v(xray.activeCredits.foreignTaxCredit) ?? 0) +
-    (v(xray.activeCredits.investmentCredit) ?? 0) +
-    (v(xray.activeCredits.generalCredits) ?? 0);
+  const totalCredits = (v(xray.activeCredits?.researchCredit) ?? 0) +
+    (v(xray.activeCredits?.foreignTaxCredit) ?? 0) +
+    (v(xray.activeCredits?.investmentCredit) ?? 0) +
+    (v(xray.activeCredits?.generalCredits) ?? 0);
   const creditDensity = (totalCredits > 0 && preTaxIncome !== null && preTaxIncome !== 0)
     ? totalCredits / Math.abs(preTaxIncome)
     : null;
@@ -975,7 +975,7 @@ function computeTaxPositionSummary(xray: CreditXRay): TaxPositionSummary {
     preTaxIncome,
     cashTaxRate,
     valuationAllowanceRatio,
-    nolCarryforward: v(xray.deferredTaxPosition.nolCarryforwards),
+    nolCarryforward: v(xray.deferredTaxPosition?.nolCarryforwards),
     hasRdExpense: rdExpense !== null && rdExpense > 0,
     rdExpenseAmount: rdExpense,
     rdIntensity,
@@ -1047,9 +1047,9 @@ export function analyzeCompanyCreditPosition(
 ): CreditPositionAnalysis {
   const creditAnalysis: CreditAnalysisItem[] = [];
 
-  const hasForeignActivity = creditXRay.activeCredits.foreignTaxCredit !== null ||
-    creditXRay.creditCarryforwards.foreignCarryforward !== null ||
-    (creditXRay.preTaxIncome.foreignPreTax !== null && v(creditXRay.preTaxIncome.foreignPreTax) !== null && v(creditXRay.preTaxIncome.foreignPreTax)! > 0);
+  const hasForeignActivity = creditXRay.activeCredits?.foreignTaxCredit !== null && creditXRay.activeCredits?.foreignTaxCredit !== undefined ||
+    creditXRay.creditCarryforwards?.foreignCarryforward !== null && creditXRay.creditCarryforwards?.foreignCarryforward !== undefined ||
+    (creditXRay.preTaxIncome?.foreignPreTax !== null && v(creditXRay.preTaxIncome?.foreignPreTax) !== null && v(creditXRay.preTaxIncome?.foreignPreTax)! > 0);
 
   for (const credit of applicableCredits) {
     creditAnalysis.push(analyzeSingleCredit(creditXRay, credit));

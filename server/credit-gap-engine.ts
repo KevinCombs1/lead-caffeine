@@ -318,6 +318,135 @@ const KEYWORD_PHRASES: string[] = [
   "advanced manufacturing", "semiconductor fab",
 ];
 
+export interface SingleLeadGapResult {
+  creditId: string;
+  creditName: string;
+  section: string;
+  gapStatus: string;
+  confidence: string;
+  estimatedUnclaimedValue: number | null;
+  evidence: string;
+  fingerprintsMatched: string[];
+  legislativeTrigger: string | null;
+  priorityScore: number;
+}
+
+export function scanSingleLead(lead: any, enrichmentData?: any): SingleLeadGapResult[] {
+  const enrichment = enrichmentData || (lead.enrichmentData || {}) as any;
+  const mergedLead = { ...lead, enrichmentData: enrichment };
+
+  const taxPosition = extractTaxPosition(mergedLead);
+
+  const creditAnalysis = (enrichment.creditAnalysis || enrichment.creditPosition?.creditAnalysis || []) as any[];
+  const hasCreditAnalysis = creditAnalysis.length > 0;
+
+  const claimed = new Set<string>();
+  const results: SingleLeadGapResult[] = [];
+
+  for (const credit of TAX_CREDIT_UNIVERSE) {
+    const creditId = credit.id;
+    const creditName = credit.name;
+    const section = credit.section;
+
+    if (hasCreditAnalysis) {
+      const existing = creditAnalysis.find((ca: any) => ca.creditId === creditId);
+      const status = existing?.status;
+
+      let gapStatus = "unknown";
+      let confidence = "estimated_by_industry";
+      let evidence = "";
+      let estimatedValue: number | null = null;
+      let fingerprintsMatched: string[] = [];
+
+      if (status === "unclaimed") {
+        gapStatus = "confirmed_unclaimed";
+        confidence = "xbrl_verified";
+        evidence = existing.evidence || `${lead.company} shows no ${creditName} activity in filings`;
+        estimatedValue = existing.potentialAmount || null;
+        fingerprintsMatched.push("xbrl_credit_analysis");
+      } else if (status === "likely_unclaimed") {
+        gapStatus = "likely_unclaimed";
+        confidence = "xbrl_verified";
+        evidence = existing.evidence || `${lead.company} likely missing ${creditName}`;
+        estimatedValue = existing.potentialAmount || null;
+        fingerprintsMatched.push("xbrl_credit_analysis");
+      } else if (status === "active" || status === "partial") {
+        gapStatus = "claimed";
+        confidence = "xbrl_verified";
+        evidence = existing.evidence || `${lead.company} actively claims ${creditName}`;
+        estimatedValue = null;
+        claimed.add(creditId);
+      } else {
+        const excluded = CREDIT_EXCLUSION_RULES[creditId];
+        if (excluded && excluded.some(ex => claimed.has(ex))) continue;
+
+        const fpResults = applyFingerprints(creditId, lead.company || "", taxPosition);
+        if (fpResults) {
+          gapStatus = fpResults.gapStatus;
+          confidence = "inferred";
+          evidence = fpResults.evidence;
+          estimatedValue = fpResults.estimatedValue;
+          fingerprintsMatched = fpResults.matched;
+        } else {
+          continue;
+        }
+      }
+
+      if (gapStatus === "unknown") continue;
+
+      if (estimatedValue !== null) {
+        estimatedValue = clampAndCapValue(creditId, estimatedValue, taxPosition.revenue);
+      }
+
+      const cascadeBonus = computeCascadeBonus(creditId, claimed);
+      const priorityScore = computePriorityScore(creditId, estimatedValue, confidence, gapStatus, taxPosition);
+
+      results.push({
+        creditId,
+        creditName,
+        section,
+        gapStatus,
+        confidence,
+        estimatedUnclaimedValue: estimatedValue,
+        evidence: cascadeBonus > 0 ? evidence + ` [cascade bonus: +${cascadeBonus}%]` : evidence,
+        fingerprintsMatched,
+        legislativeTrigger: null,
+        priorityScore: Math.min(100, priorityScore),
+      });
+    } else {
+      const excluded = CREDIT_EXCLUSION_RULES[creditId];
+      if (excluded && excluded.some(ex => claimed.has(ex))) continue;
+
+      const fpResults = applyFingerprints(creditId, lead.company || "", taxPosition);
+      if (!fpResults) continue;
+      if (fpResults.gapStatus === "claimed") continue;
+
+      let estimatedValue = fpResults.estimatedValue;
+      if (estimatedValue !== null) {
+        estimatedValue = clampAndCapValue(creditId, estimatedValue, taxPosition.revenue);
+      }
+
+      const cascadeBonus = computeCascadeBonus(creditId, claimed);
+      const priorityScore = computePriorityScore(creditId, estimatedValue, "inferred", fpResults.gapStatus, taxPosition) + Math.min(10, cascadeBonus);
+
+      results.push({
+        creditId,
+        creditName,
+        section,
+        gapStatus: fpResults.gapStatus,
+        confidence: "inferred",
+        estimatedUnclaimedValue: estimatedValue,
+        evidence: cascadeBonus > 0 ? fpResults.evidence + ` [cascade bonus: +${cascadeBonus}%]` : fpResults.evidence,
+        fingerprintsMatched: fpResults.matched,
+        legislativeTrigger: null,
+        priorityScore: Math.min(100, priorityScore),
+      });
+    }
+  }
+
+  return results;
+}
+
 export async function seedCreditRegistry(): Promise<number> {
   const existing = await db.select({ id: taxCreditRegistry.id }).from(taxCreditRegistry);
   const existingIds = new Set(existing.map(r => r.id));
