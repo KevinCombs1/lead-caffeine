@@ -2845,6 +2845,9 @@ export async function registerRoutes(
         state: req.query.state as string | undefined,
         search: req.query.search as string | undefined,
         isAlive: req.query.alive !== undefined ? req.query.alive === "true" : undefined,
+        tag: req.query.tag as string | undefined,
+        sortBy: req.query.sortBy as string | undefined,
+        beauteousOnly: req.query.beauteousOnly === "true" ? true : undefined,
         page: 1,
         limit: 999999,
       };

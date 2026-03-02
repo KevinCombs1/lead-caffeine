@@ -685,7 +685,7 @@ export default function HivePage() {
               {beautyScanStatus?.running ? "Scanning..." : "Beauty Scan"}
             </button>
             <a
-              href={`/api/hive/export?${new URLSearchParams(flowerFilters).toString()}`}
+              href={`/api/hive/export?${new URLSearchParams(Object.fromEntries(Object.entries(flowerFilters).filter(([k]) => k !== "page" && k !== "limit"))).toString()}`}
               className="flex items-center gap-1 text-xs px-2 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-gray-200 transition-colors"
               data-testid="button-download-csv"
             >
