@@ -1243,11 +1243,77 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Nixa", state: "MO", slug: "nixa-mo", population: 22086 },
   { city: "Ozark", state: "MO", slug: "ozark-mo", population: 21010 },
   { city: "Raymore", state: "MO", slug: "raymore-mo", population: 23434 },
+  { city: "Salt Lake City", state: "UT", slug: "salt-lake-city-ut", population: 200133 },
+  { city: "Providence", state: "RI", slug: "providence-ri", population: 190934 },
+  { city: "Hartford", state: "CT", slug: "hartford-ct", population: 121054 },
+  { city: "Richmond", state: "VA", slug: "richmond-va", population: 226610 },
+  { city: "Buffalo", state: "NY", slug: "buffalo-ny", population: 278349 },
+  { city: "Rochester", state: "NY", slug: "rochester-ny", population: 211328 },
+  { city: "Birmingham", state: "AL", slug: "birmingham-al", population: 200733 },
+  { city: "Grand Rapids", state: "MI", slug: "grand-rapids-mi", population: 198917 },
+  { city: "Bridgeport", state: "CT", slug: "bridgeport-ct", population: 148529 },
+  { city: "Worcester", state: "MA", slug: "worcester-ma", population: 206518 },
+  { city: "Knoxville", state: "TN", slug: "knoxville-tn", population: 190740 },
+  { city: "Dayton", state: "OH", slug: "dayton-oh", population: 137644 },
+  { city: "Charleston", state: "SC", slug: "charleston-sc", population: 150227 },
+  { city: "Greenville", state: "SC", slug: "greenville-sc", population: 72095 },
+  { city: "Chattanooga", state: "TN", slug: "chattanooga-tn", population: 181099 },
+  { city: "Spokane", state: "WA", slug: "spokane-wa", population: 228989 },
+  { city: "Boise", state: "ID", slug: "boise-id", population: 235684 },
+  { city: "Harrisburg", state: "PA", slug: "harrisburg-pa", population: 50099 },
+  { city: "Scranton", state: "PA", slug: "scranton-pa", population: 76997 },
+  { city: "Cape Coral", state: "FL", slug: "cape-coral-fl", population: 194016 },
+  { city: "North Port", state: "FL", slug: "north-port-fl", population: 74793 },
+  { city: "Port St. Lucie", state: "FL", slug: "port-st-lucie-fl", population: 217223 },
+  { city: "Palm Bay", state: "FL", slug: "palm-bay-fl", population: 119760 },
+  { city: "Pensacola", state: "FL", slug: "pensacola-fl", population: 54312 },
+  { city: "Tallahassee", state: "FL", slug: "tallahassee-fl", population: 196169 },
+  { city: "Daytona Beach", state: "FL", slug: "daytona-beach-fl", population: 72647 },
+  { city: "Kissimmee", state: "FL", slug: "kissimmee-fl", population: 79226 },
+  { city: "Gainesville", state: "FL", slug: "gainesville-fl", population: 141085 },
+  { city: "Myrtle Beach", state: "SC", slug: "myrtle-beach-sc", population: 35682 },
+  { city: "Naples", state: "FL", slug: "naples-fl", population: 22088 },
+  { city: "Ogden", state: "UT", slug: "ogden-ut", population: 87321 },
+  { city: "Provo", state: "UT", slug: "provo-ut", population: 115162 },
+  { city: "McAllen", state: "TX", slug: "mcallen-tx", population: 142210 },
+  { city: "Killeen", state: "TX", slug: "killeen-tx", population: 153095 },
+  { city: "Beaumont", state: "TX", slug: "beaumont-tx", population: 115282 },
+  { city: "Waco", state: "TX", slug: "waco-tx", population: 139236 },
+  { city: "Brownsville", state: "TX", slug: "brownsville-tx", population: 186738 },
+  { city: "Laredo", state: "TX", slug: "laredo-tx", population: 255205 },
+  { city: "Shreveport", state: "LA", slug: "shreveport-la", population: 187593 },
+  { city: "Clarksville", state: "TN", slug: "clarksville-tn", population: 166722 },
+  { city: "Springfield", state: "MO", slug: "springfield-mo", population: 169176 },
+  { city: "Youngstown", state: "OH", slug: "youngstown-oh", population: 60068 },
+  { city: "Eugene", state: "OR", slug: "eugene-or", population: 176654 },
+  { city: "Peoria", state: "IL", slug: "peoria-il", population: 113150 },
+  { city: "Flint", state: "MI", slug: "flint-mi", population: 102434 },
+  { city: "Santa Rosa", state: "CA", slug: "santa-rosa-ca", population: 178127 },
+  { city: "Olympia", state: "WA", slug: "olympia-wa", population: 55605 },
+  { city: "Lancaster", state: "PA", slug: "lancaster-pa", population: 63964 },
+  { city: "New Haven", state: "CT", slug: "new-haven-ct", population: 134023 },
+  { city: "Duluth", state: "MN", slug: "duluth-mn", population: 90880 },
 ];
 
 export async function seedHiveData(): Promise<void> {
   const existingDirs = await db.select({ id: hiveDirectories.id }).from(hiveDirectories).limit(1);
   if (existingDirs.length > 0) {
+    const existingLocCount = await db.select({ id: hiveLocations.id }).from(hiveLocations);
+    if (existingLocCount.length < LOCATIONS.length) {
+      const existingSlugs = new Set(
+        (await db.select({ slug: hiveLocations.slug }).from(hiveLocations)).map(l => l.slug)
+      );
+      const newLocations = LOCATIONS.filter(l => !existingSlugs.has(l.slug));
+      if (newLocations.length > 0) {
+        console.log(`[hive-seed] Adding ${newLocations.length} new locations...`);
+        const BATCH_SIZE = 50;
+        for (let i = 0; i < newLocations.length; i += BATCH_SIZE) {
+          const batch = newLocations.slice(i, i + BATCH_SIZE);
+          await db.insert(hiveLocations).values(batch);
+        }
+        console.log(`[hive-seed] Added ${newLocations.length} new locations (total: ${existingLocCount.length + newLocations.length}).`);
+      }
+    }
     console.log("[hive-seed] Directories already seeded, skipping.");
     return;
   }
