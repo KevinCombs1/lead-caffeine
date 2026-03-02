@@ -330,6 +330,18 @@ const CATEGORIES: CategorySeed[] = [
   cat("Marine Sales", "Automotive", ["Marine Dealer", "Boat Sales", "Boat Dealer"]),
   cat("Automotive Consulting", "Automotive", ["Automotive Consulting Firm", "Auto Industry Consulting", "Dealer Consulting"], true),
 
+  // Final Expense (10)
+  cat("Funeral Home", "Final Expense", ["Funeral Home", "Funeral Services", "Mortuary"]),
+  cat("Cremation Services", "Final Expense", ["Cremation Services", "Crematory", "Direct Cremation"]),
+  cat("Cemetery", "Final Expense", ["Cemetery", "Memorial Park", "Burial Ground"]),
+  cat("Monument & Headstone", "Final Expense", ["Monument Company", "Headstone Dealer", "Gravestone"]),
+  cat("Pre-Need Planning", "Final Expense", ["Pre-Need Funeral Planning", "Advance Funeral Planning", "Pre-Arranged Funeral"]),
+  cat("Casket Company", "Final Expense", ["Casket Company", "Casket Manufacturer", "Burial Casket"]),
+  cat("Burial Insurance", "Final Expense", ["Burial Insurance Agent", "Final Expense Insurance", "Funeral Insurance"]),
+  cat("Estate Planning Attorney", "Final Expense", ["Estate Planning Attorney", "Probate Lawyer", "Will and Trust Attorney"]),
+  cat("Grief Counseling", "Final Expense", ["Grief Counseling Services", "Bereavement Counseling", "Loss Support Services"]),
+  cat("Memorial Services", "Final Expense", ["Memorial Service Provider", "Celebration of Life", "Memorial Planning"]),
+
   // Insurance (25)
   cat("Homeowners Insurance", "Insurance", ["Homeowners Insurance Agency", "Home Insurance", "Property Insurance"]),
   cat("Life Insurance", "Insurance", ["Life Insurance Agent", "Life Insurance Company", "Term Life Insurance"]),
