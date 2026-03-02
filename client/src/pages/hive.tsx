@@ -255,7 +255,15 @@ export default function HivePage() {
   const filteredLocations = locations.filter(l =>
     (!locationSearch || l.city.toLowerCase().includes(locationSearch.toLowerCase())) &&
     (!selectedState || l.state === selectedState)
-  );
+  ).sort((a, b) => {
+    const aSelected = selectedLocs.has(a.id) ? 0 : 1;
+    const bSelected = selectedLocs.has(b.id) ? 0 : 1;
+    if (aSelected !== bSelected) return aSelected - bSelected;
+    const aTravel = a.tag === "travel" ? 0 : 1;
+    const bTravel = b.tag === "travel" ? 0 : 1;
+    if (aTravel !== bTravel) return aTravel - bTravel;
+    return a.city.localeCompare(b.city);
+  });
 
   const selectAllLocations = () => {
     const ids = filteredLocations.map(l => l.id);
@@ -458,8 +466,8 @@ export default function HivePage() {
                     <Building2 className="w-3 h-3 inline mr-0.5" />Metro ({locations.filter(l => !l.tag).length})
                   </button>
                 </div>
-                <div className="space-y-0.5 max-h-40 overflow-y-auto border border-gray-800 rounded p-2 bg-gray-900/50">
-                  {filteredLocations.slice(0, 200).map(l => (
+                <div className="space-y-0.5 max-h-52 overflow-y-auto border border-gray-800 rounded p-2 bg-gray-900/50">
+                  {filteredLocations.map(l => (
                     <label key={l.id} className="flex items-center gap-2 text-xs cursor-pointer" data-testid={`checkbox-loc-${l.slug}`}>
                       <input
                         type="checkbox"
@@ -476,9 +484,6 @@ export default function HivePage() {
                       <span className="text-gray-600 text-[10px]">{l.population.toLocaleString()}</span>
                     </label>
                   ))}
-                  {filteredLocations.length > 200 && (
-                    <div className="text-[10px] text-gray-600 pt-1">...and {filteredLocations.length - 200} more (filter to see)</div>
-                  )}
                 </div>
               </div>
             </div>
