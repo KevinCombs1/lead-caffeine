@@ -16,7 +16,9 @@ D.A.T.A. Cloudware is a tax credit intelligence platform that discovers tax cred
 This phase prioritizes deal intelligence within its Credit Intelligence dashboard.
 
 ## User Preferences
-The agent should prioritize iterative development and ask before making major changes. It should focus on high-level features and avoid granular implementation details.
+- **#1 PRIME IMPORTANCE: NO CAPS. Never cap the display of lists, results, locations, categories, or any data. Show everything — no "200 limit", no "and X more", no truncation. Always render all items in scrollable containers. This rule applies x5 to every feature, no exceptions.**
+- **NEVER run e2e tests. No Playwright, no runTest(), no automated UI testing. Ever.**
+- The agent should prioritize iterative development and ask before making major changes. It should focus on high-level features and avoid granular implementation details.
 
 ## System Architecture
 
