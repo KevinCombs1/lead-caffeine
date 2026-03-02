@@ -23,8 +23,9 @@ export class RayOfGraceEngine {
   private totalPollen = 0;
   private completedCombos = 0;
   private workerCount = 10;
+  private maxResults: number | null = null;
 
-  async start(directoryIds: string[], categoryIds: string[], locationIds: string[]): Promise<string> {
+  async start(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number): Promise<string> {
     const directories = (await storage.getHiveDirectories()).filter(d => directoryIds.includes(d.id) && d.enabled);
     const categories = (await storage.getHiveCategories()).filter(c => categoryIds.includes(c.id));
     const locations = (await storage.getHiveLocations()).filter(l => locationIds.includes(l.id));
@@ -33,6 +34,7 @@ export class RayOfGraceEngine {
       throw new Error("Must select at least one directory, category, and location");
     }
 
+    this.maxResults = (maxResults && maxResults > 0) ? maxResults : null;
     this.combos = [];
     for (const dir of directories) {
       for (const cat of categories) {
@@ -63,7 +65,8 @@ export class RayOfGraceEngine {
     this.completedCombos = 0;
     activeEngine = this;
 
-    await this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${this.combos.length} combos`);
+    const limitMsg = this.maxResults ? ` (limit: ${this.maxResults} flowers)` : " (unlimited)";
+    await this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${this.combos.length} combos${limitMsg}`);
 
     this.runWorkers().catch(async (err) => {
       await this.log(`Fatal error: ${err.message}`);
@@ -88,6 +91,7 @@ export class RayOfGraceEngine {
       completedCombos: this.completedCombos,
       flowersFound: this.totalFlowers,
       pollenFound: this.totalPollen,
+      maxResults: this.maxResults,
       progress: this.combos.length > 0 ? Math.round((this.completedCombos / this.combos.length) * 100) : 0,
     };
   }
@@ -118,6 +122,12 @@ export class RayOfGraceEngine {
   private async worker(workerId: number): Promise<void> {
     while (true) {
       if (this.stopped) break;
+
+      if (this.maxResults && this.totalFlowers >= this.maxResults) {
+        await this.log(`[W${workerId}] Flower limit reached (${this.maxResults}), stopping`);
+        this.stopped = true;
+        break;
+      }
 
       const combo = this.getNextCombo();
       if (!combo) break;
@@ -263,12 +273,12 @@ export async function checkFlowerHealth(batchSize = 100): Promise<{ checked: num
   return { checked: flowers.length, alive, dead };
 }
 
-export async function startRayOfGrace(directoryIds: string[], categoryIds: string[], locationIds: string[]): Promise<string> {
+export async function startRayOfGrace(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number): Promise<string> {
   if (activeEngine) {
     throw new Error("A crawl is already running. Stop it first.");
   }
   const engine = new RayOfGraceEngine();
-  return engine.start(directoryIds, categoryIds, locationIds);
+  return engine.start(directoryIds, categoryIds, locationIds, maxResults);
 }
 
 export async function stopRayOfGrace(): Promise<void> {

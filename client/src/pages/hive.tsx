@@ -69,6 +69,7 @@ interface CrawlStatus {
     completedCombos: number;
     flowersFound: number;
     pollenFound: number;
+    maxResults: number | null;
     progress: number;
   } | null;
   recentJobs: any[];
@@ -109,6 +110,7 @@ export default function HivePage() {
   const [filterCategory, setFilterCategory] = useState("");
   const [filterAlive, setFilterAlive] = useState<string>("");
   const logRef = useRef<HTMLDivElement>(null);
+  const [maxResults, setMaxResults] = useState<string>("");
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
 
   const { data: directories = [] } = useQuery<HiveDirectory[]>({ queryKey: ["/api/hive/directories"] });
@@ -170,6 +172,7 @@ export default function HivePage() {
       directoryIds: Array.from(selectedDirs),
       categoryIds: Array.from(selectedCats),
       locationIds: Array.from(selectedLocs),
+      maxResults: maxResults ? Number(maxResults) : undefined,
     }),
     onSuccess: async (res) => {
       const data = await res.json();
@@ -414,15 +417,29 @@ export default function HivePage() {
 
             <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
               {!crawlStatus?.active ? (
-                <button
-                  onClick={() => startCrawl.mutate()}
-                  disabled={selectedDirs.size === 0 || selectedCats.size === 0 || selectedLocs.size === 0 || startCrawl.isPending}
-                  className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold rounded transition-colors"
-                  data-testid="button-send-ray"
-                >
-                  {startCrawl.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                  Send Ray of Grace
-                </button>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-400 whitespace-nowrap">Max flowers:</label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Unlimited"
+                      value={maxResults}
+                      onChange={(e) => setMaxResults(e.target.value)}
+                      className="w-28 px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-white placeholder-gray-600 focus:border-pink-500 focus:outline-none"
+                      data-testid="input-max-results"
+                    />
+                  </div>
+                  <button
+                    onClick={() => startCrawl.mutate()}
+                    disabled={selectedDirs.size === 0 || selectedCats.size === 0 || selectedLocs.size === 0 || startCrawl.isPending}
+                    className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold rounded transition-colors"
+                    data-testid="button-send-ray"
+                  >
+                    {startCrawl.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                    Send Ray of Grace
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() => stopCrawl.mutate()}
@@ -438,7 +455,7 @@ export default function HivePage() {
               {crawlStatus?.active && (
                 <div className="flex items-center gap-4 text-xs text-gray-400">
                   <span data-testid="text-progress">{crawlStatus.active.progress}% ({crawlStatus.active.completedCombos}/{crawlStatus.active.totalCombos})</span>
-                  <span className="text-pink-400" data-testid="text-flowers-found">Flowers: {crawlStatus.active.flowersFound}</span>
+                  <span className="text-pink-400" data-testid="text-flowers-found">Flowers: {crawlStatus.active.flowersFound}{crawlStatus.active.maxResults ? ` / ${crawlStatus.active.maxResults}` : ""}</span>
                   <span className="text-yellow-400" data-testid="text-pollen-found">Pollen: {crawlStatus.active.pollenFound}</span>
                 </div>
               )}
