@@ -475,7 +475,7 @@ export class DatabaseStorage implements IStorage {
     const batchSize = 50;
     for (let i = 0; i < pollen.length; i += batchSize) {
       const batch = pollen.slice(i, i + batchSize);
-      const result = await db.insert(hivePollen).values(batch).returning();
+      const result = await db.insert(hivePollen).values(batch).onConflictDoNothing().returning();
       inserted += result.length;
     }
     return inserted;

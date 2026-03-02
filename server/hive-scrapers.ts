@@ -83,6 +83,23 @@ function isExcludedDomain(url: string): boolean {
   return domain.endsWith(".gov") || domain.endsWith(".org") || domain.endsWith(".edu");
 }
 
+const DIRECTORY_PLACEHOLDER_DOMAINS = [
+  "localsearch.com",
+  "yellowpages.com",
+  "superpages.com",
+  "hotfrog.com",
+  "ezlocal.com",
+  "n49.com",
+];
+
+export function isDirectoryPlaceholder(url: string): boolean {
+  const domain = getDomain(url);
+  if (!domain) return false;
+  return DIRECTORY_PLACEHOLDER_DOMAINS.some(
+    (placeholder) => domain === placeholder || domain.endsWith("." + placeholder)
+  );
+}
+
 const GOV_NONPROFIT_KEYWORDS = [
   "government", "federal", "county", "state of", "district", "bureau", "branch",
   "secretary", "office of", "department of", "authority", "commission", "board of",
@@ -240,12 +257,20 @@ export function classifyResults(
 
     if (isGovNonprofit(result.name)) continue;
 
+    if (result.website && isDirectoryPlaceholder(result.website)) {
+      pollen.push({ ...result, website: undefined });
+      continue;
+    }
+
     if (!result.website) {
       pollen.push({ ...result, city: result.city, state: result.state });
       continue;
     }
 
-    if (isExcludedDomain(result.website)) continue;
+    if (isExcludedDomain(result.website)) {
+      pollen.push({ ...result, website: undefined });
+      continue;
+    }
 
     if (!isDotCom(result.website)) {
       pollen.push(result);
@@ -418,7 +443,9 @@ export async function scrapeYellowPages(
             if (websiteUrl.startsWith("/")) {
               websiteUrl = "https://www.yellowpages.com" + websiteUrl;
             }
-            entry.website = websiteUrl;
+            if (!isDirectoryPlaceholder(websiteUrl)) {
+              entry.website = websiteUrl;
+            }
           }
 
           results.push(entry);
@@ -495,11 +522,12 @@ export async function scrapeSuperpages(
         let pageCount = 0;
         for (let i = 0; i < names.length; i++) {
           if (!names[i] || names[i].length < 2) continue;
+          const websiteUrl = websites[i] && !isDirectoryPlaceholder(websites[i]) ? websites[i] : undefined;
           results.push({
             name: names[i],
             phone: phones[i],
             address: addresses[i],
-            website: websites[i],
+            website: websiteUrl,
             city: location.city,
             state: location.state,
             sourceUrl: url,
@@ -650,10 +678,11 @@ export async function scrapeHotfrog(
       } else {
         for (let i = 0; i < names.length; i++) {
           if (!names[i] || names[i].length < 2) continue;
+          const websiteUrl = websites[i] && !isDirectoryPlaceholder(websites[i]) ? websites[i] : undefined;
           results.push({
             name: names[i],
             phone: phones[i],
-            website: websites[i],
+            website: websiteUrl,
             city: location.city,
             state: location.state,
             sourceUrl: url,

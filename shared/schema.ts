@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, jsonb, timestamp, index, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, jsonb, timestamp, index, uniqueIndex, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1246,6 +1246,7 @@ export const hivePollen = pgTable("hive_pollen", {
 }, (table) => [
   index("hp_category_idx").on(table.category),
   index("hp_directory_idx").on(table.sourceDirectory),
+  uniqueIndex("hp_name_city_dir_idx").on(table.name, table.city, table.sourceDirectory),
 ]);
 
 export const insertHivePollenSchema = createInsertSchema(hivePollen).omit({ id: true, createdAt: true });
