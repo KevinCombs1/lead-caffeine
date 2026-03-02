@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { hiveDirectories, hiveCategories, hiveLocations } from "@shared/schema";
-import { sql } from "drizzle-orm";
+import { sql, inArray } from "drizzle-orm";
 
 interface DirectorySeed {
   name: string;
@@ -23,6 +23,7 @@ interface LocationSeed {
   state: string;
   slug: string;
   population: number;
+  tag?: string;
 }
 
 const DIRECTORIES: DirectorySeed[] = [
@@ -328,6 +329,28 @@ const CATEGORIES: CategorySeed[] = [
   cat("Powersports", "Automotive", ["Powersports Dealer", "Motorcycle Dealer", "ATV Dealer"]),
   cat("Marine Sales", "Automotive", ["Marine Dealer", "Boat Sales", "Boat Dealer"]),
   cat("Automotive Consulting", "Automotive", ["Automotive Consulting Firm", "Auto Industry Consulting", "Dealer Consulting"], true),
+
+  // Travel & Hospitality (20)
+  cat("Luxury Hotels", "Travel & Hospitality", ["Luxury Hotel", "Five Star Hotel", "Boutique Luxury Hotel"]),
+  cat("Boutique Hotels", "Travel & Hospitality", ["Boutique Hotel", "Independent Hotel", "Design Hotel"]),
+  cat("Vacation Rentals", "Travel & Hospitality", ["Vacation Rental Company", "Holiday Rentals", "Short Term Rental"]),
+  cat("Villa Rentals", "Travel & Hospitality", ["Villa Rental Company", "Luxury Villa Rental", "Private Villa"]),
+  cat("Travel Agencies", "Travel & Hospitality", ["Travel Agency", "Travel Agent", "Luxury Travel Agency"]),
+  cat("Tour Operators", "Travel & Hospitality", ["Tour Operator", "Guided Tours", "Sightseeing Tours"]),
+  cat("Event Venues", "Travel & Hospitality", ["Event Venue", "Banquet Hall", "Conference Center"]),
+  cat("Wedding Venues", "Travel & Hospitality", ["Wedding Venue", "Wedding Reception Hall", "Wedding Location"]),
+  cat("Resort & Spa", "Travel & Hospitality", ["Resort Spa", "Day Spa Resort", "Luxury Spa"]),
+  cat("Yacht Charter", "Travel & Hospitality", ["Yacht Charter Company", "Boat Charter", "Private Yacht Rental"]),
+  cat("Helicopter Tours", "Travel & Hospitality", ["Helicopter Tour Company", "Scenic Helicopter Tour", "Air Tour"]),
+  cat("Concierge Services", "Travel & Hospitality", ["Concierge Service", "Luxury Concierge", "Personal Concierge"]),
+  cat("Private Jet Charter", "Travel & Hospitality", ["Private Jet Charter", "Charter Flight", "Private Aviation"]),
+  cat("Destination Management", "Travel & Hospitality", ["Destination Management Company", "DMC", "Event Planning Destination"]),
+  cat("Travel Club", "Travel & Hospitality", ["Travel Club", "Vacation Club", "Members Only Travel"]),
+  cat("Timeshare", "Travel & Hospitality", ["Timeshare Company", "Vacation Ownership", "Timeshare Resort"]),
+  cat("Luxury Transportation", "Travel & Hospitality", ["Luxury Car Service", "Limousine Service", "Private Chauffeur"]),
+  cat("Golf Resort", "Travel & Hospitality", ["Golf Resort", "Golf Club", "Golf Course Resort"]),
+  cat("Beachfront Resort", "Travel & Hospitality", ["Beachfront Resort", "Beach Hotel", "Oceanfront Resort"]),
+  cat("Bed & Breakfast", "Travel & Hospitality", ["Bed and Breakfast", "B&B Inn", "Country Inn"]),
 ];
 
 const LOCATIONS: LocationSeed[] = [
@@ -356,7 +379,7 @@ const LOCATIONS: LocationSeed[] = [
   { city: "El Paso", state: "TX", slug: "el-paso-tx", population: 678815 },
   { city: "Boston", state: "MA", slug: "boston-ma", population: 675647 },
   { city: "Portland", state: "OR", slug: "portland-or", population: 652503 },
-  { city: "Las Vegas", state: "NV", slug: "las-vegas-nv", population: 641903 },
+  { city: "Las Vegas", state: "NV", slug: "las-vegas-nv", population: 641903, tag: "travel" },
   { city: "Memphis", state: "TN", slug: "memphis-tn", population: 633104 },
   { city: "Louisville", state: "KY", slug: "louisville-ky", population: 633045 },
   { city: "Baltimore", state: "MD", slug: "baltimore-md", population: 585708 },
@@ -385,7 +408,7 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Bakersfield", state: "CA", slug: "bakersfield-ca", population: 403455 },
   { city: "Aurora", state: "CO", slug: "aurora-co", population: 386261 },
   { city: "Anaheim", state: "CA", slug: "anaheim-ca", population: 350365 },
-  { city: "Honolulu", state: "HI", slug: "honolulu-hi", population: 350964 },
+  { city: "Honolulu", state: "HI", slug: "honolulu-hi", population: 350964, tag: "travel" },
   { city: "Santa Ana", state: "CA", slug: "santa-ana-ca", population: 310227 },
   { city: "Riverside", state: "CA", slug: "riverside-ca", population: 314998 },
   { city: "Corpus Christi", state: "TX", slug: "corpus-christi-tx", population: 317863 },
@@ -412,7 +435,7 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Buffalo", state: "NY", slug: "buffalo-ny", population: 278349 },
   { city: "Madison", state: "WI", slug: "madison-wi", population: 269840 },
   { city: "Lubbock", state: "TX", slug: "lubbock-tx", population: 263930 },
-  { city: "Scottsdale", state: "AZ", slug: "scottsdale-az", population: 241361 },
+  { city: "Scottsdale", state: "AZ", slug: "scottsdale-az", population: 241361, tag: "travel" },
   { city: "Reno", state: "NV", slug: "reno-nv", population: 264165 },
   { city: "Glendale", state: "AZ", slug: "glendale-az", population: 248325 },
   { city: "Gilbert", state: "AZ", slug: "gilbert-az", population: 267918 },
@@ -467,7 +490,7 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Sioux Falls", state: "SD", slug: "sioux-falls-sd", population: 192517 },
   { city: "Chattanooga", state: "TN", slug: "chattanooga-tn", population: 181099 },
   { city: "Brownsville", state: "TX", slug: "brownsville-tx", population: 186738 },
-  { city: "Fort Lauderdale", state: "FL", slug: "fort-lauderdale-fl", population: 182760 },
+  { city: "Fort Lauderdale", state: "FL", slug: "fort-lauderdale-fl", population: 182760, tag: "travel" },
   { city: "Providence", state: "RI", slug: "providence-ri", population: 190934 },
   { city: "Newport News", state: "VA", slug: "newport-news-va", population: 186247 },
   { city: "Rancho Cucamonga", state: "CA", slug: "rancho-cucamonga-ca", population: 177751 },
@@ -503,7 +526,7 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Joliet", state: "IL", slug: "joliet-il", population: 150362 },
   { city: "Murfreesboro", state: "TN", slug: "murfreesboro-tn", population: 152769 },
   { city: "Naperville", state: "IL", slug: "naperville-il", population: 149540 },
-  { city: "Savannah", state: "GA", slug: "savannah-ga", population: 147780 },
+  { city: "Savannah", state: "GA", slug: "savannah-ga", population: 147780, tag: "travel" },
   { city: "Bridgeport", state: "CT", slug: "bridgeport-ct", population: 148529 },
   { city: "Paterson", state: "NJ", slug: "paterson-nj", population: 159732 },
   { city: "Mesquite", state: "TX", slug: "mesquite-tx", population: 150108 },
@@ -649,7 +672,7 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Hemet", state: "CA", slug: "hemet-ca", population: 90400 },
   { city: "Lake Charles", state: "LA", slug: "lake-charles-la", population: 82828 },
   { city: "Lake Forest", state: "CA", slug: "lake-forest-ca", population: 85623 },
-  { city: "Napa", state: "CA", slug: "napa-ca", population: 79068 },
+  { city: "Napa", state: "CA", slug: "napa-ca", population: 79068, tag: "travel" },
   { city: "Redding", state: "CA", slug: "redding-ca", population: 92025 },
   { city: "Kissimmee", state: "FL", slug: "kissimmee-fl", population: 79226 },
   { city: "North Port", state: "FL", slug: "north-port-fl", population: 74793 },
@@ -675,13 +698,13 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Albany", state: "NY", slug: "albany-ny", population: 99224 },
   { city: "Trenton", state: "NJ", slug: "trenton-nj", population: 90871 },
   { city: "Duluth", state: "MN", slug: "duluth-mn", population: 90884 },
-  { city: "Charleston", state: "SC", slug: "charleston-sc", population: 150227 },
-  { city: "Asheville", state: "NC", slug: "asheville-nc", population: 94589 },
+  { city: "Charleston", state: "SC", slug: "charleston-sc", population: 150227, tag: "travel" },
+  { city: "Asheville", state: "NC", slug: "asheville-nc", population: 94589, tag: "travel" },
   { city: "Olympia", state: "WA", slug: "olympia-wa", population: 55605 },
   { city: "Pensacola", state: "FL", slug: "pensacola-fl", population: 54312 },
   { city: "Savannah", state: "GA", slug: "savannah-ga-2", population: 147780 },
   { city: "Boca Raton", state: "FL", slug: "boca-raton-fl", population: 99805 },
-  { city: "Sarasota", state: "FL", slug: "sarasota-fl", population: 57738 },
+  { city: "Sarasota", state: "FL", slug: "sarasota-fl", population: 57738, tag: "travel" },
   { city: "Daytona Beach", state: "FL", slug: "daytona-beach-fl", population: 72647 },
   { city: "Ocala", state: "FL", slug: "ocala-fl", population: 63591 },
   { city: "Fort Myers", state: "FL", slug: "fort-myers-fl", population: 92754 },
@@ -1111,18 +1134,18 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Rock Hill", state: "SC", slug: "rock-hill-sc", population: 74410 },
   { city: "Mount Pleasant", state: "SC", slug: "mount-pleasant-sc", population: 94069 },
   { city: "Summerville", state: "SC", slug: "summerville-sc", population: 52549 },
-  { city: "Hilton Head Island", state: "SC", slug: "hilton-head-island-sc", population: 40000 },
+  { city: "Hilton Head Island", state: "SC", slug: "hilton-head-island-sc", population: 40000, tag: "travel" },
   { city: "Goose Creek", state: "SC", slug: "goose-creek-sc", population: 45672 },
   { city: "Florence", state: "SC", slug: "florence-sc", population: 40218 },
   { city: "Spartanburg", state: "SC", slug: "spartanburg-sc", population: 37647 },
   { city: "Anderson", state: "SC", slug: "anderson-sc", population: 28132 },
   { city: "Sumter", state: "SC", slug: "sumter-sc", population: 40524 },
-  { city: "Myrtle Beach", state: "SC", slug: "myrtle-beach-sc", population: 35682 },
+  { city: "Myrtle Beach", state: "SC", slug: "myrtle-beach-sc", population: 35682, tag: "travel" },
   { city: "Aiken", state: "SC", slug: "aiken-sc", population: 31458 },
   { city: "Greer", state: "SC", slug: "greer-sc", population: 35360 },
   { city: "Simpsonville", state: "SC", slug: "simpsonville-sc", population: 25028 },
   { city: "Bluffton", state: "SC", slug: "bluffton-sc", population: 30240 },
-  { city: "Naples", state: "FL", slug: "naples-fl", population: 22088 },
+  { city: "Naples", state: "FL", slug: "naples-fl", population: 22088, tag: "travel" },
   { city: "Easley", state: "SC", slug: "easley-sc", population: 22076 },
   { city: "Mauldin", state: "SC", slug: "mauldin-sc", population: 26182 },
   { city: "Conway", state: "SC", slug: "conway-sc", population: 25450 },
@@ -1246,27 +1269,104 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Nixa", state: "MO", slug: "nixa-mo", population: 22086 },
   { city: "Ozark", state: "MO", slug: "ozark-mo", population: 21010 },
   { city: "Raymore", state: "MO", slug: "raymore-mo", population: 23434 },
+
+  // Travel Destinations — Hawaii
+  { city: "Kailua-Kona", state: "HI", slug: "kailua-kona-hi", population: 14000, tag: "travel" },
+  { city: "Hilo", state: "HI", slug: "hilo-hi", population: 45703, tag: "travel" },
+  { city: "Kahului", state: "HI", slug: "kahului-hi", population: 29000, tag: "travel" },
+  { city: "Kihei", state: "HI", slug: "kihei-hi", population: 22749, tag: "travel" },
+  { city: "Wailea", state: "HI", slug: "wailea-hi", population: 6800, tag: "travel" },
+  { city: "Lahaina", state: "HI", slug: "lahaina-hi", population: 12702, tag: "travel" },
+  { city: "Kapaa", state: "HI", slug: "kapaa-hi", population: 10699, tag: "travel" },
+  { city: "Princeville", state: "HI", slug: "princeville-hi", population: 2500, tag: "travel" },
+  { city: "Lihue", state: "HI", slug: "lihue-hi", population: 7834, tag: "travel" },
+  { city: "Waikoloa", state: "HI", slug: "waikoloa-hi", population: 7500, tag: "travel" },
+  { city: "Kapolei", state: "HI", slug: "kapolei-hi", population: 21000, tag: "travel" },
+  { city: "Wailuku", state: "HI", slug: "wailuku-hi", population: 17500, tag: "travel" },
+  { city: "Kaneohe", state: "HI", slug: "kaneohe-hi", population: 34597, tag: "travel" },
+  { city: "Pearl City", state: "HI", slug: "pearl-city-hi", population: 47698, tag: "travel" },
+
+  // Travel Destinations — Florida Luxury
+  { city: "Miami Beach", state: "FL", slug: "miami-beach-fl", population: 82890, tag: "travel" },
+  { city: "Key West", state: "FL", slug: "key-west-fl", population: 25478, tag: "travel" },
+  { city: "Palm Beach", state: "FL", slug: "palm-beach-fl", population: 9169, tag: "travel" },
+  { city: "Destin", state: "FL", slug: "destin-fl", population: 14468, tag: "travel" },
+  { city: "Amelia Island", state: "FL", slug: "amelia-island-fl", population: 6300, tag: "travel" },
+  { city: "Marco Island", state: "FL", slug: "marco-island-fl", population: 17834, tag: "travel" },
+  { city: "Sanibel", state: "FL", slug: "sanibel-fl", population: 7397, tag: "travel" },
+  { city: "St. Augustine", state: "FL", slug: "st-augustine-fl", population: 15415, tag: "travel" },
+  { city: "Anna Maria Island", state: "FL", slug: "anna-maria-island-fl", population: 1500, tag: "travel" },
+
+  // Travel Destinations — Mountain & Ski
+  { city: "Aspen", state: "CO", slug: "aspen-co", population: 7004, tag: "travel" },
+  { city: "Vail", state: "CO", slug: "vail-co", population: 5614, tag: "travel" },
+  { city: "Park City", state: "UT", slug: "park-city-ut", population: 8377, tag: "travel" },
+  { city: "Jackson", state: "WY", slug: "jackson-wy", population: 10529, tag: "travel" },
+  { city: "Sun Valley", state: "ID", slug: "sun-valley-id", population: 1786, tag: "travel" },
+  { city: "Telluride", state: "CO", slug: "telluride-co", population: 2607, tag: "travel" },
+  { city: "Steamboat Springs", state: "CO", slug: "steamboat-springs-co", population: 13569, tag: "travel" },
+  { city: "Big Sky", state: "MT", slug: "big-sky-mt", population: 3591, tag: "travel" },
+  { city: "Breckenridge", state: "CO", slug: "breckenridge-co", population: 5078, tag: "travel" },
+
+  // Travel Destinations — Coastal Luxury
+  { city: "Carmel-by-the-Sea", state: "CA", slug: "carmel-by-the-sea-ca", population: 3897, tag: "travel" },
+  { city: "Sedona", state: "AZ", slug: "sedona-az", population: 10336, tag: "travel" },
+  { city: "Santa Barbara", state: "CA", slug: "santa-barbara-ca", population: 88665, tag: "travel" },
+  { city: "Nantucket", state: "MA", slug: "nantucket-ma", population: 14255, tag: "travel" },
+  { city: "Martha's Vineyard", state: "MA", slug: "marthas-vineyard-ma", population: 17332, tag: "travel" },
+  { city: "Barnstable", state: "MA", slug: "barnstable-ma", population: 44641, tag: "travel" },
+  { city: "Monterey", state: "CA", slug: "monterey-ca", population: 28454, tag: "travel" },
+  { city: "Laguna Beach", state: "CA", slug: "laguna-beach-ca", population: 23032, tag: "travel" },
+  { city: "Coronado", state: "CA", slug: "coronado-ca", population: 24697, tag: "travel" },
+
+  // Travel Destinations — Other High-End
+  { city: "South Lake Tahoe", state: "CA", slug: "south-lake-tahoe-ca", population: 21403, tag: "travel" },
+  { city: "Kiawah Island", state: "SC", slug: "kiawah-island-sc", population: 1626, tag: "travel" },
+  { city: "Sea Island", state: "GA", slug: "sea-island-ga", population: 600, tag: "travel" },
+  { city: "Clearwater Beach", state: "FL", slug: "clearwater-beach-fl", population: 10000, tag: "travel" },
+  { city: "Whitefish", state: "MT", slug: "whitefish-mt", population: 8032, tag: "travel" },
+  { city: "Kennebunkport", state: "ME", slug: "kennebunkport-me", population: 3603, tag: "travel" },
+  { city: "Bar Harbor", state: "ME", slug: "bar-harbor-me", population: 5827, tag: "travel" },
+  { city: "Ketchum", state: "ID", slug: "ketchum-id", population: 3598, tag: "travel" },
 ];
 
 export async function seedHiveData(): Promise<void> {
   const existingDirs = await db.select({ id: hiveDirectories.id }).from(hiveDirectories).limit(1);
   if (existingDirs.length > 0) {
-    const existingLocCount = await db.select({ id: hiveLocations.id }).from(hiveLocations);
-    if (existingLocCount.length < LOCATIONS.length) {
-      const existingSlugs = new Set(
-        (await db.select({ slug: hiveLocations.slug }).from(hiveLocations)).map(l => l.slug)
-      );
-      const newLocations = LOCATIONS.filter(l => !existingSlugs.has(l.slug));
-      if (newLocations.length > 0) {
-        console.log(`[hive-seed] Adding ${newLocations.length} new locations...`);
-        const BATCH_SIZE = 50;
-        for (let i = 0; i < newLocations.length; i += BATCH_SIZE) {
-          const batch = newLocations.slice(i, i + BATCH_SIZE);
-          await db.insert(hiveLocations).values(batch);
-        }
-        console.log(`[hive-seed] Added ${newLocations.length} new locations (total: ${existingLocCount.length + newLocations.length}).`);
+    const existingLocSlugs = new Set(
+      (await db.select({ slug: hiveLocations.slug }).from(hiveLocations)).map(l => l.slug)
+    );
+    const newLocations = LOCATIONS.filter(l => !existingLocSlugs.has(l.slug));
+    if (newLocations.length > 0) {
+      console.log(`[hive-seed] Adding ${newLocations.length} new locations...`);
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < newLocations.length; i += BATCH_SIZE) {
+        const batch = newLocations.slice(i, i + BATCH_SIZE);
+        await db.insert(hiveLocations).values(batch);
       }
+      console.log(`[hive-seed] Added ${newLocations.length} new locations.`);
     }
+
+    const travelSlugs = LOCATIONS.filter(l => l.tag === "travel").map(l => l.slug);
+    if (travelSlugs.length > 0) {
+      await db.update(hiveLocations).set({ tag: "travel" }).where(inArray(hiveLocations.slug, travelSlugs));
+      console.log(`[hive-seed] Tagged ${travelSlugs.length} locations as travel.`);
+    }
+
+    const existingCatSlugs = new Set(
+      (await db.select({ slug: hiveCategories.slug }).from(hiveCategories)).map(c => c.slug)
+    );
+    const newCategories = CATEGORIES.filter(c => !existingCatSlugs.has(c.slug));
+    if (newCategories.length > 0) {
+      console.log(`[hive-seed] Adding ${newCategories.length} new categories...`);
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < newCategories.length; i += BATCH_SIZE) {
+        const batch = newCategories.slice(i, i + BATCH_SIZE);
+        await db.insert(hiveCategories).values(batch);
+      }
+      console.log(`[hive-seed] Added ${newCategories.length} new categories.`);
+    }
+
     console.log("[hive-seed] Directories already seeded, skipping.");
     return;
   }

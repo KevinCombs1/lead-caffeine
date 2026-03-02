@@ -1173,6 +1173,7 @@ export const hiveLocations = pgTable("hive_locations", {
   state: text("state").notNull(),
   slug: text("slug").notNull(),
   population: integer("population").notNull().default(0),
+  tag: text("tag"),
 });
 
 export const insertHiveLocationSchema = createInsertSchema(hiveLocations).omit({ id: true });

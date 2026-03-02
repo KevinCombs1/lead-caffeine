@@ -5,7 +5,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useToast } from "@/hooks/use-toast";
 import {
   Flower2, Search, Play, Square, Download, Trash2, Heart,
-  ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw,
+  ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw, Palmtree, Building2, Plane,
   Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine
 } from "lucide-react";
 
@@ -33,6 +33,7 @@ interface HiveLocation {
   state: string;
   slug: string;
   population: number;
+  tag: string | null;
 }
 
 interface HiveFlower {
@@ -404,7 +405,7 @@ export default function HivePage() {
                     {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex gap-1 flex-wrap">
                   <button
                     onClick={selectAllLocations}
                     className="text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200"
@@ -418,6 +419,43 @@ export default function HivePage() {
                     data-testid="button-clear-all-locations"
                   >
                     <XSquare className="w-3 h-3 inline mr-1" />Clear
+                  </button>
+                  <span className="text-gray-600 text-[10px] flex items-center px-1">|</span>
+                  <button
+                    onClick={() => {
+                      const travelLocs = locations.filter(l => l.tag === "travel");
+                      const allSelected = travelLocs.every(l => selectedLocs.has(l.id));
+                      const next = new Set(selectedLocs);
+                      travelLocs.forEach(l => allSelected ? next.delete(l.id) : next.add(l.id));
+                      setSelectedLocs(next);
+                    }}
+                    className={`text-[10px] px-2 py-0.5 rounded border ${
+                      locations.filter(l => l.tag === "travel").length > 0 &&
+                      locations.filter(l => l.tag === "travel").every(l => selectedLocs.has(l.id))
+                        ? "border-amber-500 bg-amber-500/20 text-amber-300"
+                        : "border-gray-700 text-gray-400 hover:text-gray-200"
+                    }`}
+                    data-testid="button-tag-travel"
+                  >
+                    <Palmtree className="w-3 h-3 inline mr-0.5" />Travel ({locations.filter(l => l.tag === "travel").length})
+                  </button>
+                  <button
+                    onClick={() => {
+                      const metroLocs = locations.filter(l => !l.tag);
+                      const allSelected = metroLocs.every(l => selectedLocs.has(l.id));
+                      const next = new Set(selectedLocs);
+                      metroLocs.forEach(l => allSelected ? next.delete(l.id) : next.add(l.id));
+                      setSelectedLocs(next);
+                    }}
+                    className={`text-[10px] px-2 py-0.5 rounded border ${
+                      locations.filter(l => !l.tag).length > 0 &&
+                      locations.filter(l => !l.tag).every(l => selectedLocs.has(l.id))
+                        ? "border-blue-500 bg-blue-500/20 text-blue-300"
+                        : "border-gray-700 text-gray-400 hover:text-gray-200"
+                    }`}
+                    data-testid="button-tag-metro"
+                  >
+                    <Building2 className="w-3 h-3 inline mr-0.5" />Metro ({locations.filter(l => !l.tag).length})
                   </button>
                 </div>
                 <div className="space-y-0.5 max-h-40 overflow-y-auto border border-gray-800 rounded p-2 bg-gray-900/50">
@@ -434,6 +472,7 @@ export default function HivePage() {
                         className="rounded"
                       />
                       <span className="text-gray-200">{l.city}, {l.state}</span>
+                      {l.tag === "travel" && <Plane className="w-3 h-3 text-amber-500 inline" data-testid={`icon-travel-${l.slug}`} />}
                       <span className="text-gray-600 text-[10px]">{l.population.toLocaleString()}</span>
                     </label>
                   ))}
