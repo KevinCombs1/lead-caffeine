@@ -11,7 +11,14 @@ import {
   fiscalIntel, type FiscalIntel, type InsertFiscalIntel,
   fiscalLeads, type FiscalLead, type InsertFiscalLead,
   portfolioAllocations, type PortfolioAllocation, type InsertPortfolioAllocation,
+  hiveDirectories, type HiveDirectory, type InsertHiveDirectory,
+  hiveCategories, type HiveCategory, type InsertHiveCategory,
+  hiveLocations, type HiveLocation, type InsertHiveLocation,
+  hiveCrawlJobs, type HiveCrawlJob, type InsertHiveCrawlJob,
+  hiveFlowers, type HiveFlower, type InsertHiveFlower,
+  hivePollen, type HivePollen, type InsertHivePollen,
 } from "@shared/schema";
+import { ilike, or, count } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -72,6 +79,26 @@ export interface IStorage {
   getPortfolioAllocation(leadId: string): Promise<PortfolioAllocation | undefined>;
   removeFromPortfolio(leadId: string): Promise<void>;
   clearPortfolio(): Promise<void>;
+
+  getHiveDirectories(): Promise<HiveDirectory[]>;
+  getHiveCategories(): Promise<HiveCategory[]>;
+  getHiveLocations(): Promise<HiveLocation[]>;
+  createHiveCrawlJob(job: InsertHiveCrawlJob): Promise<HiveCrawlJob>;
+  updateHiveCrawlJob(id: string, updates: Partial<HiveCrawlJob>): Promise<HiveCrawlJob | undefined>;
+  getHiveCrawlJobs(): Promise<HiveCrawlJob[]>;
+  getHiveCrawlJob(id: string): Promise<HiveCrawlJob | undefined>;
+  appendCrawlLog(jobId: string, message: string): Promise<void>;
+  bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number>;
+  bulkInsertPollen(pollen: InsertHivePollen[]): Promise<number>;
+  getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
+  getHivePollen(filters: { search?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }>;
+  deleteFlower(id: string): Promise<void>;
+  updateFlowerHealth(id: string, isAlive: boolean): Promise<void>;
+  getHiveStats(): Promise<{ totalFlowers: number; totalPollen: number; byDirectory: Record<string, number>; byCategory: Record<string, number> }>;
+  getHiveCoverage(): Promise<{ category: string; city: string; state: string; count: number }[]>;
+  getHiveDirectoryCount(): Promise<number>;
+  getHiveCategoryCount(): Promise<number>;
+  getHiveLocationCount(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -393,6 +420,182 @@ export class DatabaseStorage implements IStorage {
 
   async clearPortfolio(): Promise<void> {
     await db.delete(portfolioAllocations);
+  }
+
+  async getHiveDirectories(): Promise<HiveDirectory[]> {
+    return db.select().from(hiveDirectories);
+  }
+
+  async getHiveCategories(): Promise<HiveCategory[]> {
+    return db.select().from(hiveCategories);
+  }
+
+  async getHiveLocations(): Promise<HiveLocation[]> {
+    return db.select().from(hiveLocations);
+  }
+
+  async createHiveCrawlJob(job: InsertHiveCrawlJob): Promise<HiveCrawlJob> {
+    const [created] = await db.insert(hiveCrawlJobs).values(job).returning();
+    return created;
+  }
+
+  async updateHiveCrawlJob(id: string, updates: Partial<HiveCrawlJob>): Promise<HiveCrawlJob | undefined> {
+    const [updated] = await db.update(hiveCrawlJobs).set(updates).where(eq(hiveCrawlJobs.id, id)).returning();
+    return updated;
+  }
+
+  async getHiveCrawlJobs(): Promise<HiveCrawlJob[]> {
+    return db.select().from(hiveCrawlJobs).orderBy(desc(hiveCrawlJobs.startedAt)).limit(20);
+  }
+
+  async getHiveCrawlJob(id: string): Promise<HiveCrawlJob | undefined> {
+    const [job] = await db.select().from(hiveCrawlJobs).where(eq(hiveCrawlJobs.id, id));
+    return job;
+  }
+
+  async appendCrawlLog(jobId: string, message: string): Promise<void> {
+    await db.execute(sql`UPDATE hive_crawl_jobs SET log = array_append(log, ${message}) WHERE id = ${jobId}`);
+  }
+
+  async bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number> {
+    if (flowers.length === 0) return 0;
+    let inserted = 0;
+    const batchSize = 50;
+    for (let i = 0; i < flowers.length; i += batchSize) {
+      const batch = flowers.slice(i, i + batchSize);
+      const result = await db.insert(hiveFlowers).values(batch).onConflictDoNothing({ target: hiveFlowers.normalizedUrl }).returning();
+      inserted += result.length;
+    }
+    return inserted;
+  }
+
+  async bulkInsertPollen(pollen: InsertHivePollen[]): Promise<number> {
+    if (pollen.length === 0) return 0;
+    let inserted = 0;
+    const batchSize = 50;
+    for (let i = 0; i < pollen.length; i += batchSize) {
+      const batch = pollen.slice(i, i + batchSize);
+      const result = await db.insert(hivePollen).values(batch).returning();
+      inserted += result.length;
+    }
+    return inserted;
+  }
+
+  async getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }> {
+    const conditions: any[] = [];
+    if (filters.directory) conditions.push(eq(hiveFlowers.sourceDirectory, filters.directory));
+    if (filters.category) conditions.push(eq(hiveFlowers.category, filters.category));
+    if (filters.city) conditions.push(eq(hiveFlowers.city, filters.city));
+    if (filters.state) conditions.push(eq(hiveFlowers.state, filters.state));
+    if (filters.isAlive !== undefined) conditions.push(eq(hiveFlowers.isAlive, filters.isAlive));
+    if (filters.search) {
+      conditions.push(or(
+        ilike(hiveFlowers.name, `%${filters.search}%`),
+        ilike(hiveFlowers.website, `%${filters.search}%`)
+      ));
+    }
+
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+    const offset = (page - 1) * limit;
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(hiveFlowers).where(whereClause);
+    const total = Number(countRow?.count || 0);
+
+    const flowers = await db.select().from(hiveFlowers).where(whereClause).orderBy(desc(hiveFlowers.createdAt)).limit(limit).offset(offset);
+
+    return { flowers, total };
+  }
+
+  async getHivePollen(filters: { search?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }> {
+    const conditions: any[] = [];
+    if (filters.search) {
+      conditions.push(or(
+        ilike(hivePollen.name, `%${filters.search}%`)
+      ));
+    }
+
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+    const offset = (page - 1) * limit;
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(hivePollen).where(whereClause);
+    const total = Number(countRow?.count || 0);
+
+    const pollen = await db.select().from(hivePollen).where(whereClause).orderBy(desc(hivePollen.createdAt)).limit(limit).offset(offset);
+
+    return { pollen, total };
+  }
+
+  async deleteFlower(id: string): Promise<void> {
+    await db.delete(hiveFlowers).where(eq(hiveFlowers.id, id));
+  }
+
+  async updateFlowerHealth(id: string, isAlive: boolean): Promise<void> {
+    await db.update(hiveFlowers).set({ isAlive, lastChecked: new Date() }).where(eq(hiveFlowers.id, id));
+  }
+
+  async getHiveStats(): Promise<{ totalFlowers: number; totalPollen: number; byDirectory: Record<string, number>; byCategory: Record<string, number> }> {
+    const [flowerCount] = await db.select({ count: sql<number>`count(*)` }).from(hiveFlowers);
+    const [pollenCount] = await db.select({ count: sql<number>`count(*)` }).from(hivePollen);
+
+    const dirCounts = await db.select({
+      dir: hiveFlowers.sourceDirectory,
+      count: sql<number>`count(*)`
+    }).from(hiveFlowers).groupBy(hiveFlowers.sourceDirectory);
+
+    const catCounts = await db.select({
+      cat: hiveFlowers.category,
+      count: sql<number>`count(*)`
+    }).from(hiveFlowers).groupBy(hiveFlowers.category);
+
+    const byDirectory: Record<string, number> = {};
+    for (const r of dirCounts) byDirectory[r.dir] = Number(r.count);
+
+    const byCategory: Record<string, number> = {};
+    for (const r of catCounts) byCategory[r.cat] = Number(r.count);
+
+    return {
+      totalFlowers: Number(flowerCount?.count || 0),
+      totalPollen: Number(pollenCount?.count || 0),
+      byDirectory,
+      byCategory
+    };
+  }
+
+  async getHiveCoverage(): Promise<{ category: string; city: string; state: string; count: number }[]> {
+    const rows = await db.select({
+      category: hiveFlowers.category,
+      city: hiveFlowers.city,
+      state: hiveFlowers.state,
+      count: sql<number>`count(*)`
+    }).from(hiveFlowers).groupBy(hiveFlowers.category, hiveFlowers.city, hiveFlowers.state);
+
+    return rows.map(r => ({
+      category: r.category,
+      city: r.city || "",
+      state: r.state || "",
+      count: Number(r.count)
+    }));
+  }
+
+  async getHiveDirectoryCount(): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)` }).from(hiveDirectories);
+    return Number(row?.count || 0);
+  }
+
+  async getHiveCategoryCount(): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)` }).from(hiveCategories);
+    return Number(row?.count || 0);
+  }
+
+  async getHiveLocationCount(): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)` }).from(hiveLocations);
+    return Number(row?.count || 0);
   }
 }
 

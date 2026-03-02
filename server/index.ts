@@ -60,6 +60,13 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  try {
+    const { seedHiveData } = await import("./hive-seed");
+    await seedHiveData();
+  } catch (err: any) {
+    console.log("[hive-seed] Seed skipped or error:", err.message);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

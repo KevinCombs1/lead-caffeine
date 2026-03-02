@@ -19,7 +19,6 @@ import { promisify } from "util";
 const dnsResolve = promisify(dns.resolve);
 import { initializeSources, getSources, fetchSource, fetchAllSources, getEvents, getEventsCount, getEventsByState, getTrends, getTimelines, getConvergencePoints, getDealStats, getSourceHealth } from "./deal-sources";
 import { runFullEnrichment, isEnrichmentRunning, type FullEnrichmentResult } from "./full-enrichment";
-
 function getOwnerPassword() {
   return process.env.SCANNER_PASSWORD || "passwardo";
 }
@@ -2694,6 +2693,215 @@ export async function registerRoutes(
     res.setHeader("Content-Type", "application/gzip");
     res.setHeader("Content-Disposition", "attachment; filename=DATA-Cloudware-Full-Archive.tar.gz");
     res.sendFile(archivePath);
+  });
+
+  app.get("/api/hive/directories", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const dirs = await storage.getHiveDirectories();
+      res.json(dirs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hive/categories", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const cats = await storage.getHiveCategories();
+      res.json(cats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hive/locations", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const locs = await storage.getHiveLocations();
+      res.json(locs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/hive/crawl", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { directoryIds, categoryIds, locationIds } = req.body;
+      if (!directoryIds?.length || !categoryIds?.length || !locationIds?.length) {
+        return res.status(400).json({ error: "Must select directories, categories, and locations" });
+      }
+      const { startRayOfGrace } = await import("./hive-engine");
+      const jobId = await startRayOfGrace(directoryIds, categoryIds, locationIds);
+      res.json({ jobId });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/hive/crawl/:id/stop", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { stopRayOfGrace } = await import("./hive-engine");
+      await stopRayOfGrace();
+      res.json({ stopped: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hive/crawl/status", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getActiveEngine } = await import("./hive-engine");
+      const engine = getActiveEngine();
+      const jobs = await storage.getHiveCrawlJobs();
+      res.json({
+        active: engine ? engine.getStatus() : null,
+        recentJobs: jobs,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hive/crawl/:id/log", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const job = await storage.getHiveCrawlJob(req.params.id);
+      if (!job) return res.status(404).json({ error: "Job not found" });
+      res.json({ log: job.log || [], status: job.status, flowersFound: job.flowersFound, pollenFound: job.pollenFound });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hive/flowers", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const filters = {
+        directory: req.query.directory as string | undefined,
+        category: req.query.category as string | undefined,
+        city: req.query.city as string | undefined,
+        state: req.query.state as string | undefined,
+        search: req.query.search as string | undefined,
+        isAlive: req.query.alive !== undefined ? req.query.alive === "true" : undefined,
+        page: req.query.page ? parseInt(req.query.page as string) : 1,
+        limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
+      };
+      const result = await storage.getHiveFlowers(filters);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/hive/flowers/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      await storage.deleteFlower(req.params.id);
+      res.json({ deleted: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hive/pollen", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const filters = {
+        search: req.query.search as string | undefined,
+        page: req.query.page ? parseInt(req.query.page as string) : 1,
+        limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
+      };
+      const result = await storage.getHivePollen(filters);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hive/stats", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const stats = await storage.getHiveStats();
+      const dirCount = await storage.getHiveDirectoryCount();
+      const catCount = await storage.getHiveCategoryCount();
+      const locCount = await storage.getHiveLocationCount();
+      res.json({ ...stats, directoryCount: dirCount, categoryCount: catCount, locationCount: locCount });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hive/coverage", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const coverage = await storage.getHiveCoverage();
+      res.json(coverage);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hive/export", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const filters = {
+        directory: req.query.directory as string | undefined,
+        category: req.query.category as string | undefined,
+        city: req.query.city as string | undefined,
+        state: req.query.state as string | undefined,
+        search: req.query.search as string | undefined,
+        isAlive: req.query.alive !== undefined ? req.query.alive === "true" : undefined,
+        page: 1,
+        limit: 10000,
+      };
+      const { flowers } = await storage.getHiveFlowers(filters);
+
+      const header = "Name,Website,Phone,City,State,Category,Source,Franchise,Alive\n";
+      const csvEscape = (s: string | null) => {
+        if (!s) return "";
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const rows = flowers.map(f =>
+        [f.name, f.website, f.phone, f.city, f.state, f.category, f.sourceDirectory, f.isFranchise ? "Yes" : "No", f.isAlive ? "Yes" : "No"]
+          .map(csvEscape).join(",")
+      ).join("\n");
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=beauteous-brigade-flowers.csv");
+      res.send(header + rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hive/export-pollen", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const filters = {
+        search: req.query.search as string | undefined,
+        page: 1,
+        limit: 10000,
+      };
+      const { pollen } = await storage.getHivePollen(filters);
+
+      const header = "Name,Phone,City,State,Category,Source\n";
+      const csvEscape = (s: string | null) => {
+        if (!s) return "";
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const rows = pollen.map(p =>
+        [p.name, p.phone, p.city, p.state, p.category, p.sourceDirectory]
+          .map(csvEscape).join(",")
+      ).join("\n");
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=beauteous-brigade-pollen.csv");
+      res.send(header + rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/hive/health-check", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { checkFlowerHealth } = await import("./hive-engine");
+      const result = await checkFlowerHealth(50);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   return httpServer;

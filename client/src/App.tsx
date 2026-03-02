@@ -9,8 +9,9 @@ import LightEngine from "@/pages/light";
 import ShapesPage from "@/pages/shapes";
 import DealsPage from "@/pages/deals";
 import PortfolioPage from "@/pages/portfolio";
+import HivePage from "@/pages/hive";
 import NotFound from "@/pages/not-found";
-import { Loader2, Sun, LogOut, Box, Radio, Palette, Contrast, FolderOpen } from "lucide-react";
+import { Loader2, Sun, LogOut, Box, Radio, Palette, Contrast, FolderOpen, Flower2 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { Link, useLocation } from "wouter";
 
@@ -62,6 +63,15 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
               <Box className="w-3 h-3" />
               4D Shapes
             </Link>
+            <Link href="/hive"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/hive" ? `${theme.accentText} ${theme.accentBg}` : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-beauteous-brigade"
+            >
+              <Flower2 className="w-3 h-3" />
+              Beauteous Brigade
+            </Link>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -104,6 +114,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
         <Route path="/portfolio" component={PortfolioPage} />
         <Route path="/deals" component={DealsPage} />
         <Route path="/shapes" component={ShapesPage} />
+        <Route path="/hive" component={HivePage} />
         <Route component={NotFound} />
       </Switch>
     </div>

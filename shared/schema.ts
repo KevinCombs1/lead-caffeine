@@ -1141,6 +1141,117 @@ export const insertBatchCompanySchema = createInsertSchema(batchCompanies).omit(
 export type BatchCompany = typeof batchCompanies.$inferSelect;
 export type InsertBatchCompany = z.infer<typeof insertBatchCompanySchema>;
 
+export const hiveDirectories = pgTable("hive_directories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  baseUrl: text("base_url").notNull(),
+  scraperKey: text("scraper_key").notNull().unique(),
+  enabled: boolean("enabled").notNull().default(true),
+  status: text("status").notNull().default("untested"),
+});
+
+export const insertHiveDirectorySchema = createInsertSchema(hiveDirectories).omit({ id: true });
+export type HiveDirectory = typeof hiveDirectories.$inferSelect;
+export type InsertHiveDirectory = z.infer<typeof insertHiveDirectorySchema>;
+
+export const hiveCategories = pgTable("hive_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  bundle: text("bundle").notNull(),
+  searchAliases: text("search_aliases").array().default(sql`'{}'::text[]`),
+  isConsultingVariant: boolean("is_consulting_variant").notNull().default(false),
+});
+
+export const insertHiveCategorySchema = createInsertSchema(hiveCategories).omit({ id: true });
+export type HiveCategory = typeof hiveCategories.$inferSelect;
+export type InsertHiveCategory = z.infer<typeof insertHiveCategorySchema>;
+
+export const hiveLocations = pgTable("hive_locations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
+  slug: text("slug").notNull(),
+  population: integer("population").notNull().default(0),
+});
+
+export const insertHiveLocationSchema = createInsertSchema(hiveLocations).omit({ id: true });
+export type HiveLocation = typeof hiveLocations.$inferSelect;
+export type InsertHiveLocation = z.infer<typeof insertHiveLocationSchema>;
+
+export const hiveCrawlJobs = pgTable("hive_crawl_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  status: text("status").notNull().default("pending"),
+  directoryIds: text("directory_ids").notNull().default("[]"),
+  categoryIds: text("category_ids").notNull().default("[]"),
+  locationIds: text("location_ids").notNull().default("[]"),
+  flowersFound: integer("flowers_found").notNull().default(0),
+  pollenFound: integer("pollen_found").notNull().default(0),
+  totalCombos: integer("total_combos").notNull().default(0),
+  completedCombos: integer("completed_combos").notNull().default(0),
+  shouldStop: boolean("should_stop").notNull().default(false),
+  log: text("log").array().default(sql`'{}'::text[]`),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("hcj_status_idx").on(table.status),
+]);
+
+export const insertHiveCrawlJobSchema = createInsertSchema(hiveCrawlJobs).omit({ id: true, startedAt: true, completedAt: true });
+export type HiveCrawlJob = typeof hiveCrawlJobs.$inferSelect;
+export type InsertHiveCrawlJob = z.infer<typeof insertHiveCrawlJobSchema>;
+
+export const hiveFlowers = pgTable("hive_flowers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  website: text("website").notNull(),
+  normalizedUrl: text("normalized_url").notNull().unique(),
+  phone: text("phone"),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  category: text("category").notNull(),
+  sourceDirectory: text("source_directory").notNull(),
+  sourceUrl: text("source_url"),
+  crawlJobId: varchar("crawl_job_id"),
+  isFranchise: boolean("is_franchise").notNull().default(false),
+  isAlive: boolean("is_alive").notNull().default(true),
+  lastChecked: timestamp("last_checked"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("hf_category_idx").on(table.category),
+  index("hf_directory_idx").on(table.sourceDirectory),
+  index("hf_city_idx").on(table.city),
+  index("hf_state_idx").on(table.state),
+  index("hf_alive_idx").on(table.isAlive),
+  index("hf_name_city_idx").on(table.name, table.city),
+]);
+
+export const insertHiveFlowerSchema = createInsertSchema(hiveFlowers).omit({ id: true, createdAt: true });
+export type HiveFlower = typeof hiveFlowers.$inferSelect;
+export type InsertHiveFlower = z.infer<typeof insertHiveFlowerSchema>;
+
+export const hivePollen = pgTable("hive_pollen", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  category: text("category").notNull(),
+  sourceDirectory: text("source_directory").notNull(),
+  sourceUrl: text("source_url"),
+  crawlJobId: varchar("crawl_job_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("hp_category_idx").on(table.category),
+  index("hp_directory_idx").on(table.sourceDirectory),
+]);
+
+export const insertHivePollenSchema = createInsertSchema(hivePollen).omit({ id: true, createdAt: true });
+export type HivePollen = typeof hivePollen.$inferSelect;
+export type InsertHivePollen = z.infer<typeof insertHivePollenSchema>;
+
 export const legislativeCreditMap = pgTable("legislative_credit_map", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   creditId: varchar("credit_id").notNull(),

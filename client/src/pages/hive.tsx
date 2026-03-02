@@ -1,0 +1,764 @@
+import { useState, useEffect, useRef } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useTheme } from "@/hooks/use-theme";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Flower2, Search, Play, Square, Download, Trash2, Heart,
+  ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw,
+  Loader2, AlertTriangle, ExternalLink, Filter
+} from "lucide-react";
+
+interface HiveDirectory {
+  id: string;
+  name: string;
+  baseUrl: string;
+  scraperKey: string;
+  enabled: boolean;
+  status: string;
+}
+
+interface HiveCategory {
+  id: string;
+  name: string;
+  slug: string;
+  bundle: string;
+  searchAliases: string[];
+  isConsultingVariant: boolean;
+}
+
+interface HiveLocation {
+  id: string;
+  city: string;
+  state: string;
+  slug: string;
+  population: number;
+}
+
+interface HiveFlower {
+  id: string;
+  name: string;
+  website: string;
+  normalizedUrl: string;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  category: string;
+  sourceDirectory: string;
+  isFranchise: boolean;
+  isAlive: boolean;
+  lastChecked: string | null;
+  createdAt: string;
+}
+
+interface HivePollen {
+  id: string;
+  name: string;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  category: string;
+  sourceDirectory: string;
+}
+
+interface CrawlStatus {
+  active: {
+    jobId: string;
+    running: boolean;
+    totalCombos: number;
+    completedCombos: number;
+    flowersFound: number;
+    pollenFound: number;
+    progress: number;
+  } | null;
+  recentJobs: any[];
+}
+
+interface HiveStats {
+  totalFlowers: number;
+  totalPollen: number;
+  byDirectory: Record<string, number>;
+  byCategory: Record<string, number>;
+  directoryCount: number;
+  categoryCount: number;
+  locationCount: number;
+}
+
+const US_STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+  "VA","WA","WV","WI","WY","DC"
+];
+
+export default function HivePage() {
+  const { theme } = useTheme();
+  const { toast } = useToast();
+  const [rayOpen, setRayOpen] = useState(true);
+  const [selectedDirs, setSelectedDirs] = useState<Set<string>>(new Set());
+  const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
+  const [selectedLocs, setSelectedLocs] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState("all");
+  const [flowerSearch, setFlowerSearch] = useState("");
+  const [pollenSearch, setPollenSearch] = useState("");
+  const [flowerPage, setFlowerPage] = useState(1);
+  const [pollenPage, setPollenPage] = useState(1);
+  const [categorySearch, setCategorySearch] = useState("");
+  const [locationSearch, setLocationSearch] = useState("");
+  const [selectedState, setSelectedState] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [filterAlive, setFilterAlive] = useState<string>("");
+  const logRef = useRef<HTMLDivElement>(null);
+  const [viewingJobId, setViewingJobId] = useState<string | null>(null);
+
+  const { data: directories = [] } = useQuery<HiveDirectory[]>({ queryKey: ["/api/hive/directories"] });
+  const { data: categories = [] } = useQuery<HiveCategory[]>({ queryKey: ["/api/hive/categories"] });
+  const { data: locations = [] } = useQuery<HiveLocation[]>({ queryKey: ["/api/hive/locations"] });
+  const { data: stats } = useQuery<HiveStats>({ queryKey: ["/api/hive/stats"], refetchInterval: 10000 });
+  const { data: crawlStatus, refetch: refetchStatus } = useQuery<CrawlStatus>({ queryKey: ["/api/hive/crawl/status"], refetchInterval: 3000 });
+
+  const flowerFilters: Record<string, string> = {};
+  if (activeTab !== "all" && activeTab !== "pollen") flowerFilters.directory = activeTab;
+  if (flowerSearch) flowerFilters.search = flowerSearch;
+  if (filterCategory) flowerFilters.category = filterCategory;
+  if (filterAlive) flowerFilters.alive = filterAlive;
+  flowerFilters.page = String(flowerPage);
+  flowerFilters.limit = "50";
+
+  const flowerQs = new URLSearchParams(flowerFilters).toString();
+  const { data: flowersData, isLoading: flowersLoading } = useQuery<{ flowers: HiveFlower[]; total: number }>({
+    queryKey: ["/api/hive/flowers", flowerQs],
+    queryFn: () => fetch(`/api/hive/flowers?${flowerQs}`, { credentials: "include" }).then(r => r.json()),
+    enabled: activeTab !== "pollen",
+    refetchInterval: 15000,
+  });
+
+  const pollenQs = new URLSearchParams({ search: pollenSearch, page: String(pollenPage), limit: "50" }).toString();
+  const { data: pollenData, isLoading: pollenLoading } = useQuery<{ pollen: HivePollen[]; total: number }>({
+    queryKey: ["/api/hive/pollen", pollenQs],
+    queryFn: () => fetch(`/api/hive/pollen?${pollenQs}`, { credentials: "include" }).then(r => r.json()),
+    enabled: activeTab === "pollen",
+  });
+
+  const { data: jobLog } = useQuery<{ log: string[]; status: string }>({
+    queryKey: ["/api/hive/crawl", viewingJobId, "log"],
+    queryFn: () => fetch(`/api/hive/crawl/${viewingJobId}/log`, { credentials: "include" }).then(r => r.json()),
+    enabled: !!viewingJobId,
+    refetchInterval: 2000,
+  });
+
+  useEffect(() => {
+    if (directories.length > 0 && selectedDirs.size === 0) {
+      setSelectedDirs(new Set(directories.filter(d => d.enabled).map(d => d.id)));
+    }
+  }, [directories]);
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [jobLog?.log]);
+
+  useEffect(() => {
+    if (crawlStatus?.active?.jobId && !viewingJobId) {
+      setViewingJobId(crawlStatus.active.jobId);
+    }
+  }, [crawlStatus?.active?.jobId]);
+
+  const startCrawl = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hive/crawl", {
+      directoryIds: Array.from(selectedDirs),
+      categoryIds: Array.from(selectedCats),
+      locationIds: Array.from(selectedLocs),
+    }),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      setViewingJobId(data.jobId);
+      toast({ title: "Ray of Grace launched!" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hive/crawl/status"] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const stopCrawl = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/hive/crawl/${crawlStatus?.active?.jobId}/stop`),
+    onSuccess: () => {
+      toast({ title: "Stop requested" });
+      refetchStatus();
+    },
+  });
+
+  const deleteFlower = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/hive/flowers/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (query) => (query.queryKey[0] as string)?.startsWith?.("/api/hive/flowers") || query.queryKey[0] === "/api/hive/flowers" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hive/stats"] });
+    },
+  });
+
+  const healthCheck = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hive/health-check"),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      toast({ title: "Health check complete", description: `Checked: ${data.checked}, Alive: ${data.alive}, Dead: ${data.dead}` });
+      queryClient.invalidateQueries({ predicate: (query) => (query.queryKey[0] as string)?.startsWith?.("/api/hive/flowers") || query.queryKey[0] === "/api/hive/flowers" });
+    },
+  });
+
+  const bundles = [...new Set(categories.map(c => c.bundle))].sort();
+
+  const toggleBundle = (bundle: string) => {
+    const bundleCats = categories.filter(c => c.bundle === bundle);
+    const allSelected = bundleCats.every(c => selectedCats.has(c.id));
+    const next = new Set(selectedCats);
+    bundleCats.forEach(c => allSelected ? next.delete(c.id) : next.add(c.id));
+    setSelectedCats(next);
+  };
+
+  const filteredCategories = categories.filter(c =>
+    (!categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase()) || c.bundle.toLowerCase().includes(categorySearch.toLowerCase()))
+  );
+
+  const filteredLocations = locations.filter(l =>
+    (!locationSearch || l.city.toLowerCase().includes(locationSearch.toLowerCase())) &&
+    (!selectedState || l.state === selectedState)
+  );
+
+  const selectAllLocations = () => {
+    const ids = filteredLocations.map(l => l.id);
+    setSelectedLocs(new Set(ids));
+  };
+
+  const clearAllLocations = () => setSelectedLocs(new Set());
+
+  const totalFlowerPages = flowersData ? Math.ceil(flowersData.total / 50) : 1;
+  const totalPollenPages = pollenData ? Math.ceil(pollenData.total / 50) : 1;
+
+  const directoryTabs = directories.filter(d => d.enabled);
+
+  return (
+    <div className="min-h-screen bg-black text-gray-100 p-4 space-y-4" data-testid="hive-page">
+      <div className="flex items-center gap-3 mb-4">
+        <Flower2 className="w-6 h-6 text-pink-400" />
+        <h1 className="text-xl font-bold text-white tracking-wide" data-testid="text-page-title">Beauteous Brigade</h1>
+        <span className="text-xs text-gray-500 ml-2">Private Business Discovery Engine</span>
+      </div>
+
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3" data-testid="stats-bar">
+          <StatCard label="Total Flowers" value={stats.totalFlowers} color="text-pink-400" />
+          <StatCard label="Total Pollen" value={stats.totalPollen} color="text-yellow-400" />
+          <StatCard label="Categories" value={stats.categoryCount} color="text-blue-400" />
+          <StatCard label="Locations" value={stats.locationCount} color="text-green-400" />
+          <StatCard label="Directories" value={stats.directoryCount} color="text-purple-400" />
+        </div>
+      )}
+
+      <div className="border border-gray-700 rounded-lg bg-gray-950" data-testid="ray-of-grace-panel">
+        <button
+          onClick={() => setRayOpen(!rayOpen)}
+          className="w-full flex items-center justify-between p-3 hover:bg-gray-900 transition-colors"
+          data-testid="button-toggle-ray"
+        >
+          <div className="flex items-center gap-2">
+            <Play className="w-4 h-4 text-pink-400" />
+            <span className="text-sm font-semibold text-white">Ray of Grace — Crawl Engine</span>
+            {crawlStatus?.active && (
+              <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full animate-pulse">RUNNING</span>
+            )}
+          </div>
+          {rayOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
+        </button>
+
+        {rayOpen && (
+          <div className="p-4 border-t border-gray-800 space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Directories</label>
+                <div className="space-y-1 max-h-32 overflow-y-auto border border-gray-800 rounded p-2 bg-gray-900/50">
+                  {directories.map(d => (
+                    <label key={d.id} className="flex items-center gap-2 text-xs cursor-pointer" data-testid={`checkbox-dir-${d.scraperKey}`}>
+                      <input
+                        type="checkbox"
+                        checked={selectedDirs.has(d.id)}
+                        onChange={() => {
+                          const next = new Set(selectedDirs);
+                          next.has(d.id) ? next.delete(d.id) : next.add(d.id);
+                          setSelectedDirs(next);
+                        }}
+                        className="rounded"
+                        disabled={!d.enabled}
+                      />
+                      <span className={d.enabled ? "text-gray-200" : "text-gray-600 line-through"}>{d.name}</span>
+                      {d.status === "working" && <span className="text-green-500 text-[10px]">OK</span>}
+                      {d.status === "blocked" && <span className="text-red-500 text-[10px]">BLOCKED</span>}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  Categories ({selectedCats.size} selected)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Search categories..."
+                  value={categorySearch}
+                  onChange={e => setCategorySearch(e.target.value)}
+                  className="w-full text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200 placeholder-gray-600"
+                  data-testid="input-category-search"
+                />
+                <div className="flex flex-wrap gap-1 mb-1">
+                  {bundles.map(b => {
+                    const bundleCats = categories.filter(c => c.bundle === b);
+                    const allSelected = bundleCats.every(c => selectedCats.has(c.id));
+                    return (
+                      <button
+                        key={b}
+                        onClick={() => toggleBundle(b)}
+                        className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                          allSelected
+                            ? "bg-pink-500/20 border-pink-500/40 text-pink-300"
+                            : "border-gray-700 text-gray-500 hover:text-gray-300"
+                        }`}
+                        data-testid={`button-bundle-${b.toLowerCase().replace(/\s+/g, "-")}`}
+                      >
+                        {b} ({bundleCats.length})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="space-y-0.5 max-h-40 overflow-y-auto border border-gray-800 rounded p-2 bg-gray-900/50">
+                  {filteredCategories.map(c => (
+                    <label key={c.id} className="flex items-center gap-2 text-xs cursor-pointer" data-testid={`checkbox-cat-${c.slug}`}>
+                      <input
+                        type="checkbox"
+                        checked={selectedCats.has(c.id)}
+                        onChange={() => {
+                          const next = new Set(selectedCats);
+                          next.has(c.id) ? next.delete(c.id) : next.add(c.id);
+                          setSelectedCats(next);
+                        }}
+                        className="rounded"
+                      />
+                      <span className="text-gray-200">{c.name}</span>
+                      <span className="text-gray-600 text-[10px]">{c.bundle}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  Locations ({selectedLocs.size} selected)
+                </label>
+                <div className="flex gap-1 items-center">
+                  <input
+                    type="text"
+                    placeholder="Search cities..."
+                    value={locationSearch}
+                    onChange={e => setLocationSearch(e.target.value)}
+                    className="flex-1 text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200 placeholder-gray-600"
+                    data-testid="input-location-search"
+                  />
+                  <select
+                    value={selectedState}
+                    onChange={e => setSelectedState(e.target.value)}
+                    className="text-xs bg-gray-900 border border-gray-700 rounded px-1 py-1 text-gray-200"
+                    data-testid="select-state-filter"
+                  >
+                    <option value="">All States</option>
+                    {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={selectAllLocations}
+                    className="text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200"
+                    data-testid="button-select-all-locations"
+                  >
+                    <CheckSquare className="w-3 h-3 inline mr-1" />Select All
+                  </button>
+                  <button
+                    onClick={clearAllLocations}
+                    className="text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200"
+                    data-testid="button-clear-all-locations"
+                  >
+                    <XSquare className="w-3 h-3 inline mr-1" />Clear
+                  </button>
+                </div>
+                <div className="space-y-0.5 max-h-40 overflow-y-auto border border-gray-800 rounded p-2 bg-gray-900/50">
+                  {filteredLocations.slice(0, 200).map(l => (
+                    <label key={l.id} className="flex items-center gap-2 text-xs cursor-pointer" data-testid={`checkbox-loc-${l.slug}`}>
+                      <input
+                        type="checkbox"
+                        checked={selectedLocs.has(l.id)}
+                        onChange={() => {
+                          const next = new Set(selectedLocs);
+                          next.has(l.id) ? next.delete(l.id) : next.add(l.id);
+                          setSelectedLocs(next);
+                        }}
+                        className="rounded"
+                      />
+                      <span className="text-gray-200">{l.city}, {l.state}</span>
+                      <span className="text-gray-600 text-[10px]">{l.population.toLocaleString()}</span>
+                    </label>
+                  ))}
+                  {filteredLocations.length > 200 && (
+                    <div className="text-[10px] text-gray-600 pt-1">...and {filteredLocations.length - 200} more (filter to see)</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
+              {!crawlStatus?.active ? (
+                <button
+                  onClick={() => startCrawl.mutate()}
+                  disabled={selectedDirs.size === 0 || selectedCats.size === 0 || selectedLocs.size === 0 || startCrawl.isPending}
+                  className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold rounded transition-colors"
+                  data-testid="button-send-ray"
+                >
+                  {startCrawl.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                  Send Ray of Grace
+                </button>
+              ) : (
+                <button
+                  onClick={() => stopCrawl.mutate()}
+                  disabled={stopCrawl.isPending}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded transition-colors"
+                  data-testid="button-stop-crawl"
+                >
+                  <Square className="w-4 h-4" />
+                  Stop Crawl
+                </button>
+              )}
+
+              {crawlStatus?.active && (
+                <div className="flex items-center gap-4 text-xs text-gray-400">
+                  <span data-testid="text-progress">{crawlStatus.active.progress}% ({crawlStatus.active.completedCombos}/{crawlStatus.active.totalCombos})</span>
+                  <span className="text-pink-400" data-testid="text-flowers-found">Flowers: {crawlStatus.active.flowersFound}</span>
+                  <span className="text-yellow-400" data-testid="text-pollen-found">Pollen: {crawlStatus.active.pollenFound}</span>
+                </div>
+              )}
+
+              <div className="flex-1" />
+
+              <button
+                onClick={() => healthCheck.mutate()}
+                disabled={healthCheck.isPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-700 rounded text-gray-400 hover:text-gray-200 transition-colors"
+                data-testid="button-health-check"
+              >
+                {healthCheck.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Heart className="w-3 h-3" />}
+                Health Check
+              </button>
+            </div>
+
+            {viewingJobId && jobLog && (
+              <div className="mt-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-semibold text-gray-400">Crawl Log</span>
+                  <span className="text-[10px] text-gray-600">{jobLog.status}</span>
+                </div>
+                <div
+                  ref={logRef}
+                  className="bg-black border border-gray-800 rounded p-2 max-h-40 overflow-y-auto font-mono text-[10px] text-gray-500 space-y-0.5"
+                  data-testid="crawl-log"
+                >
+                  {(jobLog.log || []).map((line, i) => (
+                    <div key={i} className={line.includes("Error") ? "text-red-400" : line.includes("+") ? "text-green-400" : ""}>
+                      {line}
+                    </div>
+                  ))}
+                  {(!jobLog.log || jobLog.log.length === 0) && <div className="text-gray-700">No log entries yet...</div>}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="border border-gray-700 rounded-lg bg-gray-950" data-testid="flowers-panel">
+        <div className="flex items-center gap-1 p-2 border-b border-gray-800 overflow-x-auto">
+          <TabButton active={activeTab === "all"} onClick={() => { setActiveTab("all"); setFlowerPage(1); }} label="All" count={stats?.totalFlowers} testId="tab-all" />
+          {directoryTabs.map(d => (
+            <TabButton
+              key={d.id}
+              active={activeTab === d.name}
+              onClick={() => { setActiveTab(d.name); setFlowerPage(1); }}
+              label={d.name}
+              count={stats?.byDirectory?.[d.name]}
+              testId={`tab-${d.scraperKey}`}
+            />
+          ))}
+          <TabButton active={activeTab === "pollen"} onClick={() => { setActiveTab("pollen"); setPollenPage(1); }} label="Pollen" count={stats?.totalPollen} color="text-yellow-400" testId="tab-pollen" />
+        </div>
+
+        {activeTab !== "pollen" && (
+          <div className="flex items-center gap-2 p-2 border-b border-gray-800">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
+              <input
+                type="text"
+                placeholder="Search flowers by name or website..."
+                value={flowerSearch}
+                onChange={e => { setFlowerSearch(e.target.value); setFlowerPage(1); }}
+                className="w-full text-xs bg-gray-900 border border-gray-700 rounded pl-7 pr-2 py-1.5 text-gray-200 placeholder-gray-600"
+                data-testid="input-flower-search"
+              />
+            </div>
+            <select
+              value={filterCategory}
+              onChange={e => { setFilterCategory(e.target.value); setFlowerPage(1); }}
+              className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200 max-w-[200px]"
+              data-testid="select-filter-category"
+            >
+              <option value="">All Categories</option>
+              {[...new Set(categories.map(c => c.name))].sort().map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <select
+              value={filterAlive}
+              onChange={e => { setFilterAlive(e.target.value); setFlowerPage(1); }}
+              className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200"
+              data-testid="select-filter-alive"
+            >
+              <option value="">All Status</option>
+              <option value="true">Alive</option>
+              <option value="false">Dead</option>
+            </select>
+            <a
+              href={`/api/hive/export?${new URLSearchParams(flowerFilters).toString()}`}
+              className="flex items-center gap-1 text-xs px-2 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-gray-200 transition-colors"
+              data-testid="button-download-csv"
+            >
+              <Download className="w-3 h-3" />CSV
+            </a>
+          </div>
+        )}
+
+        {activeTab === "pollen" && (
+          <div className="flex items-center gap-2 p-2 border-b border-gray-800">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
+              <input
+                type="text"
+                placeholder="Search pollen by name..."
+                value={pollenSearch}
+                onChange={e => { setPollenSearch(e.target.value); setPollenPage(1); }}
+                className="w-full text-xs bg-gray-900 border border-gray-700 rounded pl-7 pr-2 py-1.5 text-gray-200 placeholder-gray-600"
+                data-testid="input-pollen-search"
+              />
+            </div>
+            <a
+              href={`/api/hive/export-pollen?${new URLSearchParams({ search: pollenSearch }).toString()}`}
+              className="flex items-center gap-1 text-xs px-2 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-gray-200 transition-colors"
+              data-testid="button-download-pollen-csv"
+            >
+              <Download className="w-3 h-3" />CSV
+            </a>
+          </div>
+        )}
+
+        {activeTab !== "pollen" && (
+          <div className="overflow-x-auto">
+            {flowersLoading ? (
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="w-5 h-5 animate-spin text-gray-600" />
+              </div>
+            ) : (
+              <>
+                <table className="w-full text-xs" data-testid="flowers-table">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-gray-500">
+                      <th className="text-left p-2 font-medium">Name</th>
+                      <th className="text-left p-2 font-medium">Website</th>
+                      <th className="text-left p-2 font-medium">City/State</th>
+                      <th className="text-left p-2 font-medium">Category</th>
+                      <th className="text-left p-2 font-medium">Phone</th>
+                      <th className="text-left p-2 font-medium">Source</th>
+                      <th className="text-center p-2 font-medium">Status</th>
+                      <th className="text-center p-2 font-medium w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(flowersData?.flowers || []).map(f => (
+                      <tr key={f.id} className="border-b border-gray-900 hover:bg-gray-900/50" data-testid={`row-flower-${f.id}`}>
+                        <td className="p-2 text-gray-200 font-medium max-w-[200px] truncate">
+                          {f.name}
+                          {f.isFranchise && <span className="ml-1 text-[9px] text-orange-400 bg-orange-900/30 px-1 rounded">FRANCHISE</span>}
+                        </td>
+                        <td className="p-2">
+                          <a href={f.website} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 flex items-center gap-1 max-w-[200px] truncate" data-testid={`link-website-${f.id}`}>
+                            {f.website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+                            <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
+                          </a>
+                        </td>
+                        <td className="p-2 text-gray-400">{f.city}{f.state ? `, ${f.state}` : ""}</td>
+                        <td className="p-2 text-gray-400">{f.category}</td>
+                        <td className="p-2 text-gray-400">{f.phone || "-"}</td>
+                        <td className="p-2 text-gray-500">{f.sourceDirectory}</td>
+                        <td className="p-2 text-center">
+                          {f.lastChecked ? (
+                            f.isAlive
+                              ? <span className="text-green-400 text-[10px]">ALIVE</span>
+                              : <span className="text-red-400 text-[10px]">DEAD</span>
+                          ) : (
+                            <span className="text-gray-600 text-[10px]">—</span>
+                          )}
+                        </td>
+                        <td className="p-2 text-center">
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete "${f.name}"?`)) deleteFlower.mutate(f.id);
+                            }}
+                            className="text-gray-600 hover:text-red-400 transition-colors"
+                            data-testid={`button-delete-flower-${f.id}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {(!flowersData?.flowers || flowersData.flowers.length === 0) && (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-gray-600">
+                          No flowers yet. Run a Ray of Grace crawl to discover businesses.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                {flowersData && flowersData.total > 50 && (
+                  <div className="flex items-center justify-between p-2 border-t border-gray-800">
+                    <span className="text-[10px] text-gray-500" data-testid="text-flower-count">{flowersData.total} flowers total</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setFlowerPage(Math.max(1, flowerPage - 1))}
+                        disabled={flowerPage === 1}
+                        className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 disabled:opacity-30"
+                        data-testid="button-flower-prev"
+                      >
+                        Prev
+                      </button>
+                      <span className="text-xs text-gray-500" data-testid="text-flower-page">{flowerPage}/{totalFlowerPages}</span>
+                      <button
+                        onClick={() => setFlowerPage(Math.min(totalFlowerPages, flowerPage + 1))}
+                        disabled={flowerPage >= totalFlowerPages}
+                        className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 disabled:opacity-30"
+                        data-testid="button-flower-next"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {activeTab === "pollen" && (
+          <div className="overflow-x-auto">
+            {pollenLoading ? (
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="w-5 h-5 animate-spin text-gray-600" />
+              </div>
+            ) : (
+              <>
+                <table className="w-full text-xs" data-testid="pollen-table">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-gray-500">
+                      <th className="text-left p-2 font-medium">Name</th>
+                      <th className="text-left p-2 font-medium">City/State</th>
+                      <th className="text-left p-2 font-medium">Category</th>
+                      <th className="text-left p-2 font-medium">Phone</th>
+                      <th className="text-left p-2 font-medium">Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(pollenData?.pollen || []).map(p => (
+                      <tr key={p.id} className="border-b border-gray-900 hover:bg-gray-900/50" data-testid={`row-pollen-${p.id}`}>
+                        <td className="p-2 text-gray-200 font-medium">{p.name}</td>
+                        <td className="p-2 text-gray-400">{p.city}{p.state ? `, ${p.state}` : ""}</td>
+                        <td className="p-2 text-gray-400">{p.category}</td>
+                        <td className="p-2 text-gray-400">{p.phone || "-"}</td>
+                        <td className="p-2 text-gray-500">{p.sourceDirectory}</td>
+                      </tr>
+                    ))}
+                    {(!pollenData?.pollen || pollenData.pollen.length === 0) && (
+                      <tr>
+                        <td colSpan={5} className="p-8 text-center text-gray-600">
+                          No pollen entries yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                {pollenData && pollenData.total > 50 && (
+                  <div className="flex items-center justify-between p-2 border-t border-gray-800">
+                    <span className="text-[10px] text-gray-500">{pollenData.total} pollen total</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setPollenPage(Math.max(1, pollenPage - 1))}
+                        disabled={pollenPage === 1}
+                        className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 disabled:opacity-30"
+                        data-testid="button-pollen-prev"
+                      >
+                        Prev
+                      </button>
+                      <span className="text-xs text-gray-500">{pollenPage}/{totalPollenPages}</span>
+                      <button
+                        onClick={() => setPollenPage(Math.min(totalPollenPages, pollenPage + 1))}
+                        disabled={pollenPage >= totalPollenPages}
+                        className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 disabled:opacity-30"
+                        data-testid="button-pollen-next"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-3" data-testid={`stat-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+      <div className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</div>
+      <div className={`text-lg font-bold ${color}`}>{value.toLocaleString()}</div>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, label, count, color, testId }: {
+  active: boolean; onClick: () => void; label: string; count?: number; color?: string; testId: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-t transition-colors whitespace-nowrap ${
+        active
+          ? "bg-gray-800 text-white border-b-2 border-pink-500"
+          : "text-gray-500 hover:text-gray-300"
+      }`}
+      data-testid={testId}
+    >
+      <span>{label}</span>
+      {count !== undefined && (
+        <span className={`text-[10px] ${color || (active ? "text-pink-400" : "text-gray-600")}`}>
+          {count.toLocaleString()}
+        </span>
+      )}
+    </button>
+  );
+}
