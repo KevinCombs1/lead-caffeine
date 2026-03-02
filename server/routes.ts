@@ -1012,6 +1012,137 @@ export async function registerRoutes(
     res.json({ categories, industries: grouped, totalCount: Object.keys(SIC_INDUSTRIES).length });
   });
 
+  app.get("/api/light/company-search", requireAuth, async (req, res) => {
+    try {
+      const q = (req.query.q as string || "").trim().toLowerCase();
+      if (q.length < 2) return res.json({ results: [] });
+
+      const allCompanies = await loadAllCompanies();
+      const matches: { cik: string; ticker: string; title: string }[] = [];
+
+      const exactTicker = allCompanies.filter(c => c.ticker.toLowerCase() === q);
+      for (const c of exactTicker) {
+        if (matches.length >= 10) break;
+        matches.push({ cik: c.cik, ticker: c.ticker, title: c.title });
+      }
+
+      if (matches.length < 10) {
+        const tickerStart = allCompanies.filter(c =>
+          c.ticker.toLowerCase().startsWith(q) && !exactTicker.includes(c)
+        );
+        for (const c of tickerStart) {
+          if (matches.length >= 10) break;
+          matches.push({ cik: c.cik, ticker: c.ticker, title: c.title });
+        }
+      }
+
+      if (matches.length < 10) {
+        const seenCiks = new Set(matches.map(m => m.cik));
+        const titleMatch = allCompanies.filter(c =>
+          !seenCiks.has(c.cik) && c.title.toLowerCase().includes(q)
+        );
+        for (const c of titleMatch) {
+          if (matches.length >= 10) break;
+          matches.push({ cik: c.cik, ticker: c.ticker, title: c.title });
+        }
+      }
+
+      res.json({ results: matches });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/light/discover-single", requireAuth, async (req, res) => {
+    try {
+      const { cik, ticker, name } = req.body;
+      if (!cik) return res.status(400).json({ error: "CIK required" });
+
+      const companyName = name || ticker || cik;
+      const existing = await storage.getFiscalLeadByCompany(companyName);
+      if (existing) return res.json({ lead: existing, alreadyExists: true });
+
+      const details = await getCompanyDetails(cik);
+      if (!details) return res.status(404).json({ error: "Could not fetch company details from SEC EDGAR" });
+
+      const sicDesc = details.sicDescription || "";
+      const sic = details.sic || "";
+      const industryCategory = Object.entries(SIC_INDUSTRIES)
+        .find(([_, entry]) => entry.codes.includes(sic))?.[1]?.category || "";
+
+      const hasExplicitRD = details.rdExpense && details.rdExpense > 0;
+      let effectiveRD = details.rdExpense || 0;
+      if (!hasExplicitRD && details.revenue && details.revenue > 0) {
+        effectiveRD = Math.round(details.revenue * 0.03);
+      }
+
+      const creditClaimed = details.creditIndicator !== undefined && details.creditIndicator < 0;
+      let opportunityLevel: "high" | "moderate" | "low" | "unknown" = "unknown";
+      if (!creditClaimed && hasExplicitRD && effectiveRD > 1_000_000) opportunityLevel = "high";
+      else if (!creditClaimed && (hasExplicitRD || effectiveRD > 100_000)) opportunityLevel = "moderate";
+      else if (creditClaimed) opportunityLevel = "low";
+
+      const estimatedCreditLow = creditClaimed ? 0 : Math.round(effectiveRD * 0.065);
+      const estimatedCreditHigh = creditClaimed ? 0 : Math.round(effectiveRD * 0.10);
+
+      const domain = await resolveCompanyDomain(companyName, ticker, cik);
+      const applicableCredits = matchLeadCredits(sicDesc, industryCategory);
+
+      let creditPosition: any = null;
+      let creditHealthScore = 0;
+      const hasXbrlData = details.creditXRay && (details.creditXRay as any).xbrlDepth > 0;
+      if (details.creditXRay) {
+        try {
+          creditPosition = analyzeCompanyCreditPosition(details.creditXRay, applicableCredits);
+          creditHealthScore = creditPosition.creditHealthScore;
+          if (creditPosition.estimatedUnclaimedValue > 0) {
+            const unclaimed = creditPosition.estimatedUnclaimedValue;
+            if (!creditClaimed && unclaimed > estimatedCreditLow) {
+              opportunityLevel = unclaimed > 500_000 ? "high" : "moderate";
+            }
+          }
+        } catch (e: any) {
+          console.warn(`[DISCOVER-SINGLE] Credit analysis failed for ${companyName}:`, e.message);
+        }
+      }
+
+      const lead = await storage.createFiscalLead({
+        company: companyName,
+        domain,
+        ticker: ticker || "",
+        sic,
+        sicDescription: sicDesc,
+        state: details.stateOfIncorporation || "",
+        opportunityLevel,
+        rdScore: hasExplicitRD ? 80 : 50,
+        estimatedCreditLow: estimatedCreditLow.toString(),
+        estimatedCreditHigh: estimatedCreditHigh.toString(),
+        pipelineStage: "discovered",
+        enrichmentData: {
+          discoverySource: "search",
+          cik,
+          ticker: ticker || "",
+          revenue: details.revenue || 0,
+          rdExpense: effectiveRD,
+          rdPeriod: details.rdPeriod || "estimated",
+          employeeCount: details.employeeCount || 0,
+          entityType: details.entityType || "",
+          totalAssets: details.totalAssets || 0,
+          creditXRay: details.creditXRay || null,
+          creditPosition: creditPosition || null,
+          recentEvents: details.recentEvents || [],
+          tenKFilingHistory: details.tenKFilingHistory || [],
+          website: details.website || undefined,
+        },
+      });
+
+      res.json({ lead, alreadyExists: false });
+    } catch (err: any) {
+      console.error(`[DISCOVER-SINGLE] Error:`, err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/light/security/:domain", requireAuth, async (req, res) => {
     try {
       const domain = req.params.domain as string;
