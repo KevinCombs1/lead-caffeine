@@ -2781,6 +2781,7 @@ export async function registerRoutes(
         isAlive: req.query.alive !== undefined ? req.query.alive === "true" : undefined,
         sortBy: req.query.sortBy as string | undefined,
         beauteousOnly: req.query.beauteousOnly === "true",
+        tag: req.query.tag as string | undefined,
         page: req.query.page ? parseInt(req.query.page as string) : 1,
         limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
       };

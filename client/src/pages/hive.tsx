@@ -112,6 +112,8 @@ export default function HivePage() {
   const [selectedState, setSelectedState] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [filterAlive, setFilterAlive] = useState<string>("");
+  const [filterState, setFilterState] = useState("");
+  const [filterTag, setFilterTag] = useState("");
   const [sortBy, setSortBy] = useState("");
   const [beauteousOnly, setBeauteousOnly] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
@@ -129,6 +131,8 @@ export default function HivePage() {
   if (flowerSearch) flowerFilters.search = flowerSearch;
   if (filterCategory) flowerFilters.category = filterCategory;
   if (filterAlive) flowerFilters.alive = filterAlive;
+  if (filterState) flowerFilters.state = filterState;
+  if (filterTag) flowerFilters.tag = filterTag;
   if (sortBy) flowerFilters.sortBy = sortBy;
   if (beauteousOnly) flowerFilters.beauteousOnly = "true";
   flowerFilters.page = String(flowerPage);
@@ -620,6 +624,37 @@ export default function HivePage() {
               <option value="true">Alive</option>
               <option value="false">Dead</option>
             </select>
+            <select
+              value={filterState}
+              onChange={e => { setFilterState(e.target.value); setFilterTag(""); setFlowerPage(1); }}
+              className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200 max-w-[120px]"
+              data-testid="select-filter-state"
+            >
+              <option value="">All States</option>
+              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <button
+              onClick={() => { setFilterState(filterState === "HI" ? "" : "HI"); setFilterTag(""); setFlowerPage(1); }}
+              className={`text-[10px] px-2 py-1.5 rounded border ${
+                filterState === "HI"
+                  ? "border-amber-500 bg-amber-500/20 text-amber-300"
+                  : "border-gray-700 text-gray-400 hover:text-gray-200"
+              }`}
+              data-testid="button-filter-hawaii"
+            >
+              <Palmtree className="w-3 h-3 inline mr-0.5" />Hawaii
+            </button>
+            <button
+              onClick={() => { setFilterTag(filterTag === "travel" ? "" : "travel"); setFilterState(""); setFlowerPage(1); }}
+              className={`text-[10px] px-2 py-1.5 rounded border ${
+                filterTag === "travel"
+                  ? "border-amber-500 bg-amber-500/20 text-amber-300"
+                  : "border-gray-700 text-gray-400 hover:text-gray-200"
+              }`}
+              data-testid="button-filter-travel"
+            >
+              <Plane className="w-3 h-3 inline mr-0.5" />Travel
+            </button>
             <select
               value={sortBy}
               onChange={e => { setSortBy(e.target.value); setFlowerPage(1); }}
