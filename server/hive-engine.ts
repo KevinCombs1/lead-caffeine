@@ -35,12 +35,23 @@ export class RayOfGraceEngine {
     }
 
     this.maxResults = (maxResults && maxResults > 0) ? maxResults : null;
-    this.combos = [];
+    const allCombos: CrawlCombo[] = [];
     for (const dir of directories) {
       for (const cat of categories) {
         for (const loc of locations) {
-          this.combos.push({ directory: dir, category: cat, location: loc });
+          allCombos.push({ directory: dir, category: cat, location: loc });
         }
+      }
+    }
+
+    this.combos = [];
+    let skippedCount = 0;
+    for (const combo of allCombos) {
+      const done = await storage.isComboCompleted(combo.directory.id, combo.category.id, combo.location.id);
+      if (done) {
+        skippedCount++;
+      } else {
+        this.combos.push(combo);
       }
     }
 
@@ -66,7 +77,15 @@ export class RayOfGraceEngine {
     activeEngine = this;
 
     const limitMsg = this.maxResults ? ` (limit: ${this.maxResults} flowers)` : " (unlimited)";
-    await this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${this.combos.length} combos${limitMsg}`);
+    const skipMsg = skippedCount > 0 ? `, skipping ${skippedCount} already-scanned` : "";
+    await this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${allCombos.length} combos${skipMsg}, ${this.combos.length} remaining${limitMsg}`);
+
+    if (this.combos.length === 0) {
+      await this.log("All combos already scanned — nothing to do. Clear scan history to re-scan.");
+      await storage.updateHiveCrawlJob(this.jobId, { status: "completed", completedAt: new Date() });
+      activeEngine = null;
+      return this.jobId;
+    }
 
     this.runWorkers().catch(async (err) => {
       await this.log(`Fatal error: ${err.message}`);
@@ -138,8 +157,14 @@ export class RayOfGraceEngine {
         break;
       }
 
+      let comboFlowers = 0;
+      let comboPollen = 0;
       try {
+        const before = { f: this.totalFlowers, p: this.totalPollen };
         await this.processCombo(combo, workerId);
+        comboFlowers = this.totalFlowers - before.f;
+        comboPollen = this.totalPollen - before.p;
+        await storage.markComboCompleted(combo.directory.id, combo.category.id, combo.location.id, comboFlowers, comboPollen);
       } catch (err: any) {
         await this.log(`[W${workerId}] Error: ${combo.directory.name}/${combo.category.name}/${combo.location.city} — ${err.message}`);
       }

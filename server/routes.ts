@@ -2940,6 +2940,24 @@ export async function registerRoutes(
     res.json({ running: beautyScanRunning });
   });
 
+  app.get("/api/hive/completed-combos/count", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const count = await storage.getCompletedCombosCount();
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/hive/completed-combos", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      await storage.clearCompletedCombos();
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/hive/health-check", requireAuth, async (_req: Request, res: Response) => {
     try {
       const { checkFlowerHealth } = await import("./hive-engine");

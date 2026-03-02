@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Flower2, Search, Play, Square, Download, Trash2, Heart,
   ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw, Palmtree, Building2, Plane,
-  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine
+  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw
 } from "lucide-react";
 
 interface HiveDirectory {
@@ -207,6 +207,16 @@ export default function HivePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (query) => (query.queryKey[0] as string)?.startsWith?.("/api/hive/flowers") || query.queryKey[0] === "/api/hive/flowers" });
       queryClient.invalidateQueries({ queryKey: ["/api/hive/stats"] });
+    },
+  });
+
+  const completedCombosCount = useQuery<{ count: number }>({ queryKey: ["/api/hive/completed-combos/count"] });
+
+  const clearScanHistory = useMutation({
+    mutationFn: () => apiRequest("DELETE", "/api/hive/completed-combos"),
+    onSuccess: () => {
+      toast({ title: "Scan history cleared", description: "All combos can be re-scanned now." });
+      queryClient.invalidateQueries({ queryKey: ["/api/hive/completed-combos/count"] });
     },
   });
 
@@ -538,6 +548,18 @@ export default function HivePage() {
               )}
 
               <div className="flex-1" />
+
+              {(completedCombosCount.data?.count ?? 0) > 0 && (
+                <button
+                  onClick={() => clearScanHistory.mutate()}
+                  disabled={clearScanHistory.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-700 rounded text-gray-400 hover:text-orange-300 transition-colors"
+                  data-testid="button-clear-scan-history"
+                >
+                  {clearScanHistory.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                  Clear Scan History ({completedCombosCount.data?.count})
+                </button>
+              )}
 
               <button
                 onClick={() => healthCheck.mutate()}

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, jsonb, timestamp, index, uniqueIndex, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, serial, boolean, jsonb, timestamp, index, uniqueIndex, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1255,6 +1255,22 @@ export const hivePollen = pgTable("hive_pollen", {
 export const insertHivePollenSchema = createInsertSchema(hivePollen).omit({ id: true, createdAt: true });
 export type HivePollen = typeof hivePollen.$inferSelect;
 export type InsertHivePollen = z.infer<typeof insertHivePollenSchema>;
+
+export const hiveCompletedCombos = pgTable("hive_completed_combos", {
+  id: serial("id").primaryKey(),
+  directoryId: text("directory_id").notNull(),
+  categoryId: text("category_id").notNull(),
+  locationId: text("location_id").notNull(),
+  flowersFound: integer("flowers_found").notNull().default(0),
+  pollenFound: integer("pollen_found").notNull().default(0),
+  completedAt: timestamp("completed_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("hcc_combo_idx").on(table.directoryId, table.categoryId, table.locationId),
+]);
+
+export const insertHiveCompletedComboSchema = createInsertSchema(hiveCompletedCombos).omit({ id: true, completedAt: true });
+export type HiveCompletedCombo = typeof hiveCompletedCombos.$inferSelect;
+export type InsertHiveCompletedCombo = z.infer<typeof insertHiveCompletedComboSchema>;
 
 export const legislativeCreditMap = pgTable("legislative_credit_map", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -17,6 +17,7 @@ import {
   hiveCrawlJobs, type HiveCrawlJob, type InsertHiveCrawlJob,
   hiveFlowers, type HiveFlower, type InsertHiveFlower,
   hivePollen, type HivePollen, type InsertHivePollen,
+  hiveCompletedCombos, type HiveCompletedCombo,
 } from "@shared/schema";
 import { ilike, or, count } from "drizzle-orm";
 
@@ -101,6 +102,10 @@ export interface IStorage {
   getHiveDirectoryCount(): Promise<number>;
   getHiveCategoryCount(): Promise<number>;
   getHiveLocationCount(): Promise<number>;
+  markComboCompleted(directoryId: string, categoryId: string, locationId: string, flowersFound: number, pollenFound: number): Promise<void>;
+  isComboCompleted(directoryId: string, categoryId: string, locationId: string): Promise<boolean>;
+  getCompletedCombosCount(): Promise<number>;
+  clearCompletedCombos(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -620,6 +625,29 @@ export class DatabaseStorage implements IStorage {
   async getHiveLocationCount(): Promise<number> {
     const [row] = await db.select({ count: sql<number>`count(*)` }).from(hiveLocations);
     return Number(row?.count || 0);
+  }
+
+  async markComboCompleted(directoryId: string, categoryId: string, locationId: string, flowersFound: number, pollenFound: number): Promise<void> {
+    await db.insert(hiveCompletedCombos).values({ directoryId, categoryId, locationId, flowersFound, pollenFound }).onConflictDoUpdate({
+      target: [hiveCompletedCombos.directoryId, hiveCompletedCombos.categoryId, hiveCompletedCombos.locationId],
+      set: { flowersFound, pollenFound, completedAt: new Date() },
+    });
+  }
+
+  async isComboCompleted(directoryId: string, categoryId: string, locationId: string): Promise<boolean> {
+    const [row] = await db.select({ id: hiveCompletedCombos.id }).from(hiveCompletedCombos).where(
+      and(eq(hiveCompletedCombos.directoryId, directoryId), eq(hiveCompletedCombos.categoryId, categoryId), eq(hiveCompletedCombos.locationId, locationId))
+    );
+    return !!row;
+  }
+
+  async getCompletedCombosCount(): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)` }).from(hiveCompletedCombos);
+    return Number(row?.count || 0);
+  }
+
+  async clearCompletedCombos(): Promise<void> {
+    await db.delete(hiveCompletedCombos);
   }
 }
 
