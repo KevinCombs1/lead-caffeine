@@ -2921,7 +2921,7 @@ export async function registerRoutes(
           scanned++;
         } catch (err) {}
         if (i < flowers.length - 1) {
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000));
         }
       }
       beautyScanRunning = false;
