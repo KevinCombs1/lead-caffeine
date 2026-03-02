@@ -1217,6 +1217,8 @@ export const hiveFlowers = pgTable("hive_flowers", {
   isFranchise: boolean("is_franchise").notNull().default(false),
   isAlive: boolean("is_alive").notNull().default(true),
   lastChecked: timestamp("last_checked"),
+  beautyScore: integer("beauty_score"),
+  beautyFlags: text("beauty_flags"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("hf_category_idx").on(table.category),

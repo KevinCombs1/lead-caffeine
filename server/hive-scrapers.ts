@@ -1022,3 +1022,144 @@ export const SCRAPERS: Record<string, ScraperFn> = {
 export function getScraperByKey(key: string): ScraperFn | undefined {
   return SCRAPERS[key.toLowerCase()];
 }
+
+export interface BeautyProbeResult {
+  score: number;
+  flags: string[];
+}
+
+export async function probeBeauty(url: string): Promise<BeautyProbeResult> {
+  const flags: string[] = [];
+  let score = 100;
+
+  try {
+    let probeUrl = url;
+    if (!probeUrl.startsWith("http://") && !probeUrl.startsWith("https://")) {
+      probeUrl = "https://" + probeUrl;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(probeUrl, {
+      method: "GET",
+      headers: {
+        "User-Agent": getRandomUA(),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+      },
+      signal: controller.signal,
+      redirect: "follow",
+    });
+
+    clearTimeout(timeout);
+
+    const headers: Record<string, string> = {};
+    response.headers.forEach((val, key) => {
+      headers[key.toLowerCase()] = val.toLowerCase();
+    });
+
+    const setCookieCount = response.headers.getSetCookie?.()?.length || 0;
+    const allHeadersStr = JSON.stringify(headers);
+
+    if (headers["cf-ray"] || headers["server"]?.includes("cloudflare") || allHeadersStr.includes("__cf_")) {
+      flags.push("cloudflare");
+      score -= 20;
+    } else if (headers["x-sucuri-id"] || headers["server"]?.includes("sucuri")) {
+      flags.push("sucuri-waf");
+      score -= 20;
+    } else if (headers["server"]?.includes("akamaighost") || headers["x-akamai-transformed"]) {
+      flags.push("akamai");
+      score -= 20;
+    } else if (headers["x-iinfo"] || headers["server"]?.includes("incapsula") || headers["x-cdn"]?.includes("imperva")) {
+      flags.push("imperva");
+      score -= 20;
+    } else if (headers["x-datadome"]) {
+      flags.push("datadome-waf");
+      score -= 20;
+    } else if (headers["server"]?.includes("ddos-guard")) {
+      flags.push("ddos-guard");
+      score -= 20;
+    }
+
+    if (setCookieCount > 5) {
+      flags.push("excessive-cookies");
+      score -= 10;
+    }
+
+    const body = await response.text();
+    const bodyLower = body.toLowerCase();
+
+    if (bodyLower.includes("recaptcha") || bodyLower.includes("www.google.com/recaptcha") || bodyLower.includes("grecaptcha")) {
+      flags.push("recaptcha");
+      score -= 25;
+    } else if (bodyLower.includes("hcaptcha.com") || bodyLower.includes("h-captcha")) {
+      flags.push("hcaptcha");
+      score -= 25;
+    } else if (bodyLower.includes("challenges.cloudflare.com") || bodyLower.includes("cf-turnstile") || bodyLower.includes("challenge-platform")) {
+      flags.push("cloudflare-turnstile");
+      score -= 25;
+    } else if (bodyLower.includes("captcha-delivery.com")) {
+      flags.push("datadome-captcha");
+      score -= 25;
+    }
+
+    if (bodyLower.includes("onetrust") || bodyLower.includes("optanon")) {
+      flags.push("onetrust");
+      score -= 10;
+    } else if (bodyLower.includes("cookiebot.com") || bodyLower.includes("cookieconsent")) {
+      flags.push("cookiebot");
+      score -= 10;
+    } else if (bodyLower.includes("cookie-banner") || bodyLower.includes("cookie-notice") || bodyLower.includes("cookie-consent")) {
+      flags.push("cookie-banner");
+      score -= 10;
+    } else if (bodyLower.includes("gdpr") && bodyLower.includes("consent")) {
+      flags.push("gdpr-consent");
+      score -= 10;
+    } else if (bodyLower.includes("trustarc.com") || bodyLower.includes("quantcast.com/choice")) {
+      flags.push("consent-manager");
+      score -= 10;
+    }
+
+    if (bodyLower.includes("honeypot") || bodyLower.includes("bot-trap") || bodyLower.includes("hp_field")) {
+      flags.push("honeypot");
+      score -= 15;
+    } else {
+      const honeypotPattern = /<input[^>]*type\s*=\s*["']?text["']?[^>]*style\s*=\s*["'][^"']*display\s*:\s*none[^"']*["'][^>]*>/i;
+      if (honeypotPattern.test(body)) {
+        flags.push("honeypot-hidden-field");
+        score -= 15;
+      }
+    }
+
+    if (bodyLower.includes("datadome.co")) {
+      if (!flags.includes("datadome-waf")) { flags.push("datadome-bot"); score -= 15; }
+    } else if (bodyLower.includes("perimeterx.net") || bodyLower.includes("/px.js")) {
+      flags.push("perimeterx");
+      score -= 15;
+    } else if (bodyLower.includes("shapesecurity") || bodyLower.includes("shape.com")) {
+      flags.push("shape-security");
+      score -= 15;
+    } else if (bodyLower.includes("kasada.io")) {
+      flags.push("kasada");
+      score -= 15;
+    } else if (bodyLower.includes("arkoselabs.com")) {
+      flags.push("arkose-labs");
+      score -= 15;
+    }
+
+    const visibleContent = body.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, "").trim();
+    if (visibleContent.length < 100 && (bodyLower.includes("enable javascript") || bodyLower.includes("javascript is required"))) {
+      flags.push("js-required");
+      score -= 5;
+    }
+
+    score = Math.max(0, score);
+    return { score, flags };
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      return { score: 0, flags: ["timeout"] };
+    }
+    return { score: 0, flags: ["unreachable"] };
+  }
+}

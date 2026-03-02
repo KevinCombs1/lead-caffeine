@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Flower2, Search, Play, Square, Download, Trash2, Heart,
   ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw,
-  Loader2, AlertTriangle, ExternalLink, Filter
+  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine
 } from "lucide-react";
 
 interface HiveDirectory {
@@ -48,6 +48,8 @@ interface HiveFlower {
   isFranchise: boolean;
   isAlive: boolean;
   lastChecked: string | null;
+  beautyScore: number | null;
+  beautyFlags: string | null;
   createdAt: string;
 }
 
@@ -109,6 +111,8 @@ export default function HivePage() {
   const [selectedState, setSelectedState] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [filterAlive, setFilterAlive] = useState<string>("");
+  const [sortBy, setSortBy] = useState("");
+  const [beauteousOnly, setBeauteousOnly] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const [maxResults, setMaxResults] = useState<string>("");
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
@@ -124,6 +128,8 @@ export default function HivePage() {
   if (flowerSearch) flowerFilters.search = flowerSearch;
   if (filterCategory) flowerFilters.category = filterCategory;
   if (filterAlive) flowerFilters.alive = filterAlive;
+  if (sortBy) flowerFilters.sortBy = sortBy;
+  if (beauteousOnly) flowerFilters.beauteousOnly = "true";
   flowerFilters.page = String(flowerPage);
   flowerFilters.limit = "50";
 
@@ -207,6 +213,29 @@ export default function HivePage() {
       queryClient.invalidateQueries({ predicate: (query) => (query.queryKey[0] as string)?.startsWith?.("/api/hive/flowers") || query.queryKey[0] === "/api/hive/flowers" });
     },
   });
+
+  const beautyScan = useMutation({
+    mutationFn: (rescan: boolean) => apiRequest("POST", "/api/hive/beauty-scan", { rescan }),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      toast({ title: "Beauty scan started", description: data.message || `${data.total} flowers queued` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const { data: beautyScanStatus } = useQuery<{ running: boolean }>({
+    queryKey: ["/api/hive/beauty-scan/status"],
+    refetchInterval: 3000,
+  });
+
+  const prevScanRunning = useRef(false);
+  useEffect(() => {
+    if (prevScanRunning.current && beautyScanStatus && !beautyScanStatus.running) {
+      queryClient.invalidateQueries({ predicate: (query) => (query.queryKey[0] as string)?.includes?.("/api/hive/flowers") });
+      toast({ title: "Beauty scan complete" });
+    }
+    prevScanRunning.current = beautyScanStatus?.running || false;
+  }, [beautyScanStatus?.running]);
 
   const bundles = [...new Set(categories.map(c => c.bundle))].sort();
 
@@ -514,8 +543,8 @@ export default function HivePage() {
         </div>
 
         {activeTab !== "pollen" && (
-          <div className="flex items-center gap-2 p-2 border-b border-gray-800">
-            <div className="relative flex-1">
+          <div className="flex flex-wrap items-center gap-2 p-2 border-b border-gray-800">
+            <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
               <input
                 type="text"
@@ -547,6 +576,35 @@ export default function HivePage() {
               <option value="true">Alive</option>
               <option value="false">Dead</option>
             </select>
+            <select
+              value={sortBy}
+              onChange={e => { setSortBy(e.target.value); setFlowerPage(1); }}
+              className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200"
+              data-testid="select-sort-by"
+            >
+              <option value="">Newest</option>
+              <option value="beauty">Most Beauteous</option>
+              <option value="name">Name A-Z</option>
+            </select>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer" data-testid="checkbox-beauteous-only">
+              <input
+                type="checkbox"
+                checked={beauteousOnly}
+                onChange={e => { setBeauteousOnly(e.target.checked); setFlowerPage(1); }}
+                className="rounded"
+              />
+              <Sparkles className="w-3 h-3 text-yellow-400" />
+              <span className="text-yellow-400 whitespace-nowrap">Pristine Only</span>
+            </label>
+            <button
+              onClick={() => beautyScan.mutate(false)}
+              disabled={beautyScan.isPending || beautyScanStatus?.running}
+              className="flex items-center gap-1 text-xs px-2 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-yellow-300 transition-colors disabled:opacity-30"
+              data-testid="button-beauty-scan"
+            >
+              {beautyScanStatus?.running ? <Loader2 className="w-3 h-3 animate-spin" /> : <ScanLine className="w-3 h-3" />}
+              {beautyScanStatus?.running ? "Scanning..." : "Beauty Scan"}
+            </button>
             <a
               href={`/api/hive/export?${new URLSearchParams(flowerFilters).toString()}`}
               className="flex items-center gap-1 text-xs px-2 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-gray-200 transition-colors"
@@ -597,6 +655,7 @@ export default function HivePage() {
                       <th className="text-left p-2 font-medium">Category</th>
                       <th className="text-left p-2 font-medium">Phone</th>
                       <th className="text-left p-2 font-medium">Source</th>
+                      <th className="text-center p-2 font-medium">Beauty</th>
                       <th className="text-center p-2 font-medium">Status</th>
                       <th className="text-center p-2 font-medium w-10"></th>
                     </tr>
@@ -618,6 +677,9 @@ export default function HivePage() {
                         <td className="p-2 text-gray-400">{f.category}</td>
                         <td className="p-2 text-gray-400">{f.phone || "-"}</td>
                         <td className="p-2 text-gray-500">{f.sourceDirectory}</td>
+                        <td className="p-2 text-center">
+                          <BeautyBadge score={f.beautyScore} flags={f.beautyFlags} />
+                        </td>
                         <td className="p-2 text-center">
                           {f.lastChecked ? (
                             f.isAlive
@@ -642,7 +704,7 @@ export default function HivePage() {
                     ))}
                     {(!flowersData?.flowers || flowersData.flowers.length === 0) && (
                       <tr>
-                        <td colSpan={8} className="p-8 text-center text-gray-600">
+                        <td colSpan={9} className="p-8 text-center text-gray-600">
                           No flowers yet. Run a Ray of Grace crawl to discover businesses.
                         </td>
                       </tr>
@@ -754,6 +816,40 @@ function StatCard({ label, value, color }: { label: string; value: number; color
       <div className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</div>
       <div className={`text-lg font-bold ${color}`}>{value.toLocaleString()}</div>
     </div>
+  );
+}
+
+function BeautyBadge({ score, flags }: { score: number | null; flags: string | null }) {
+  if (score === null || score === undefined) {
+    return <span className="text-[10px] text-gray-600" data-testid="beauty-unscanned">—</span>;
+  }
+
+  let label: string;
+  let colorClass: string;
+  if (score >= 90) {
+    label = "Pristine";
+    colorClass = "text-green-400 bg-green-900/30";
+  } else if (score >= 70) {
+    label = "Clean";
+    colorClass = "text-blue-400 bg-blue-900/30";
+  } else if (score >= 50) {
+    label = "Guarded";
+    colorClass = "text-yellow-400 bg-yellow-900/30";
+  } else {
+    label = "Fortified";
+    colorClass = "text-red-400 bg-red-900/30";
+  }
+
+  const flagList = flags ? flags.split(",").filter(Boolean) : [];
+
+  return (
+    <span
+      className={`text-[10px] px-1.5 py-0.5 rounded ${colorClass} cursor-default`}
+      title={flagList.length > 0 ? `Score: ${score}\nDefenses: ${flagList.join(", ")}` : `Score: ${score}`}
+      data-testid="beauty-badge"
+    >
+      {score} {label}
+    </span>
   );
 }
 

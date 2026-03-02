@@ -90,10 +90,12 @@ export interface IStorage {
   appendCrawlLog(jobId: string, message: string): Promise<void>;
   bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number>;
   bulkInsertPollen(pollen: InsertHivePollen[]): Promise<number>;
-  getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
+  getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
   getHivePollen(filters: { search?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }>;
   deleteFlower(id: string): Promise<void>;
   updateFlowerHealth(id: string, isAlive: boolean): Promise<void>;
+  updateFlowerBeauty(id: string, beautyScore: number, beautyFlags: string): Promise<void>;
+  getFlowersForBeautyScan(rescan: boolean): Promise<{ id: string; website: string }[]>;
   getHiveStats(): Promise<{ totalFlowers: number; totalPollen: number; byDirectory: Record<string, number>; byCategory: Record<string, number> }>;
   getHiveCoverage(): Promise<{ category: string; city: string; state: string; count: number }[]>;
   getHiveDirectoryCount(): Promise<number>;
@@ -481,13 +483,14 @@ export class DatabaseStorage implements IStorage {
     return inserted;
   }
 
-  async getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }> {
+  async getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }> {
     const conditions: any[] = [];
     if (filters.directory) conditions.push(eq(hiveFlowers.sourceDirectory, filters.directory));
     if (filters.category) conditions.push(eq(hiveFlowers.category, filters.category));
     if (filters.city) conditions.push(eq(hiveFlowers.city, filters.city));
     if (filters.state) conditions.push(eq(hiveFlowers.state, filters.state));
     if (filters.isAlive !== undefined) conditions.push(eq(hiveFlowers.isAlive, filters.isAlive));
+    if (filters.beauteousOnly) conditions.push(sql`beauty_score >= 90`);
     if (filters.search) {
       conditions.push(or(
         ilike(hiveFlowers.name, `%${filters.search}%`),
@@ -504,7 +507,16 @@ export class DatabaseStorage implements IStorage {
     const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(hiveFlowers).where(whereClause);
     const total = Number(countRow?.count || 0);
 
-    const flowers = await db.select().from(hiveFlowers).where(whereClause).orderBy(desc(hiveFlowers.createdAt)).limit(limit).offset(offset);
+    let orderClause;
+    if (filters.sortBy === "beauty") {
+      orderClause = sql`beauty_score DESC NULLS LAST`;
+    } else if (filters.sortBy === "name") {
+      orderClause = sql`name ASC`;
+    } else {
+      orderClause = sql`created_at DESC`;
+    }
+
+    const flowers = await db.select().from(hiveFlowers).where(whereClause).orderBy(orderClause).limit(limit).offset(offset);
 
     return { flowers, total };
   }
@@ -537,6 +549,17 @@ export class DatabaseStorage implements IStorage {
 
   async updateFlowerHealth(id: string, isAlive: boolean): Promise<void> {
     await db.update(hiveFlowers).set({ isAlive, lastChecked: new Date() }).where(eq(hiveFlowers.id, id));
+  }
+
+  async updateFlowerBeauty(id: string, beautyScore: number, beautyFlags: string): Promise<void> {
+    await db.update(hiveFlowers).set({ beautyScore, beautyFlags }).where(eq(hiveFlowers.id, id));
+  }
+
+  async getFlowersForBeautyScan(rescan: boolean): Promise<{ id: string; website: string }[]> {
+    if (rescan) {
+      return db.select({ id: hiveFlowers.id, website: hiveFlowers.website }).from(hiveFlowers);
+    }
+    return db.select({ id: hiveFlowers.id, website: hiveFlowers.website }).from(hiveFlowers).where(sql`beauty_score IS NULL`);
   }
 
   async getHiveStats(): Promise<{ totalFlowers: number; totalPollen: number; byDirectory: Record<string, number>; byCategory: Record<string, number> }> {

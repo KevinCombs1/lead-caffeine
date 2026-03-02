@@ -2779,6 +2779,8 @@ export async function registerRoutes(
         state: req.query.state as string | undefined,
         search: req.query.search as string | undefined,
         isAlive: req.query.alive !== undefined ? req.query.alive === "true" : undefined,
+        sortBy: req.query.sortBy as string | undefined,
+        beauteousOnly: req.query.beauteousOnly === "true",
         page: req.query.page ? parseInt(req.query.page as string) : 1,
         limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
       };
@@ -2847,14 +2849,14 @@ export async function registerRoutes(
       };
       const { flowers } = await storage.getHiveFlowers(filters);
 
-      const header = "Name,Website,Phone,City,State,Category,Source,Franchise,Alive\n";
+      const header = "Name,Website,Phone,City,State,Category,Source,Franchise,Alive,BeautyScore,BeautyFlags\n";
       const csvEscape = (s: string | null) => {
         if (!s) return "";
         if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
         return s;
       };
       const rows = flowers.map(f =>
-        [f.name, f.website, f.phone, f.city, f.state, f.category, f.sourceDirectory, f.isFranchise ? "Yes" : "No", f.isAlive ? "Yes" : "No"]
+        [f.name, f.website, f.phone, f.city, f.state, f.category, f.sourceDirectory, f.isFranchise ? "Yes" : "No", f.isAlive ? "Yes" : "No", f.beautyScore !== null && f.beautyScore !== undefined ? String(f.beautyScore) : "", f.beautyFlags || ""]
           .map(csvEscape).join(",")
       ).join("\n");
 
@@ -2892,6 +2894,46 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  let beautyScanRunning = false;
+  app.post("/api/hive/beauty-scan", requireAuth, async (req: Request, res: Response) => {
+    if (beautyScanRunning) {
+      return res.status(409).json({ error: "Beauty scan already in progress" });
+    }
+    try {
+      const rescan = req.body?.rescan === true;
+      const flowers = await storage.getFlowersForBeautyScan(rescan);
+      if (flowers.length === 0) {
+        return res.json({ scanned: 0, message: "No flowers to scan" });
+      }
+
+      beautyScanRunning = true;
+      res.json({ started: true, total: flowers.length, message: `Scanning ${flowers.length} flowers...` });
+
+      const { probeBeauty } = await import("./hive-scrapers");
+      let scanned = 0;
+      for (let i = 0; i < flowers.length; i++) {
+        try {
+          const result = await probeBeauty(flowers[i].website);
+          await storage.updateFlowerBeauty(flowers[i].id, result.score, result.flags.join(","));
+          scanned++;
+        } catch (err) {}
+        if (i < flowers.length - 1) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+      beautyScanRunning = false;
+    } catch (err: any) {
+      beautyScanRunning = false;
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  });
+
+  app.get("/api/hive/beauty-scan/status", requireAuth, async (_req: Request, res: Response) => {
+    res.json({ running: beautyScanRunning });
   });
 
   app.post("/api/hive/health-check", requireAuth, async (_req: Request, res: Response) => {
