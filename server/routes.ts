@@ -2846,7 +2846,7 @@ export async function registerRoutes(
         search: req.query.search as string | undefined,
         isAlive: req.query.alive !== undefined ? req.query.alive === "true" : undefined,
         page: 1,
-        limit: 10000,
+        limit: 999999,
       };
       const { flowers } = await storage.getHiveFlowers(filters);
 
@@ -2874,7 +2874,7 @@ export async function registerRoutes(
       const filters = {
         search: req.query.search as string | undefined,
         page: 1,
-        limit: 10000,
+        limit: 999999,
       };
       const { pollen } = await storage.getHivePollen(filters);
 
