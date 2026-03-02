@@ -351,60 +351,53 @@ export async function scrapeYellowPages(
         const url = `https://www.yellowpages.com/search?search_terms=${encodedTerm}&geo_location_terms=${encodedLocation}&page=${page}`;
         const html = await fetchPage(url);
 
-        const listings = extractAllBetween(html, '<div class="srp-listing"', "</div>\n");
-        if (listings.length === 0 && page > 1) {
-          log.push(`No more results after page ${page - 1}, stopping pagination`);
-          break;
-        }
-        if (listings.length === 0) {
-          const altListings = extractAllBetween(html, '<div class="result"', "</div>\n");
-          if (altListings.length === 0) {
-            log.push(`No listings found for "${term}"`);
-            break;
-          }
-        }
-
-        const namePattern = /class="business-name"[^>]*>(?:<a[^>]*>)?([^<]+)/g;
-        const phonePattern = /class="phones[^"]*"[^>]*>([^<]+)/g;
-        const addressPattern = /class="street-address"[^>]*>([^<]+)/g;
-        const localityPattern = /class="locality"[^>]*>([^<]+)/g;
-        const websitePattern = /class="track-visit-website"[^>]*href="([^"]+)"/g;
-        const linkPattern = /href="\/([^"]*?)"[^>]*class="track-visit-website"/g;
+        const namePattern = /<a[^>]*class="[^"]*business-name[^"]*"[^>]*>(?:<span[^>]*>)?([^<]+)/g;
+        const phonePattern = /class="[^"]*phones?\s[^"]*"[^>]*>([^<]+)/g;
+        const phoneAltPattern = /class="[^"]*phones?\s[^"]*"[^>]*href="tel:([^"]+)"/g;
+        const addressPattern = /class="[^"]*street-address[^"]*"[^>]*>([^<]+)/g;
+        const websitePattern = /class="[^"]*track-visit-website[^"]*"[^>]*href="([^"]+)"/g;
+        const websiteAltPattern = /href="([^"]+)"[^>]*class="[^"]*track-visit-website[^"]*"/g;
 
         const names: string[] = [];
         const phones: string[] = [];
         const addresses: string[] = [];
-        const localities: string[] = [];
         const websites: string[] = [];
 
         let match;
         while ((match = namePattern.exec(html)) !== null) {
           names.push(stripTags(match[1]));
         }
+
+        if (names.length === 0 && page > 1) {
+          log.push(`No more results after page ${page - 1}, stopping pagination`);
+          break;
+        }
+        if (names.length === 0) {
+          log.push(`No listings found for "${term}"`);
+          break;
+        }
+
         while ((match = phonePattern.exec(html)) !== null) {
           phones.push(stripTags(match[1]));
         }
+        if (phones.length === 0) {
+          while ((match = phoneAltPattern.exec(html)) !== null) {
+            phones.push(match[1]);
+          }
+        }
         while ((match = addressPattern.exec(html)) !== null) {
           addresses.push(stripTags(match[1]));
-        }
-        while ((match = localityPattern.exec(html)) !== null) {
-          localities.push(stripTags(match[1]));
         }
         while ((match = websitePattern.exec(html)) !== null) {
           websites.push(match[1]);
         }
         if (websites.length === 0) {
-          while ((match = linkPattern.exec(html)) !== null) {
+          while ((match = websiteAltPattern.exec(html)) !== null) {
             websites.push(match[1]);
           }
         }
 
-        const businessNameRegex = /<a[^>]*class="business-name"[^>]*>(?:<span[^>]*>)?([^<]+)/g;
-        const altNames: string[] = [];
-        while ((match = businessNameRegex.exec(html)) !== null) {
-          altNames.push(stripTags(match[1]));
-        }
-        const finalNames = names.length > 0 ? names : altNames;
+        const finalNames = names;
 
         let pageCount = 0;
         for (let i = 0; i < finalNames.length; i++) {
@@ -478,10 +471,10 @@ export async function scrapeSuperpages(
         const url = `https://www.superpages.com/search?search_terms=${encodedTerm}&geo_location_terms=${encodedLocation}&page=${page}`;
         const html = await fetchPage(url);
 
-        const businessNameRegex = /<a[^>]*class="[^"]*business-name[^"]*"[^>]*>([^<]+)/g;
-        const phoneRegex = /class="[^"]*phones?[^"]*"[^>]*>([^<]+)/g;
+        const businessNameRegex = /<a[^>]*class="[^"]*business-name[^"]*"[^>]*>(?:<span[^>]*>)?([^<]+)/g;
+        const phoneRegex = /class="[^"]*phones?\s[^"]*"[^>]*href="tel:([^"]+)"/g;
         const addressRegex = /class="[^"]*street-address[^"]*"[^>]*>([^<]+)/g;
-        const websiteRegex = /class="[^"]*track-visit-website[^"]*"[^>]*href="([^"]+)"/g;
+        const websiteRegex = /href="(https?:\/\/(?!www\.superpages\.com)[^"]+)"[^>]*rel="nofollow[^"]*"/g;
 
         const names: string[] = [];
         const phones: string[] = [];
@@ -490,7 +483,7 @@ export async function scrapeSuperpages(
 
         let match;
         while ((match = businessNameRegex.exec(html)) !== null) names.push(stripTags(match[1]));
-        while ((match = phoneRegex.exec(html)) !== null) phones.push(stripTags(match[1]));
+        while ((match = phoneRegex.exec(html)) !== null) phones.push(match[1]);
         while ((match = addressRegex.exec(html)) !== null) addresses.push(stripTags(match[1]));
         while ((match = websiteRegex.exec(html)) !== null) websites.push(match[1]);
 
@@ -549,8 +542,8 @@ export async function scrapeMapQuest(
   for (const term of searchTerms) {
     log.push(`Searching "${term}" in ${location.city}, ${location.state}...`);
     try {
-      const encodedTerm = encodeURIComponent(term);
-      const url = `https://www.mapquest.com/search/results?query=${encodedTerm}&boundingBox=&page=0&centerLat=&centerLng=`;
+      const encodedTerm = encodeURIComponent(`${term} ${location.city} ${location.state}`);
+      const url = `https://www.mapquest.com/search/results?query=${encodedTerm}&boundingBox=&page=0`;
       const html = await fetchPage(url);
       let termCount = 0;
 
@@ -629,52 +622,47 @@ export async function scrapeHotfrog(
       const url = `https://www.hotfrog.com/search/${stateSlug}/${citySlug}/${termSlug}`;
       const html = await fetchPage(url);
 
-      const listingBlocks = extractAllBetween(html, '<div class="listing-item', "</article>");
-      if (listingBlocks.length === 0) {
-        const altBlocks = extractAllBetween(html, '<div class="result-item', "</div>\n</div>");
-        if (altBlocks.length === 0) {
-          log.push(`No listings found for "${term}"`);
-        }
-        for (const block of altBlocks) {
-          const nameMatch = block.match(/<h[2-4][^>]*>(?:<a[^>]*>)?([^<]+)/);
-          const phoneMatch = block.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
-          const linkMatch = block.match(/href="(https?:\/\/[^"]+)"/);
+      const nameRegex = /data-yext-click="name"[^>]*><strong>([^<]+)<\/strong>/g;
+      const phoneRegex = /href="tel:\+?1?([^"]+)"/g;
+      const websiteRegex = /href="(https?:\/\/(?!(?:www\.)?hotfrog\.com|assets\.centralindex|maxcdn|blog\.hotfrog|support\.hotfrog|legal\.hotfrog|jooble)[^"]+)"/g;
 
-          if (nameMatch) {
-            results.push({
-              name: stripTags(nameMatch[1]),
-              phone: phoneMatch ? phoneMatch[0] : undefined,
-              website: linkMatch ? linkMatch[1] : undefined,
-              city: location.city,
-              state: location.state,
-              sourceUrl: url,
-            });
-            termCount++;
+      const names: string[] = [];
+      const phones: string[] = [];
+      const websites: string[] = [];
+
+      let match;
+      while ((match = nameRegex.exec(html)) !== null) names.push(stripTags(match[1]));
+      while ((match = phoneRegex.exec(html)) !== null) phones.push(match[1]);
+      while ((match = websiteRegex.exec(html)) !== null) websites.push(match[1]);
+
+      if (names.length === 0) {
+        const altNameRegex = /<h[2-4][^>]*>(?:<a[^>]*>)?(?:<strong>)?([^<]+)/g;
+        while ((match = altNameRegex.exec(html)) !== null) {
+          const name = stripTags(match[1]).replace(/^\d+\.\s*/, "");
+          if (name.length > 2 && !name.includes("Business Owners") && !name.includes("Hotfrog")) {
+            names.push(name);
           }
         }
       }
 
-      for (const block of listingBlocks) {
-        const nameMatch = block.match(/<h[2-4][^>]*>(?:<a[^>]*>)?([^<]+)/);
-        const phoneMatch = block.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
-        const websiteMatch = block.match(/href="(https?:\/\/(?!www\.hotfrog)[^"]+)"/);
-        const addressMatch = block.match(/class="[^"]*address[^"]*"[^>]*>([^<]+)/);
-
-        if (nameMatch) {
+      if (names.length === 0) {
+        log.push(`No listings found for "${term}"`);
+      } else {
+        for (let i = 0; i < names.length; i++) {
+          if (!names[i] || names[i].length < 2) continue;
           results.push({
-            name: stripTags(nameMatch[1]),
-            phone: phoneMatch ? phoneMatch[0] : undefined,
-            website: websiteMatch ? websiteMatch[1] : undefined,
-            address: addressMatch ? stripTags(addressMatch[1]) : undefined,
+            name: names[i],
+            phone: phones[i],
+            website: websites[i],
             city: location.city,
             state: location.state,
             sourceUrl: url,
           });
           termCount++;
         }
+        log.push(`Completed "${term}": ${termCount} results`);
       }
 
-      log.push(`Completed "${term}": ${termCount} results`);
       await randomDelay();
     } catch (err: any) {
       log.push(`Error for "${term}": ${err.message || err}`);
@@ -699,50 +687,48 @@ export async function scrapeEZLocal(
     let termCount = 0;
     try {
       const termSlug = term.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-      const url = `https://www.ezlocal.com/search/${stateSlug}/${citySlug}/${termSlug}`;
+      const url = `https://ezlocal.com/${stateSlug}/${citySlug}/${termSlug}`;
       const html = await fetchPage(url);
 
-      const listingRegex = /<div[^>]*class="[^"]*listing[^"]*"[^>]*>([\s\S]*?)(?=<div[^>]*class="[^"]*listing[^"]*"|$)/g;
-      let match;
-      while ((match = listingRegex.exec(html)) !== null) {
-        const block = match[1];
-        const nameMatch = block.match(/<h[2-4][^>]*>(?:<a[^>]*>)?([^<]+)/);
-        const phoneMatch = block.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
-        const websiteMatch = block.match(/href="(https?:\/\/(?!www\.ezlocal)[^"]+)"/);
-        const addressMatch = block.match(/class="[^"]*address[^"]*"[^>]*>([^<]+)/);
+      const nameRegex = /<h3[^>]*class="[^"]*fn org[^"]*"[^>]*>\d+\.\s*<a[^>]*>([^<]+)/g;
+      const phoneRegex = /class="[^"]*tel[^"]*"[^>]*>([^<]+)/g;
+      const addressRegex = /class="[^"]*street-address[^"]*"[^>]*>([^<]+)/g;
 
-        if (nameMatch) {
+      const names: string[] = [];
+      const phones: string[] = [];
+      const addresses: string[] = [];
+
+      let match;
+      while ((match = nameRegex.exec(html)) !== null) names.push(stripTags(match[1]));
+      while ((match = phoneRegex.exec(html)) !== null) phones.push(stripTags(match[1]));
+      while ((match = addressRegex.exec(html)) !== null) addresses.push(stripTags(match[1]));
+
+      if (names.length === 0) {
+        const altNameRegex = /class="result vcard[\s\S]*?<h[2-4][^>]*>(?:\d+\.\s*)?(?:<a[^>]*>)?([^<]+)/g;
+        while ((match = altNameRegex.exec(html)) !== null) {
+          const name = stripTags(match[1]);
+          if (name.length > 2) names.push(name);
+        }
+      }
+
+      if (names.length === 0) {
+        log.push(`No listings found for "${term}"`);
+      } else {
+        for (let i = 0; i < names.length; i++) {
+          if (!names[i] || names[i].length < 2) continue;
           results.push({
-            name: stripTags(nameMatch[1]),
-            phone: phoneMatch ? phoneMatch[0] : undefined,
-            website: websiteMatch ? websiteMatch[1] : undefined,
-            address: addressMatch ? stripTags(addressMatch[1]) : undefined,
+            name: names[i],
+            phone: phones[i],
+            address: addresses[i],
             city: location.city,
             state: location.state,
             sourceUrl: url,
           });
           termCount++;
         }
+        log.push(`Completed "${term}": ${termCount} results`);
       }
 
-      const nameBlocks = extractAllBetween(html, '<a class="listing-name"', "</a>");
-      if (nameBlocks.length > 0) {
-        for (const block of nameBlocks) {
-          const name = stripTags(block);
-          if (name && name.length > 1) {
-            results.push({
-              name,
-              city: location.city,
-              state: location.state,
-              sourceUrl: url,
-            });
-            termCount++;
-          }
-        }
-      }
-
-      if (termCount === 0) log.push(`No listings found for "${term}"`);
-      else log.push(`Completed "${term}": ${termCount} results`);
       await randomDelay();
     } catch (err: any) {
       log.push(`Error for "${term}": ${err.message || err}`);
