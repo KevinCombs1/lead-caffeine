@@ -1,6 +1,6 @@
 import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
-import { SCRAPERS, classifyResults, type ScraperLocation } from "./hive-scrapers";
+import { SCRAPERS, classifyResults, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
 
 let activeEngine: RayOfGraceEngine | null = null;
 
@@ -170,15 +170,26 @@ export class RayOfGraceEngine {
       return;
     }
 
-    const searchTerms = (category.searchAliases && category.searchAliases.length > 0)
+    const searchTerms = (category.searchAliases && Array.isArray(category.searchAliases) && category.searchAliases.length > 0)
       ? category.searchAliases
       : [category.name];
 
     const loc: ScraperLocation = { city: location.city, state: location.state };
 
-    const output = await scraperFn(searchTerms, loc);
+    let output: ScraperResponse;
+    try {
+      output = await scraperFn(searchTerms, loc);
+    } catch (scraperErr: any) {
+      await this.log(`[W${workerId}] ${directory.name}: Scraper threw: ${scraperErr.message || scraperErr}`);
+      return;
+    }
 
-    if (output.log.length > 0) {
+    if (!output || !output.results) {
+      await this.log(`[W${workerId}] ${directory.name}: Scraper returned invalid output, skipping`);
+      return;
+    }
+
+    if (output.log && output.log.length > 0) {
       for (const msg of output.log) {
         await this.log(`[W${workerId}] ${directory.name}: ${msg}`);
       }
@@ -186,7 +197,15 @@ export class RayOfGraceEngine {
 
     if (output.results.length === 0) return;
 
-    const { flowers, pollen } = classifyResults(output.results, category.name, directory.name);
+    let classified;
+    try {
+      classified = classifyResults(output.results, category.name);
+    } catch (classifyErr: any) {
+      await this.log(`[W${workerId}] ${directory.name}: Classification error: ${classifyErr.message || classifyErr}`);
+      return;
+    }
+
+    const { flowers, pollen } = classified;
 
     const flowerInserts: InsertHiveFlower[] = flowers.map(f => ({
       name: f.name,

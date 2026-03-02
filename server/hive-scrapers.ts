@@ -10,6 +10,7 @@ export interface ScraperResult {
   address?: string;
   city?: string;
   state?: string;
+  sourceUrl?: string;
 }
 
 export interface ScraperOutput {
@@ -17,7 +18,12 @@ export interface ScraperOutput {
   pollen: ScraperResult[];
 }
 
-export type ScraperFn = (searchTerms: string[], location: ScraperLocation) => Promise<ScraperResult[]>;
+export interface ScraperResponse {
+  results: ScraperResult[];
+  log: string[];
+}
+
+export type ScraperFn = (searchTerms: string[], location: ScraperLocation) => Promise<ScraperResponse>;
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -327,15 +333,18 @@ function extractHref(tag: string): string {
 export async function scrapeYellowPages(
   searchTerms: string[],
   location: ScraperLocation
-): Promise<ScraperResult[]> {
+): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
+  const log: string[] = [];
   const locationStr = `${location.city}, ${location.state}`;
 
   for (const term of searchTerms) {
+    log.push(`Searching "${term}" in ${locationStr}...`);
     const encodedTerm = encodeURIComponent(term);
     const encodedLocation = encodeURIComponent(locationStr);
     let page = 1;
     const maxPages = 5;
+    let termTotal = 0;
 
     while (page <= maxPages) {
       try {
@@ -343,10 +352,16 @@ export async function scrapeYellowPages(
         const html = await fetchPage(url);
 
         const listings = extractAllBetween(html, '<div class="srp-listing"', "</div>\n");
-        if (listings.length === 0 && page > 1) break;
+        if (listings.length === 0 && page > 1) {
+          log.push(`No more results after page ${page - 1}, stopping pagination`);
+          break;
+        }
         if (listings.length === 0) {
           const altListings = extractAllBetween(html, '<div class="result"', "</div>\n");
-          if (altListings.length === 0) break;
+          if (altListings.length === 0) {
+            log.push(`No listings found for "${term}"`);
+            break;
+          }
         }
 
         const namePattern = /class="business-name"[^>]*>(?:<a[^>]*>)?([^<]+)/g;
@@ -391,6 +406,7 @@ export async function scrapeYellowPages(
         }
         const finalNames = names.length > 0 ? names : altNames;
 
+        let pageCount = 0;
         for (let i = 0; i < finalNames.length; i++) {
           const name = finalNames[i];
           if (!name || name.length < 2) continue;
@@ -401,6 +417,7 @@ export async function scrapeYellowPages(
             address: addresses[i],
             city: location.city,
             state: location.state,
+            sourceUrl: `https://www.yellowpages.com/search?search_terms=${encodedTerm}&geo_location_terms=${encodedLocation}&page=${page}`,
           };
 
           if (websites[i]) {
@@ -412,37 +429,49 @@ export async function scrapeYellowPages(
           }
 
           results.push(entry);
+          pageCount++;
         }
 
-        if (finalNames.length < 5) break;
+        log.push(`Page ${page}: found ${pageCount} listings`);
+        termTotal += pageCount;
+
+        if (finalNames.length < 5) {
+          log.push(`No more results after page ${page}, stopping pagination`);
+          break;
+        }
 
         page++;
         await randomDelay();
-      } catch (err) {
-        console.error(`[YellowPages] Error on page ${page} for "${term}": ${err}`);
+      } catch (err: any) {
+        log.push(`Error on page ${page} for "${term}": ${err.message || err}`);
         break;
       }
     }
+    log.push(`Completed "${term}": ${termTotal} results`);
     if (searchTerms.indexOf(term) < searchTerms.length - 1) {
       await randomDelay();
     }
   }
 
-  return results;
+  log.push(`Total: ${results.length} results`);
+  return { results, log };
 }
 
 export async function scrapeSuperpages(
   searchTerms: string[],
   location: ScraperLocation
-): Promise<ScraperResult[]> {
+): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
+  const log: string[] = [];
   const locationStr = `${location.city}, ${location.state}`;
 
   for (const term of searchTerms) {
+    log.push(`Searching "${term}" in ${locationStr}...`);
     const encodedTerm = encodeURIComponent(term);
     const encodedLocation = encodeURIComponent(locationStr);
     let page = 1;
     const maxPages = 5;
+    let termTotal = 0;
 
     while (page <= maxPages) {
       try {
@@ -465,8 +494,12 @@ export async function scrapeSuperpages(
         while ((match = addressRegex.exec(html)) !== null) addresses.push(stripTags(match[1]));
         while ((match = websiteRegex.exec(html)) !== null) websites.push(match[1]);
 
-        if (names.length === 0) break;
+        if (names.length === 0) {
+          log.push(page === 1 ? `No listings found for "${term}"` : `No more results after page ${page - 1}, stopping pagination`);
+          break;
+        }
 
+        let pageCount = 0;
         for (let i = 0; i < names.length; i++) {
           if (!names[i] || names[i].length < 2) continue;
           results.push({
@@ -476,37 +509,50 @@ export async function scrapeSuperpages(
             website: websites[i],
             city: location.city,
             state: location.state,
+            sourceUrl: url,
           });
+          pageCount++;
         }
 
-        if (names.length < 5) break;
+        log.push(`Page ${page}: found ${pageCount} listings`);
+        termTotal += pageCount;
+
+        if (names.length < 5) {
+          log.push(`No more results after page ${page}, stopping pagination`);
+          break;
+        }
         page++;
         await randomDelay();
-      } catch (err) {
-        console.error(`[Superpages] Error on page ${page} for "${term}": ${err}`);
+      } catch (err: any) {
+        log.push(`Error on page ${page} for "${term}": ${err.message || err}`);
         break;
       }
     }
+    log.push(`Completed "${term}": ${termTotal} results`);
     if (searchTerms.indexOf(term) < searchTerms.length - 1) {
       await randomDelay();
     }
   }
 
-  return results;
+  log.push(`Total: ${results.length} results`);
+  return { results, log };
 }
 
 export async function scrapeMapQuest(
   searchTerms: string[],
   location: ScraperLocation
-): Promise<ScraperResult[]> {
+): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
+  const log: string[] = [];
   const locationStr = `${location.city}+${location.state}`;
 
   for (const term of searchTerms) {
+    log.push(`Searching "${term}" in ${location.city}, ${location.state}...`);
     try {
       const encodedTerm = encodeURIComponent(term);
       const url = `https://www.mapquest.com/search/results?query=${encodedTerm}&boundingBox=&page=0&centerLat=&centerLng=`;
       const html = await fetchPage(url);
+      let termCount = 0;
 
       const jsonLdRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
       let match;
@@ -523,8 +569,12 @@ export async function scrapeMapQuest(
                 city: item.address?.addressLocality || location.city,
                 state: item.address?.addressRegion || location.state,
                 address: item.address?.streetAddress,
+                sourceUrl: url,
               };
-              if (entry.name) results.push(entry);
+              if (entry.name) {
+                results.push(entry);
+                termCount++;
+              }
             }
           }
         } catch {
@@ -545,28 +595,35 @@ export async function scrapeMapQuest(
             website: linkMatch ? linkMatch[1] : undefined,
             city: location.city,
             state: location.state,
+            sourceUrl: url,
           });
+          termCount++;
         }
       }
 
+      log.push(`Completed "${term}": ${termCount} results`);
       await randomDelay();
-    } catch (err) {
-      console.error(`[MapQuest] Error for "${term}": ${err}`);
+    } catch (err: any) {
+      log.push(`Error for "${term}": ${err.message || err}`);
     }
   }
 
-  return results;
+  log.push(`Total: ${results.length} results`);
+  return { results, log };
 }
 
 export async function scrapeHotfrog(
   searchTerms: string[],
   location: ScraperLocation
-): Promise<ScraperResult[]> {
+): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
+  const log: string[] = [];
   const stateSlug = location.state.toLowerCase();
   const citySlug = location.city.toLowerCase().replace(/\s+/g, "-");
 
   for (const term of searchTerms) {
+    log.push(`Searching "${term}" in ${location.city}, ${location.state}...`);
+    let termCount = 0;
     try {
       const termSlug = term.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
       const url = `https://www.hotfrog.com/search/${stateSlug}/${citySlug}/${termSlug}`;
@@ -575,6 +632,9 @@ export async function scrapeHotfrog(
       const listingBlocks = extractAllBetween(html, '<div class="listing-item', "</article>");
       if (listingBlocks.length === 0) {
         const altBlocks = extractAllBetween(html, '<div class="result-item', "</div>\n</div>");
+        if (altBlocks.length === 0) {
+          log.push(`No listings found for "${term}"`);
+        }
         for (const block of altBlocks) {
           const nameMatch = block.match(/<h[2-4][^>]*>(?:<a[^>]*>)?([^<]+)/);
           const phoneMatch = block.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
@@ -587,7 +647,9 @@ export async function scrapeHotfrog(
               website: linkMatch ? linkMatch[1] : undefined,
               city: location.city,
               state: location.state,
+              sourceUrl: url,
             });
+            termCount++;
           }
         }
       }
@@ -606,28 +668,35 @@ export async function scrapeHotfrog(
             address: addressMatch ? stripTags(addressMatch[1]) : undefined,
             city: location.city,
             state: location.state,
+            sourceUrl: url,
           });
+          termCount++;
         }
       }
 
+      log.push(`Completed "${term}": ${termCount} results`);
       await randomDelay();
-    } catch (err) {
-      console.error(`[Hotfrog] Error for "${term}": ${err}`);
+    } catch (err: any) {
+      log.push(`Error for "${term}": ${err.message || err}`);
     }
   }
 
-  return results;
+  log.push(`Total: ${results.length} results`);
+  return { results, log };
 }
 
 export async function scrapeEZLocal(
   searchTerms: string[],
   location: ScraperLocation
-): Promise<ScraperResult[]> {
+): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
+  const log: string[] = [];
   const stateSlug = location.state.toLowerCase();
   const citySlug = location.city.toLowerCase().replace(/\s+/g, "-");
 
   for (const term of searchTerms) {
+    log.push(`Searching "${term}" in ${location.city}, ${location.state}...`);
+    let termCount = 0;
     try {
       const termSlug = term.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
       const url = `https://www.ezlocal.com/search/${stateSlug}/${citySlug}/${termSlug}`;
@@ -650,7 +719,9 @@ export async function scrapeEZLocal(
             address: addressMatch ? stripTags(addressMatch[1]) : undefined,
             city: location.city,
             state: location.state,
+            sourceUrl: url,
           });
+          termCount++;
         }
       }
 
@@ -663,28 +734,36 @@ export async function scrapeEZLocal(
               name,
               city: location.city,
               state: location.state,
+              sourceUrl: url,
             });
+            termCount++;
           }
         }
       }
 
+      if (termCount === 0) log.push(`No listings found for "${term}"`);
+      else log.push(`Completed "${term}": ${termCount} results`);
       await randomDelay();
-    } catch (err) {
-      console.error(`[EZLocal] Error for "${term}": ${err}`);
+    } catch (err: any) {
+      log.push(`Error for "${term}": ${err.message || err}`);
     }
   }
 
-  return results;
+  log.push(`Total: ${results.length} results`);
+  return { results, log };
 }
 
 export async function scrapeN49(
   searchTerms: string[],
   location: ScraperLocation
-): Promise<ScraperResult[]> {
+): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
+  const log: string[] = [];
   const locationStr = `${location.city}, ${location.state}`;
 
   for (const term of searchTerms) {
+    log.push(`Searching "${term}" in ${locationStr}...`);
+    let termCount = 0;
     try {
       const encodedTerm = encodeURIComponent(term);
       const encodedLocation = encodeURIComponent(locationStr);
@@ -708,7 +787,9 @@ export async function scrapeN49(
             address: addressMatch ? stripTags(addressMatch[1]) : undefined,
             city: location.city,
             state: location.state,
+            sourceUrl: url,
           });
+          termCount++;
         }
       }
 
@@ -727,7 +808,9 @@ export async function scrapeN49(
                   city: item.address?.addressLocality || location.city,
                   state: item.address?.addressRegion || location.state,
                   address: item.address?.streetAddress,
+                  sourceUrl: url,
                 });
+                termCount++;
               }
             }
           }
@@ -735,18 +818,20 @@ export async function scrapeN49(
         }
       }
 
+      if (termCount === 0) log.push(`No listings found for "${term}"`);
+      else log.push(`Completed "${term}": ${termCount} results`);
       await randomDelay();
-    } catch (err) {
-      console.error(`[n49] Error for "${term}": ${err}`);
+    } catch (err: any) {
+      log.push(`Error for "${term}": ${err.message || err}`);
     }
   }
 
-  return results;
+  log.push(`Total: ${results.length} results`);
+  return { results, log };
 }
 
-async function stubScraper(name: string, _searchTerms: string[], _location: ScraperLocation): Promise<ScraperResult[]> {
-  console.log(`[${name}] Stub scraper — source blocked/requires API key. Returning empty.`);
-  return [];
+async function stubScraper(name: string, _searchTerms: string[], _location: ScraperLocation): Promise<ScraperResponse> {
+  return { results: [], log: [`${name}: Stub scraper — source blocked/requires API key`] };
 }
 
 export const scrapeYelp: ScraperFn = (s, l) => stubScraper("Yelp", s, l);
