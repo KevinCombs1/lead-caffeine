@@ -100,6 +100,144 @@ export function isDirectoryPlaceholder(url: string): boolean {
   );
 }
 
+const FRANCHISE_LOCATOR_DOMAINS = [
+  "locations.theupsstore.com",
+  "local.fedex.com",
+  "stores.staples.com",
+  "locations.officedepot.com",
+  "locations.subway.com",
+  "locations.jiffylube.com",
+  "local.walgreens.com",
+  "locations.cvs.com",
+  "stores.target.com",
+  "locations.homedepot.com",
+  "stores.lowes.com",
+  "locations.panerabread.com",
+  "locations.dunkindonuts.com",
+  "locations.tacobell.com",
+  "locations.pizzahut.com",
+  "locations.wendys.com",
+  "locations.bk.com",
+  "locations.chick-fil-a.com",
+  "locations.dominos.com",
+  "locations.papajohns.com",
+  "locations.sonic.com",
+  "locations.jackinthebox.com",
+  "locations.arbys.com",
+  "locations.popeyes.com",
+  "locations.kfc.com",
+  "locations.dairyqueen.com",
+  "locations.petsmart.com",
+  "locations.petco.com",
+  "locations.autozone.com",
+  "locations.oreillyauto.com",
+  "locations.advanceautoparts.com",
+  "locations.napaonline.com",
+  "locations.hrblock.com",
+  "locations.massageenvy.com",
+  "locations.greatclips.com",
+  "locations.sportclips.com",
+  "locations.supercuts.com",
+  "locations.anytimefitness.com",
+  "locations.planetfitness.com",
+  "locations.orangetheory.com",
+  "locations.crunchfitness.com",
+  "local.acehandyman.com",
+  "locations.servpro.com",
+  "locations.terminix.com",
+  "local.safeway.com",
+  "stores.luckybrand.com",
+  "stores.champssports.com",
+  "stores.bestbuy.com",
+  "locations.ajg.com",
+  "locations.postnet.com",
+  "locations.fascards.com",
+  "local.goodwill.org",
+  "stores.footlocker.com",
+  "stores.gap.com",
+  "stores.oldnavy.com",
+  "stores.bananarepublic.com",
+  "locations.mathnasium.com",
+  "locations.kumon.com",
+  "locations.starbucks.com",
+  "locations.mcdonalds.com",
+];
+
+const FRANCHISE_LOCATOR_PATH_PATTERNS: { domain: string; pathPrefix: string }[] = [
+  { domain: "officedepot.com", pathPrefix: "/storelocator" },
+  { domain: "walmart.com", pathPrefix: "/store/" },
+  { domain: "bestbuy.com", pathPrefix: "/site/store-locator" },
+  { domain: "gamestop.com", pathPrefix: "/store/" },
+];
+
+export function isFranchiseLocator(url: string): boolean {
+  const domain = getDomain(url);
+  if (!domain) return false;
+  if (FRANCHISE_LOCATOR_DOMAINS.some(
+    (loc) => domain === loc || domain.endsWith("." + loc)
+  )) return true;
+  try {
+    const parsed = new URL(url.startsWith("http") ? url : "https://" + url);
+    const pathLower = parsed.pathname.toLowerCase();
+    return FRANCHISE_LOCATOR_PATH_PATTERNS.some(
+      (p) => (domain === p.domain || domain.endsWith("." + p.domain)) && pathLower.startsWith(p.pathPrefix)
+    );
+  } catch {
+    return false;
+  }
+}
+
+const PARKED_DOMAIN_INDICATORS = [
+  "godaddy.com",
+  "godaddysites.com",
+  "sedoparking.com",
+  "sedo.com",
+  "afternic.com",
+  "hugedomains.com",
+  "dan.com",
+  "parkingcrew.net",
+  "parkingcrew.com",
+  "bodis.com",
+  "above.com",
+  "undeveloped.com",
+  "domainnameshop.com",
+  "namecheap.com",
+  "register.com",
+  "networksolutions.com",
+  "domains.google",
+  "domainmarket.com",
+  "buydomains.com",
+  "domainlore.com",
+  "brandbucket.com",
+  "squadhelp.com",
+  "domainagents.com",
+  "porkbun.com",
+  "namesilo.com",
+  "dynadot.com",
+  "name.com",
+  "epik.com",
+  "hover.com",
+  "1and1.com",
+  "ionos.com",
+  "hostgator.com",
+  "bluehost.com",
+  "dreamhost.com",
+  "wix.com",
+  "weebly.com",
+  "squarespace.com",
+  "wordpress.com",
+  "parklogic.com",
+  "domainnamesales.com",
+];
+
+export function isParkedDomain(url: string): boolean {
+  const domain = getDomain(url);
+  if (!domain) return false;
+  return PARKED_DOMAIN_INDICATORS.some(
+    (parked) => domain === parked || domain.endsWith("." + parked)
+  );
+}
+
 const GOV_NONPROFIT_KEYWORDS = [
   "government", "federal", "county", "state of", "district", "bureau", "branch",
   "secretary", "office of", "department of", "authority", "commission", "board of",
@@ -258,6 +396,16 @@ export function classifyResults(
     if (isGovNonprofit(result.name)) continue;
 
     if (result.website && isDirectoryPlaceholder(result.website)) {
+      pollen.push({ ...result, website: undefined });
+      continue;
+    }
+
+    if (result.website && isFranchiseLocator(result.website)) {
+      pollen.push({ ...result, website: undefined });
+      continue;
+    }
+
+    if (result.website && isParkedDomain(result.website)) {
       pollen.push({ ...result, website: undefined });
       continue;
     }
