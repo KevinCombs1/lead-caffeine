@@ -91,7 +91,7 @@ export interface IStorage {
   appendCrawlLog(jobId: string, message: string): Promise<void>;
   bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number>;
   bulkInsertPollen(pollen: InsertHivePollen[]): Promise<number>;
-  getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
+  getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
   getHivePollen(filters: { search?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }>;
   deleteFlower(id: string): Promise<void>;
   updateFlowerHealth(id: string, isAlive: boolean): Promise<void>;
@@ -488,7 +488,7 @@ export class DatabaseStorage implements IStorage {
     return inserted;
   }
 
-  async getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }> {
+  async getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }> {
     const conditions: any[] = [];
     if (filters.directory) conditions.push(eq(hiveFlowers.sourceDirectory, filters.directory));
     if (filters.category) conditions.push(eq(hiveFlowers.category, filters.category));
@@ -497,6 +497,7 @@ export class DatabaseStorage implements IStorage {
     if (filters.isAlive !== undefined) conditions.push(eq(hiveFlowers.isAlive, filters.isAlive));
     if (filters.beauteousOnly) conditions.push(sql`beauty_score >= 90`);
     if (filters.tag) conditions.push(sql`(${hiveFlowers.city}, ${hiveFlowers.state}) IN (SELECT city, state FROM hive_locations WHERE tag = ${filters.tag})`);
+    if (filters.crawlJobId) conditions.push(eq(hiveFlowers.crawlJobId, filters.crawlJobId));
     if (filters.search) {
       conditions.push(or(
         ilike(hiveFlowers.name, `%${filters.search}%`),

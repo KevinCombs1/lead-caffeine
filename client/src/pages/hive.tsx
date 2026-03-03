@@ -114,6 +114,7 @@ export default function HivePage() {
   const [filterAlive, setFilterAlive] = useState<string>("");
   const [filterState, setFilterState] = useState("");
   const [filterTag, setFilterTag] = useState("");
+  const [filterBatch, setFilterBatch] = useState("");
   const [sortBy, setSortBy] = useState("");
   const [beauteousOnly, setBeauteousOnly] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
@@ -133,6 +134,7 @@ export default function HivePage() {
   if (filterAlive) flowerFilters.alive = filterAlive;
   if (filterState) flowerFilters.state = filterState;
   if (filterTag) flowerFilters.tag = filterTag;
+  if (filterBatch) flowerFilters.crawlJobId = filterBatch;
   if (sortBy) flowerFilters.sortBy = sortBy;
   if (beauteousOnly) flowerFilters.beauteousOnly = "true";
   flowerFilters.page = String(flowerPage);
@@ -677,6 +679,19 @@ export default function HivePage() {
             >
               <Plane className="w-3 h-3 inline mr-0.5" />Travel
             </button>
+            <select
+              value={filterBatch}
+              onChange={e => { setFilterBatch(e.target.value); setFlowerPage(1); }}
+              className={`text-xs bg-gray-900 border rounded px-2 py-1.5 max-w-[180px] ${filterBatch ? "border-purple-500 text-purple-300" : "border-gray-700 text-gray-200"}`}
+              data-testid="select-filter-batch"
+            >
+              <option value="">All Batches</option>
+              {(crawlStatus?.recentJobs || []).map((job: any) => (
+                <option key={job.id} value={job.id}>
+                  {job.startedAt ? new Date(job.startedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?"} — {job.flowersFound || 0} flowers
+                </option>
+              ))}
+            </select>
             <select
               value={sortBy}
               onChange={e => { setSortBy(e.target.value); setFlowerPage(1); }}

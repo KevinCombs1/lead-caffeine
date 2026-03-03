@@ -2782,6 +2782,7 @@ export async function registerRoutes(
         sortBy: req.query.sortBy as string | undefined,
         beauteousOnly: req.query.beauteousOnly === "true",
         tag: req.query.tag as string | undefined,
+        crawlJobId: req.query.crawlJobId as string | undefined,
         page: req.query.page ? parseInt(req.query.page as string) : 1,
         limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
       };
@@ -2848,6 +2849,7 @@ export async function registerRoutes(
         tag: req.query.tag as string | undefined,
         sortBy: req.query.sortBy as string | undefined,
         beauteousOnly: req.query.beauteousOnly === "true" ? true : undefined,
+        crawlJobId: req.query.crawlJobId as string | undefined,
         page: 1,
         limit: 999999,
       };
