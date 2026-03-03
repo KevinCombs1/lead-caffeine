@@ -130,7 +130,11 @@ export default function HivePage() {
   const flowerFilters: Record<string, string> = {};
   if (activeTab !== "all" && activeTab !== "pollen") flowerFilters.directory = activeTab;
   if (flowerSearch) flowerFilters.search = flowerSearch;
-  if (filterCategory) flowerFilters.category = filterCategory;
+  if (filterCategory && filterCategory.startsWith("bundle:")) {
+    const bundleName = filterCategory.slice(7);
+    const bundleCatNames = categories.filter(c => c.bundle === bundleName).map(c => c.name);
+    if (bundleCatNames.length > 0) flowerFilters.categories = bundleCatNames.join(",");
+  } else if (filterCategory) flowerFilters.category = filterCategory;
   if (filterAlive) flowerFilters.alive = filterAlive;
   if (filterState) flowerFilters.state = filterState;
   if (filterTag) flowerFilters.tag = filterTag;
@@ -636,6 +640,7 @@ export default function HivePage() {
               <option value="">All Categories</option>
               {[...new Set(categories.map(c => c.bundle))].sort().map(bundle => (
                 <optgroup key={bundle} label={bundle}>
+                  <option value={`bundle:${bundle}`}>★ {bundle} (all)</option>
                   {categories.filter(c => c.bundle === bundle).sort((a, b) => a.name.localeCompare(b.name)).map(c => (
                     <option key={c.id} value={c.name}>{c.name}</option>
                   ))}

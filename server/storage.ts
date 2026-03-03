@@ -19,7 +19,7 @@ import {
   hivePollen, type HivePollen, type InsertHivePollen,
   hiveCompletedCombos, type HiveCompletedCombo,
 } from "@shared/schema";
-import { ilike, or, count } from "drizzle-orm";
+import { ilike, or, count, inArray } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -91,7 +91,7 @@ export interface IStorage {
   appendCrawlLog(jobId: string, message: string): Promise<void>;
   bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number>;
   bulkInsertPollen(pollen: InsertHivePollen[]): Promise<number>;
-  getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
+  getHiveFlowers(filters: { directory?: string; category?: string; categories?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
   getHivePollen(filters: { search?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }>;
   deleteFlower(id: string): Promise<void>;
   updateFlowerHealth(id: string, isAlive: boolean): Promise<void>;
@@ -488,10 +488,11 @@ export class DatabaseStorage implements IStorage {
     return inserted;
   }
 
-  async getHiveFlowers(filters: { directory?: string; category?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }> {
+  async getHiveFlowers(filters: { directory?: string; category?: string; categories?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }> {
     const conditions: any[] = [];
     if (filters.directory) conditions.push(eq(hiveFlowers.sourceDirectory, filters.directory));
-    if (filters.category) conditions.push(eq(hiveFlowers.category, filters.category));
+    if (filters.categories) conditions.push(inArray(hiveFlowers.category, filters.categories.split(",")));
+    else if (filters.category) conditions.push(eq(hiveFlowers.category, filters.category));
     if (filters.city) conditions.push(eq(hiveFlowers.city, filters.city));
     if (filters.state) conditions.push(eq(hiveFlowers.state, filters.state));
     if (filters.isAlive !== undefined) conditions.push(eq(hiveFlowers.isAlive, filters.isAlive));

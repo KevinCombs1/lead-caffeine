@@ -2775,6 +2775,7 @@ export async function registerRoutes(
       const filters = {
         directory: req.query.directory as string | undefined,
         category: req.query.category as string | undefined,
+        categories: req.query.categories as string | undefined,
         city: req.query.city as string | undefined,
         state: req.query.state as string | undefined,
         search: req.query.search as string | undefined,
@@ -2842,6 +2843,7 @@ export async function registerRoutes(
       const filters = {
         directory: req.query.directory as string | undefined,
         category: req.query.category as string | undefined,
+        categories: req.query.categories as string | undefined,
         city: req.query.city as string | undefined,
         state: req.query.state as string | undefined,
         search: req.query.search as string | undefined,
