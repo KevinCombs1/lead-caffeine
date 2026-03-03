@@ -26,18 +26,83 @@ export interface ScraperResponse {
 export type ScraperFn = (searchTerms: string[], location: ScraperLocation) => Promise<ScraperResponse>;
 
 const USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:123.0) Gecko/20100101 Firefox/123.0",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:122.0) Gecko/20100101 Firefox/122.0",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0",
 ];
 
+const ACCEPT_LANGUAGES = [
+  "en-US,en;q=0.9",
+  "en-US,en;q=0.9,es;q=0.8",
+  "en-US,en;q=0.8",
+  "en-GB,en;q=0.9,en-US;q=0.8",
+  "en-CA,en;q=0.9,en-US;q=0.8",
+  "en-AU,en;q=0.9,en-US;q=0.8",
+  "en-US,en;q=0.9,fr;q=0.7",
+  "en-US,en;q=0.9,de;q=0.7",
+];
+
+const REFERERS = [
+  "https://www.google.com/",
+  "https://www.google.com/search?q=",
+  "https://www.bing.com/",
+  "https://www.bing.com/search?q=",
+  "https://search.yahoo.com/",
+  "",
+  "",
+  "",
+];
+
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function getRandomHeaders(): Record<string, string> {
+  const ua = pick(USER_AGENTS);
+  const isFirefox = ua.includes("Firefox");
+  const headers: Record<string, string> = {
+    "User-Agent": ua,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": pick(ACCEPT_LANGUAGES),
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "DNT": Math.random() > 0.5 ? "1" : "0",
+  };
+  if (!isFirefox) {
+    headers["Sec-Fetch-Dest"] = "document";
+    headers["Sec-Fetch-Mode"] = "navigate";
+    headers["Sec-Fetch-Site"] = pick(["none", "cross-site"]);
+    headers["Sec-Fetch-User"] = "?1";
+    headers["sec-ch-ua-platform"] = pick(['"Windows"', '"macOS"', '"Linux"']);
+    headers["sec-ch-ua-mobile"] = "?0";
+  }
+  const ref = pick(REFERERS);
+  if (ref) headers["Referer"] = ref;
+  if (Math.random() > 0.7) headers["Cache-Control"] = "no-cache";
+  if (Math.random() > 0.7) headers["Pragma"] = "no-cache";
+  return headers;
+}
+
 function getRandomUA(): string {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+  return pick(USER_AGENTS);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -45,7 +110,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function randomDelay(): Promise<void> {
-  const ms = 3000 + Math.random() * 2000;
+  const ms = 7000 + Math.random() * 2000;
   return sleep(ms);
 }
 
@@ -439,28 +504,39 @@ export function classifyResults(
 }
 
 async function fetchPage(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": getRandomUA(),
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        Connection: "keep-alive",
-        "Cache-Control": "no-cache",
-      },
-      signal: controller.signal,
-      redirect: "follow",
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  const RETRYABLE = new Set([403, 429, 503]);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch(url, {
+        headers: getRandomHeaders(),
+        signal: controller.signal,
+        redirect: "follow",
+      });
+      if (!response.ok) {
+        if (attempt === 0 && RETRYABLE.has(response.status)) {
+          clearTimeout(timeout);
+          const backoff = 10000 + Math.random() * 5000;
+          await sleep(backoff);
+          continue;
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return await response.text();
+    } catch (err: any) {
+      if (attempt === 0 && err?.message?.includes("abort")) {
+        clearTimeout(timeout);
+        await sleep(5000);
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
     }
-    return await response.text();
-  } finally {
-    clearTimeout(timeout);
   }
+  throw new Error("fetchPage: max retries reached");
 }
 
 function extractText(html: string, startMarker: string, endMarker: string): string {
