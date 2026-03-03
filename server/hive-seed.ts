@@ -126,6 +126,28 @@ const CATEGORIES: CategorySeed[] = [
   cat("Legal Consulting", "Legal", ["Legal Consulting Firm", "Legal Advisory", "Legal Strategy"], true),
   cat("Compliance Consulting", "Legal", ["Compliance Consulting Firm", "Regulatory Consulting", "Compliance Advisory"], true),
 
+  // Personal Injury (20)
+  cat("Personal Injury Attorney", "Personal Injury", ["Personal Injury Attorney", "Accident Lawyer", "Injury Law Firm"]),
+  cat("Car Accident Lawyer", "Personal Injury", ["Car Accident Lawyer", "Auto Accident Attorney", "Vehicle Accident Lawyer"]),
+  cat("Truck Accident Lawyer", "Personal Injury", ["Truck Accident Attorney", "18 Wheeler Accident Lawyer", "Commercial Vehicle Accident"]),
+  cat("Motorcycle Accident Lawyer", "Personal Injury", ["Motorcycle Accident Attorney", "Motorcycle Injury Lawyer", "Bike Accident Attorney"]),
+  cat("Slip and Fall Attorney", "Personal Injury", ["Slip and Fall Attorney", "Premises Liability Lawyer", "Trip and Fall Lawyer"]),
+  cat("Medical Malpractice Attorney", "Personal Injury", ["Medical Malpractice Attorney", "Medical Negligence Lawyer", "Doctor Malpractice"]),
+  cat("Wrongful Death Attorney", "Personal Injury", ["Wrongful Death Attorney", "Wrongful Death Lawyer", "Fatal Accident Attorney"]),
+  cat("Workers Compensation Lawyer", "Personal Injury", ["Workers Compensation Attorney", "Work Injury Lawyer", "Workers Comp Lawyer"]),
+  cat("Product Liability Lawyer", "Personal Injury", ["Product Liability Attorney", "Defective Product Lawyer", "Product Injury Attorney"]),
+  cat("Dog Bite Attorney", "Personal Injury", ["Dog Bite Attorney", "Animal Attack Lawyer", "Dog Bite Lawyer"]),
+  cat("Brain Injury Lawyer", "Personal Injury", ["Brain Injury Attorney", "Traumatic Brain Injury Lawyer", "TBI Attorney"]),
+  cat("Spinal Cord Injury Lawyer", "Personal Injury", ["Spinal Cord Injury Attorney", "Back Injury Lawyer", "Paralysis Attorney"]),
+  cat("Nursing Home Abuse Attorney", "Personal Injury", ["Nursing Home Abuse Lawyer", "Elder Abuse Attorney", "Nursing Home Neglect"]),
+  cat("Birth Injury Lawyer", "Personal Injury", ["Birth Injury Attorney", "Birth Trauma Lawyer", "Cerebral Palsy Attorney"]),
+  cat("Construction Accident Lawyer", "Personal Injury", ["Construction Accident Attorney", "Construction Injury Lawyer", "Jobsite Accident"]),
+  cat("Burn Injury Lawyer", "Personal Injury", ["Burn Injury Attorney", "Fire Accident Lawyer", "Chemical Burn Attorney"]),
+  cat("Pedestrian Accident Lawyer", "Personal Injury", ["Pedestrian Accident Attorney", "Pedestrian Injury Lawyer", "Crosswalk Accident"]),
+  cat("Bicycle Accident Lawyer", "Personal Injury", ["Bicycle Accident Attorney", "Bike Crash Lawyer", "Cycling Accident Attorney"]),
+  cat("Boating Accident Lawyer", "Personal Injury", ["Boating Accident Attorney", "Maritime Injury Lawyer", "Boat Crash Attorney"]),
+  cat("Mass Tort Attorney", "Personal Injury", ["Mass Tort Attorney", "Class Action Lawyer", "Multi-District Litigation"]),
+
   // Marketing & Advertising (22)
   cat("Digital Marketing", "Marketing & Advertising", ["Digital Marketing Agency", "Online Marketing", "Internet Marketing"]),
   cat("SEO Agency", "Marketing & Advertising", ["SEO Company", "Search Engine Optimization", "SEO Services"]),
