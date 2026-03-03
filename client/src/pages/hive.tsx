@@ -634,8 +634,12 @@ export default function HivePage() {
               data-testid="select-filter-category"
             >
               <option value="">All Categories</option>
-              {[...new Set(categories.map(c => c.name))].sort().map(c => (
-                <option key={c} value={c}>{c}</option>
+              {[...new Set(categories.map(c => c.bundle))].sort().map(bundle => (
+                <optgroup key={bundle} label={bundle}>
+                  {categories.filter(c => c.bundle === bundle).sort((a, b) => a.name.localeCompare(b.name)).map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             <select

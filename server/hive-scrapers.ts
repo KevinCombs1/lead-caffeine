@@ -110,7 +110,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function randomDelay(): Promise<void> {
-  const ms = 7000 + Math.random() * 2000;
+  const ms = 3000 + Math.random() * 2000;
   return sleep(ms);
 }
 
