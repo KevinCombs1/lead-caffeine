@@ -239,6 +239,10 @@ const CATEGORIES: CategorySeed[] = [
   cat("Industrial Real Estate", "Real Estate", ["Industrial Real Estate Broker", "Warehouse Space", "Industrial Property"]),
   cat("Real Estate Consulting", "Real Estate", ["Real Estate Consulting Firm", "Property Advisory", "Real Estate Strategy"], true),
   cat("Property Tax Consulting", "Real Estate", ["Property Tax Consultant", "Tax Assessment Appeal", "Property Tax Advisor"], true),
+  cat("Commercial Developer", "Real Estate", ["Commercial Property Developer", "Real Estate Developer", "Commercial Development"]),
+  cat("Mixed-Use Development", "Real Estate", ["Mixed Use Developer", "Mixed Use Development", "Residential Commercial Development"]),
+  cat("Self Storage", "Real Estate", ["Self Storage Facility", "Storage Units", "Mini Storage"]),
+  cat("Shopping Center Management", "Real Estate", ["Shopping Center Management", "Retail Property Management", "Mall Management"]),
 
   // Manufacturing & Industrial (22)
   cat("Industrial Supply", "Manufacturing & Industrial", ["Industrial Supply Company", "Industrial Distributor", "Industrial Products"]),
@@ -331,6 +335,14 @@ const CATEGORIES: CategorySeed[] = [
   cat("Crane Services", "Construction & Engineering", ["Crane Services Company", "Crane Rental", "Heavy Lifting"]),
   cat("Construction Consulting", "Construction & Engineering", ["Construction Consulting Firm", "Construction Advisory", "Owner Representation"], true),
   cat("Project Management Consulting", "Construction & Engineering", ["Construction Project Management", "CPM Consulting", "Project Controls"], true),
+  cat("Site Work Contractor", "Construction & Engineering", ["Site Work Contractor", "Grading Contractor", "Excavation Contractor"]),
+  cat("Electrical Contractor", "Construction & Engineering", ["Commercial Electrical Contractor", "Electrical Construction", "Industrial Electrician"]),
+  cat("Plumbing Contractor", "Construction & Engineering", ["Commercial Plumbing Contractor", "Plumbing Construction", "Industrial Plumber"]),
+  cat("HVAC Contractor", "Construction & Engineering", ["Commercial HVAC Contractor", "HVAC Installation", "Mechanical Contractor"]),
+  cat("Fire Protection", "Construction & Engineering", ["Fire Protection Contractor", "Fire Sprinkler Company", "Fire Suppression Systems"]),
+  cat("Interior Build-Out", "Construction & Engineering", ["Interior Build Out Contractor", "Tenant Improvement Contractor", "Commercial Renovation"]),
+  cat("Landscape Architecture", "Construction & Engineering", ["Landscape Architecture Firm", "Commercial Landscaping", "Site Design"]),
+  cat("Design-Build Firm", "Construction & Engineering", ["Design Build Firm", "Design Build Contractor", "Design Build Construction"]),
 
   // Automotive (18)
   cat("Auto Dealerships", "Automotive", ["Auto Dealer", "Car Dealership", "New Car Dealer"]),
