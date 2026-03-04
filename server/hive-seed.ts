@@ -217,6 +217,7 @@ const CATEGORIES: CategorySeed[] = [
   cat("Radiology", "Healthcare", ["Radiology Services", "Diagnostic Imaging", "Medical Imaging"]),
   cat("Healthcare Management Consulting", "Healthcare", ["Healthcare Management Consulting", "Hospital Management", "Health System Advisory"], true),
   cat("Clinical Operations Consulting", "Healthcare", ["Clinical Operations Consulting", "Clinical Workflow", "Care Delivery Consulting"], true),
+  cat("Neurosurgeon", "Healthcare", ["Neurosurgeon", "Neurosurgery Practice", "Brain Surgeon"]),
 
   // Real Estate (20)
   cat("Commercial Real Estate", "Real Estate", ["Commercial Real Estate Company", "CRE Firm", "Commercial Property"]),
