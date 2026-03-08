@@ -520,6 +520,10 @@ export class DatabaseStorage implements IStorage {
       orderClause = sql`beauty_score DESC NULLS LAST`;
     } else if (filters.sortBy === "name") {
       orderClause = sql`name ASC`;
+    } else if (filters.sortBy === "category") {
+      orderClause = sql`category ASC, name ASC`;
+    } else if (filters.sortBy === "state") {
+      orderClause = sql`state ASC, city ASC, name ASC`;
     } else {
       orderClause = sql`created_at DESC`;
     }

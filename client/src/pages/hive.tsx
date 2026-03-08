@@ -717,6 +717,8 @@ export default function HivePage() {
               data-testid="select-sort-by"
             >
               <option value="">Newest</option>
+              <option value="category">By Category</option>
+              <option value="state">By State</option>
               <option value="beauty">Most Beauteous</option>
               <option value="name">Name A-Z</option>
             </select>
