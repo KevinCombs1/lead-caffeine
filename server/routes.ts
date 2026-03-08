@@ -250,9 +250,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   const isProduction = process.env.NODE_ENV === "production";
 
-  if (isProduction) {
-    app.set("trust proxy", 1);
-  }
+  app.set("trust proxy", 1);
 
   const pgPool = await (async () => {
     try {
@@ -303,7 +301,13 @@ export async function registerRoutes(
     if (password === getOwnerPassword()) {
       clearLoginAttempts(req);
       (req.session as any).authenticated = true;
-      res.json({ success: true });
+      req.session.save((err) => {
+        if (err) {
+          console.error("[SESSION] Save error:", err);
+          return res.status(500).json({ error: "Session save failed" });
+        }
+        res.json({ success: true });
+      });
     } else {
       recordFailedLogin(req);
       res.status(401).json({ error: "Access denied" });

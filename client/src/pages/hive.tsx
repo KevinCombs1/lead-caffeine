@@ -514,15 +514,23 @@ export default function HivePage() {
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <label className="text-xs text-gray-400 whitespace-nowrap">Max flowers:</label>
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="Unlimited"
+                    <select
                       value={maxResults}
                       onChange={(e) => setMaxResults(e.target.value)}
-                      className="w-28 px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-white placeholder-gray-600 focus:border-pink-500 focus:outline-none"
+                      className="w-36 px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-pink-500 focus:outline-none"
                       data-testid="input-max-results"
-                    />
+                    >
+                      <option value="">Unlimited</option>
+                      <option value="100">100</option>
+                      <option value="500">500</option>
+                      <option value="1000">1,000</option>
+                      <option value="5000">5,000</option>
+                      <option value="10000">10,000</option>
+                      <option value="50000">50,000</option>
+                      <option value="100000">100,000</option>
+                      <option value="500000">500,000</option>
+                      <option value="1000000">1,000,000</option>
+                    </select>
                   </div>
                   <button
                     onClick={() => startCrawl.mutate()}
