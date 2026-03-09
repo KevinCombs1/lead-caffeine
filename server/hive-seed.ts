@@ -468,6 +468,7 @@ const CATEGORIES: CategorySeed[] = [
   cat("Private Investigation", "Professional Services", ["Private Investigator", "PI Services", "Surveillance Investigation"]),
   cat("Lie Detector Services", "Professional Services", ["Polygraph Examiner", "Lie Detector Test", "Truth Verification"]),
   cat("Skip Tracing", "Professional Services", ["Skip Tracing Service", "People Finder", "Debtor Location"]),
+  cat("Veteran Service Organization", "Professional Services", ["Veteran Service Organization", "VFW Post", "American Legion", "Disabled American Veterans", "Veterans of Foreign Wars", "Military Veterans Organization", "DAV Chapter", "Veterans Assistance", "Veterans Support Organization"]),
 
   // Construction & Engineering (20)
   cat("Construction Management", "Construction & Engineering", ["Construction Management Firm", "CM Company", "Construction Services"]),
