@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, asc, and, sql } from "drizzle-orm";
 import {
   users, type User, type InsertUser,
   scrapeJobs, type ScrapeJob, type InsertScrapeJob,
@@ -92,7 +92,7 @@ export interface IStorage {
   bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number>;
   bulkInsertPollen(pollen: InsertHivePollen[]): Promise<number>;
   getHiveFlowers(filters: { directory?: string; category?: string; categories?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
-  getHivePollen(filters: { search?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }>;
+  getHivePollen(filters: { search?: string; category?: string; categories?: string; state?: string; directory?: string; sortBy?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }>;
   deleteFlower(id: string): Promise<void>;
   updateFlowerHealth(id: string, isAlive: boolean): Promise<void>;
   updateFlowerBeauty(id: string, beautyScore: number, beautyFlags: string): Promise<void>;
@@ -533,12 +533,31 @@ export class DatabaseStorage implements IStorage {
     return { flowers, total };
   }
 
-  async getHivePollen(filters: { search?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }> {
+  async getHivePollen(filters: { search?: string; category?: string; categories?: string; state?: string; directory?: string; sortBy?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }> {
     const conditions: any[] = [];
     if (filters.search) {
-      conditions.push(or(
-        ilike(hivePollen.name, `%${filters.search}%`)
-      ));
+      conditions.push(ilike(hivePollen.name, `%${filters.search}%`));
+    }
+    if (filters.category) {
+      if (filters.category.startsWith("bundle:")) {
+        const bundleName = filters.category.slice(7);
+        const cats = await db.select({ name: hiveCategories.name }).from(hiveCategories).where(eq(hiveCategories.bundle, bundleName));
+        if (cats.length > 0) {
+          conditions.push(inArray(hivePollen.category, cats.map(c => c.name)));
+        }
+      } else {
+        conditions.push(eq(hivePollen.category, filters.category));
+      }
+    }
+    if (filters.categories) {
+      const catList = filters.categories.split(",").map(s => s.trim()).filter(Boolean);
+      if (catList.length > 0) conditions.push(inArray(hivePollen.category, catList));
+    }
+    if (filters.state) {
+      conditions.push(eq(hivePollen.state, filters.state));
+    }
+    if (filters.directory) {
+      conditions.push(eq(hivePollen.sourceDirectory, filters.directory));
     }
 
     const page = filters.page || 1;
@@ -550,7 +569,12 @@ export class DatabaseStorage implements IStorage {
     const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(hivePollen).where(whereClause);
     const total = Number(countRow?.count || 0);
 
-    const pollen = await db.select().from(hivePollen).where(whereClause).orderBy(desc(hivePollen.createdAt)).limit(limit).offset(offset);
+    let orderBy: any = desc(hivePollen.createdAt);
+    if (filters.sortBy === "category") orderBy = asc(hivePollen.category);
+    else if (filters.sortBy === "state") orderBy = asc(hivePollen.state);
+    else if (filters.sortBy === "name") orderBy = asc(hivePollen.name);
+
+    const pollen = await db.select().from(hivePollen).where(whereClause).orderBy(orderBy).limit(limit).offset(offset);
 
     return { pollen, total };
   }

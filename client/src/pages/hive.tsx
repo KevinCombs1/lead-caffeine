@@ -105,6 +105,10 @@ export default function HivePage() {
   const [activeTab, setActiveTab] = useState("all");
   const [flowerSearch, setFlowerSearch] = useState("");
   const [pollenSearch, setPollenSearch] = useState("");
+  const [pollenFilterCategory, setPollenFilterCategory] = useState("");
+  const [pollenFilterState, setPollenFilterState] = useState("");
+  const [pollenFilterDirectory, setPollenFilterDirectory] = useState("");
+  const [pollenSortBy, setPollenSortBy] = useState("");
   const [flowerPage, setFlowerPage] = useState(1);
   const [pollenPage, setPollenPage] = useState(1);
   const [categorySearch, setCategorySearch] = useState("");
@@ -153,7 +157,12 @@ export default function HivePage() {
     refetchInterval: 15000,
   });
 
-  const pollenQs = new URLSearchParams({ search: pollenSearch, page: String(pollenPage), limit: "50" }).toString();
+  const pollenFilters: Record<string, string> = { search: pollenSearch, page: String(pollenPage), limit: "50" };
+  if (pollenFilterCategory) pollenFilters.category = pollenFilterCategory;
+  if (pollenFilterState) pollenFilters.state = pollenFilterState;
+  if (pollenFilterDirectory) pollenFilters.directory = pollenFilterDirectory;
+  if (pollenSortBy) pollenFilters.sortBy = pollenSortBy;
+  const pollenQs = new URLSearchParams(pollenFilters).toString();
   const { data: pollenData, isLoading: pollenLoading } = useQuery<{ pollen: HivePollen[]; total: number }>({
     queryKey: ["/api/hive/pollen", pollenQs],
     queryFn: () => fetch(`/api/hive/pollen?${pollenQs}`, { credentials: "include" }).then(r => r.json()),
@@ -771,8 +780,8 @@ export default function HivePage() {
         )}
 
         {activeTab === "pollen" && (
-          <div className="flex items-center gap-2 p-2 border-b border-gray-800">
-            <div className="relative flex-1">
+          <div className="flex flex-wrap items-center gap-2 p-2 border-b border-gray-800">
+            <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
               <input
                 type="text"
@@ -783,8 +792,53 @@ export default function HivePage() {
                 data-testid="input-pollen-search"
               />
             </div>
+            <select
+              value={pollenFilterCategory}
+              onChange={e => { setPollenFilterCategory(e.target.value); setPollenPage(1); }}
+              className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200 max-w-[200px]"
+              data-testid="select-pollen-filter-category"
+            >
+              <option value="">All Categories</option>
+              {[...new Set(categories.map(c => c.bundle))].sort().map(bundle => (
+                <optgroup key={bundle} label={bundle}>
+                  <option value={`bundle:${bundle}`}>★ {bundle} (all)</option>
+                  {categories.filter(c => c.bundle === bundle).sort((a, b) => a.name.localeCompare(b.name)).map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <select
+              value={pollenFilterState}
+              onChange={e => { setPollenFilterState(e.target.value); setPollenPage(1); }}
+              className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200 max-w-[120px]"
+              data-testid="select-pollen-filter-state"
+            >
+              <option value="">All States</option>
+              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select
+              value={pollenFilterDirectory}
+              onChange={e => { setPollenFilterDirectory(e.target.value); setPollenPage(1); }}
+              className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200 max-w-[150px]"
+              data-testid="select-pollen-filter-directory"
+            >
+              <option value="">All Sources</option>
+              {directories.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+            </select>
+            <select
+              value={pollenSortBy}
+              onChange={e => { setPollenSortBy(e.target.value); setPollenPage(1); }}
+              className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200"
+              data-testid="select-pollen-sort-by"
+            >
+              <option value="">Newest</option>
+              <option value="category">By Category</option>
+              <option value="state">By State</option>
+              <option value="name">Name A-Z</option>
+            </select>
             <a
-              href={`/api/hive/export-pollen?${new URLSearchParams({ search: pollenSearch }).toString()}`}
+              href={`/api/hive/export-pollen?${new URLSearchParams(Object.fromEntries(Object.entries(pollenFilters).filter(([k]) => k !== "page" && k !== "limit"))).toString()}`}
               className="flex items-center gap-1 text-xs px-2 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-gray-200 transition-colors"
               data-testid="button-download-pollen-csv"
             >

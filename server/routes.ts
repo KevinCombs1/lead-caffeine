@@ -2811,6 +2811,11 @@ export async function registerRoutes(
     try {
       const filters = {
         search: req.query.search as string | undefined,
+        category: req.query.category as string | undefined,
+        categories: req.query.categories as string | undefined,
+        state: req.query.state as string | undefined,
+        directory: req.query.directory as string | undefined,
+        sortBy: req.query.sortBy as string | undefined,
         page: req.query.page ? parseInt(req.query.page as string) : 1,
         limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
       };
@@ -2884,6 +2889,11 @@ export async function registerRoutes(
     try {
       const filters = {
         search: req.query.search as string | undefined,
+        category: req.query.category as string | undefined,
+        categories: req.query.categories as string | undefined,
+        state: req.query.state as string | undefined,
+        directory: req.query.directory as string | undefined,
+        sortBy: req.query.sortBy as string | undefined,
         page: 1,
         limit: 999999,
       };
