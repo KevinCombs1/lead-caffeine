@@ -92,7 +92,7 @@ export interface IStorage {
   bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number>;
   bulkInsertPollen(pollen: InsertHivePollen[]): Promise<number>;
   getHiveFlowers(filters: { directory?: string; category?: string; categories?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
-  getHivePollen(filters: { search?: string; category?: string; categories?: string; state?: string; directory?: string; sortBy?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }>;
+  getHivePollen(filters: { search?: string; category?: string; categories?: string; state?: string; directory?: string; crawlJobId?: string; sortBy?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }>;
   deleteFlower(id: string): Promise<void>;
   updateFlowerHealth(id: string, isAlive: boolean): Promise<void>;
   updateFlowerBeauty(id: string, beautyScore: number, beautyFlags: string): Promise<void>;
@@ -533,7 +533,7 @@ export class DatabaseStorage implements IStorage {
     return { flowers, total };
   }
 
-  async getHivePollen(filters: { search?: string; category?: string; categories?: string; state?: string; directory?: string; sortBy?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }> {
+  async getHivePollen(filters: { search?: string; category?: string; categories?: string; state?: string; directory?: string; crawlJobId?: string; sortBy?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }> {
     const conditions: any[] = [];
     if (filters.search) {
       conditions.push(ilike(hivePollen.name, `%${filters.search}%`));
@@ -558,6 +558,9 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters.directory) {
       conditions.push(eq(hivePollen.sourceDirectory, filters.directory));
+    }
+    if (filters.crawlJobId) {
+      conditions.push(eq(hivePollen.crawlJobId, filters.crawlJobId));
     }
 
     const page = filters.page || 1;

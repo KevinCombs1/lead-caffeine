@@ -62,6 +62,7 @@ interface HivePollen {
   state: string | null;
   category: string;
   sourceDirectory: string;
+  crawlJobId: string | null;
 }
 
 interface CrawlStatus {
@@ -108,6 +109,7 @@ export default function HivePage() {
   const [pollenFilterCategory, setPollenFilterCategory] = useState("");
   const [pollenFilterState, setPollenFilterState] = useState("");
   const [pollenFilterDirectory, setPollenFilterDirectory] = useState("");
+  const [pollenFilterBatch, setPollenFilterBatch] = useState("");
   const [pollenSortBy, setPollenSortBy] = useState("");
   const [flowerPage, setFlowerPage] = useState(1);
   const [pollenPage, setPollenPage] = useState(1);
@@ -161,6 +163,7 @@ export default function HivePage() {
   if (pollenFilterCategory) pollenFilters.category = pollenFilterCategory;
   if (pollenFilterState) pollenFilters.state = pollenFilterState;
   if (pollenFilterDirectory) pollenFilters.directory = pollenFilterDirectory;
+  if (pollenFilterBatch) pollenFilters.crawlJobId = pollenFilterBatch;
   if (pollenSortBy) pollenFilters.sortBy = pollenSortBy;
   const pollenQs = new URLSearchParams(pollenFilters).toString();
   const { data: pollenData, isLoading: pollenLoading } = useQuery<{ pollen: HivePollen[]; total: number }>({
@@ -825,6 +828,19 @@ export default function HivePage() {
             >
               <option value="">All Sources</option>
               {directories.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+            </select>
+            <select
+              value={pollenFilterBatch}
+              onChange={e => { setPollenFilterBatch(e.target.value); setPollenPage(1); }}
+              className={`text-xs bg-gray-900 border rounded px-2 py-1.5 max-w-[180px] ${pollenFilterBatch ? "border-purple-500 text-purple-300" : "border-gray-700 text-gray-200"}`}
+              data-testid="select-pollen-filter-batch"
+            >
+              <option value="">All Batches</option>
+              {(crawlStatus?.recentJobs || []).map((job: any) => (
+                <option key={job.id} value={job.id}>
+                  {job.startedAt ? new Date(job.startedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?"} — {job.pollenFound || 0} pollen
+                </option>
+              ))}
             </select>
             <select
               value={pollenSortBy}
