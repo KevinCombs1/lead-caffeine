@@ -2861,14 +2861,14 @@ export async function registerRoutes(
       };
       const { flowers } = await storage.getHiveFlowers(filters);
 
-      const header = "Name,Website,Phone,Email,City,State,Category,Source,Franchise,Alive,BeautyScore,BeautyFlags\n";
+      const header = "Name,Website,Phone,City,State,Category,Source,Franchise,Alive,BeautyScore,BeautyFlags\n";
       const csvEscape = (s: string | null) => {
         if (!s) return "";
         if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
         return s;
       };
       const rows = flowers.map(f =>
-        [f.name, f.website, f.phone, f.email, f.city, f.state, f.category, f.sourceDirectory, f.isFranchise ? "Yes" : "No", f.isAlive ? "Yes" : "No", f.beautyScore !== null && f.beautyScore !== undefined ? String(f.beautyScore) : "", f.beautyFlags || ""]
+        [f.name, f.website, f.phone, f.city, f.state, f.category, f.sourceDirectory, f.isFranchise ? "Yes" : "No", f.isAlive ? "Yes" : "No", f.beautyScore !== null && f.beautyScore !== undefined ? String(f.beautyScore) : "", f.beautyFlags || ""]
           .map(csvEscape).join(",")
       ).join("\n");
 
@@ -2889,14 +2889,14 @@ export async function registerRoutes(
       };
       const { pollen } = await storage.getHivePollen(filters);
 
-      const header = "Name,Phone,Email,City,State,Category,Source\n";
+      const header = "Name,Phone,City,State,Category,Source\n";
       const csvEscape = (s: string | null) => {
         if (!s) return "";
         if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
         return s;
       };
       const rows = pollen.map(p =>
-        [p.name, p.phone, p.email, p.city, p.state, p.category, p.sourceDirectory]
+        [p.name, p.phone, p.city, p.state, p.category, p.sourceDirectory]
           .map(csvEscape).join(",")
       ).join("\n");
 

@@ -7,7 +7,6 @@ export interface ScraperResult {
   name: string; 
   website?: string;
   phone?: string;
-  email?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -595,20 +594,6 @@ function extractPhone(text: string): string | undefined {
   return match ? match[0] : undefined;
 }
 
-function extractEmails(html: string): string[] {
-  const emailRegex = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
-  const raw: string[] = [];
-  let m;
-  while ((m = emailRegex.exec(html)) !== null) raw.push(m[0].toLowerCase());
-  const excludeDomains = ["example.com", "sentry.io", "wixpress.com", "googleapis.com", "schema.org", "w3.org", "googleusercontent.com", "placeholder.com", "email.com", "domain.com", "yoursite.com", "yourdomain.com", "company.com", "test.com"];
-  const seen = new Set<string>();
-  return raw.filter(e => {
-    if (seen.has(e)) return false;
-    seen.add(e);
-    const domain = e.split("@")[1];
-    return !excludeDomains.some(d => domain === d || domain.endsWith("." + d));
-  });
-}
 
 function extractHref(tag: string): string {
   const match = tag.match(/href=["']([^"']+)["']/i);
@@ -684,8 +669,6 @@ export async function scrapeYellowPages(
           }
         }
 
-        const pageEmails = extractEmails(html);
-
         const finalNames = names;
 
         let pageCount = 0;
@@ -696,7 +679,6 @@ export async function scrapeYellowPages(
           const entry: ScraperResult = {
             name,
             phone: phones[i] || extractPhone(html),
-            email: pageEmails[i],
             address: addresses[i],
             city: location.city,
             state: location.state,
@@ -781,8 +763,6 @@ export async function scrapeSuperpages(
         while ((match = addressRegex.exec(html)) !== null) addresses.push(stripTags(match[1]));
         while ((match = websiteRegex.exec(html)) !== null) websites.push(match[1]);
 
-        const pageEmails = extractEmails(html);
-
         if (names.length === 0) {
           log.push(page === 1 ? `No listings found for "${term}"` : `No more results after page ${page - 1}, stopping pagination`);
           break;
@@ -795,7 +775,6 @@ export async function scrapeSuperpages(
           results.push({
             name: names[i],
             phone: phones[i],
-            email: pageEmails[i],
             address: addresses[i],
             website: websiteUrl,
             city: location.city,
@@ -845,8 +824,6 @@ export async function scrapeMapQuest(
       const url = `https://www.mapquest.com/search/results?query=${encodedTerm}&boundingBox=&page=0`;
       const html = await fetchPage(url);
       let termCount = 0;
-      const pageEmails = extractEmails(html);
-      let emailIdx = 0;
 
       const jsonLdRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
       let match;
@@ -859,7 +836,6 @@ export async function scrapeMapQuest(
               const entry: ScraperResult = {
                 name: item.name || "",
                 phone: item.telephone,
-                email: item.email || pageEmails[emailIdx++],
                 website: item.url,
                 city: item.address?.addressLocality || location.city,
                 state: item.address?.addressRegion || location.state,
@@ -882,13 +858,10 @@ export async function scrapeMapQuest(
         const nameMatch = block.match(/<h[2-6][^>]*>([^<]+)/);
         const phoneMatch = block.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
         const linkMatch = block.match(/href="(https?:\/\/[^"]+)"/);
-        const blockEmails = extractEmails(block);
-
         if (nameMatch) {
           results.push({
             name: stripTags(nameMatch[1]),
             phone: phoneMatch ? phoneMatch[0] : undefined,
-            email: blockEmails[0],
             website: linkMatch ? linkMatch[1] : undefined,
             city: location.city,
             state: location.state,
@@ -940,8 +913,6 @@ export async function scrapeHotfrog(
       while ((match = phoneRegex.exec(html)) !== null) phones.push(match[1]);
       while ((match = websiteRegex.exec(html)) !== null) websites.push(match[1]);
 
-      const pageEmails = extractEmails(html);
-
       if (names.length === 0) {
         const altNameRegex = /<h[2-4][^>]*>(?:<a[^>]*>)?(?:<strong>)?([^<]+)/g;
         while ((match = altNameRegex.exec(html)) !== null) {
@@ -961,7 +932,6 @@ export async function scrapeHotfrog(
           results.push({
             name: names[i],
             phone: phones[i],
-            email: pageEmails[i],
             website: websiteUrl,
             city: location.city,
             state: location.state,
@@ -1013,8 +983,6 @@ export async function scrapeEZLocal(
       while ((match = phoneRegex.exec(html)) !== null) phones.push(stripTags(match[1]));
       while ((match = addressRegex.exec(html)) !== null) addresses.push(stripTags(match[1]));
 
-      const pageEmails = extractEmails(html);
-
       if (names.length === 0) {
         const altNameRegex = /class="result vcard[\s\S]*?<h[2-4][^>]*>(?:\d+\.\s*)?(?:<a[^>]*>)?([^<]+)/g;
         while ((match = altNameRegex.exec(html)) !== null) {
@@ -1031,7 +999,6 @@ export async function scrapeEZLocal(
           results.push({
             name: names[i],
             phone: phones[i],
-            email: pageEmails[i],
             address: addresses[i],
             city: location.city,
             state: location.state,
@@ -1078,13 +1045,10 @@ export async function scrapeN49(
         const phoneMatch = block.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
         const websiteMatch = block.match(/href="(https?:\/\/(?!www\.n49)[^"]+)"/);
         const addressMatch = block.match(/class="[^"]*address[^"]*"[^>]*>([^<]+)/);
-        const blockEmails = extractEmails(block);
-
         if (nameMatch) {
           results.push({
             name: stripTags(nameMatch[1]),
             phone: phoneMatch ? phoneMatch[0] : undefined,
-            email: blockEmails[0],
             website: websiteMatch ? websiteMatch[1] : undefined,
             address: addressMatch ? stripTags(addressMatch[1]) : undefined,
             city: location.city,
@@ -1106,7 +1070,6 @@ export async function scrapeN49(
                 results.push({
                   name: item.name,
                   phone: item.telephone,
-                  email: item.email,
                   website: item.url,
                   city: item.address?.addressLocality || location.city,
                   state: item.address?.addressRegion || location.state,

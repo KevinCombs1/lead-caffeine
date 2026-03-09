@@ -243,7 +243,6 @@ export class RayOfGraceEngine {
       website: f.website,
       normalizedUrl: f.normalizedUrl,
       phone: f.phone || null,
-      email: f.email || null,
       address: f.address || null,
       city: f.city || location.city,
       state: f.state || location.state,
@@ -258,7 +257,6 @@ export class RayOfGraceEngine {
     const pollenInserts: InsertHivePollen[] = pollen.map(p => ({
       name: p.name,
       phone: p.phone || null,
-      email: p.email || null,
       address: p.address || null,
       city: p.city || location.city,
       state: p.state || location.state,
