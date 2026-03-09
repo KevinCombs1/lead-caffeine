@@ -108,6 +108,7 @@ export default function HivePage() {
   const [flowerPage, setFlowerPage] = useState(1);
   const [pollenPage, setPollenPage] = useState(1);
   const [categorySearch, setCategorySearch] = useState("");
+  const [expandedBundles, setExpandedBundles] = useState<Set<string>>(new Set());
   const [locationSearch, setLocationSearch] = useState("");
   const [selectedState, setSelectedState] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
@@ -269,10 +270,6 @@ export default function HivePage() {
     setSelectedCats(next);
   };
 
-  const filteredCategories = categories.filter(c =>
-    (!categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase()) || c.bundle.toLowerCase().includes(categorySearch.toLowerCase()))
-  );
-
   const filteredLocations = locations.filter(l =>
     (!locationSearch || l.city.toLowerCase().includes(locationSearch.toLowerCase())) &&
     (!selectedState || l.state === selectedState)
@@ -371,43 +368,65 @@ export default function HivePage() {
                   className="w-full text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200 placeholder-gray-600"
                   data-testid="input-category-search"
                 />
-                <div className="flex flex-wrap gap-1 mb-1">
+                <div className="max-h-64 overflow-y-auto border border-gray-800 rounded bg-gray-900/50">
                   {bundles.map(b => {
                     const bundleCats = categories.filter(c => c.bundle === b);
-                    const allSelected = bundleCats.every(c => selectedCats.has(c.id));
+                    const visibleCats = bundleCats.filter(c =>
+                      !categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase()) || c.bundle.toLowerCase().includes(categorySearch.toLowerCase())
+                    );
+                    if (categorySearch && visibleCats.length === 0) return null;
+                    const selectedCount = bundleCats.filter(c => selectedCats.has(c.id)).length;
+                    const allSelected = bundleCats.length > 0 && bundleCats.every(c => selectedCats.has(c.id));
+                    const isExpanded = expandedBundles.has(b) || !!categorySearch;
                     return (
-                      <button
-                        key={b}
-                        onClick={() => toggleBundle(b)}
-                        className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
-                          allSelected
-                            ? "bg-pink-500/20 border-pink-500/40 text-pink-300"
-                            : "border-gray-700 text-gray-500 hover:text-gray-300"
-                        }`}
-                        data-testid={`button-bundle-${b.toLowerCase().replace(/\s+/g, "-")}`}
-                      >
-                        {b} ({bundleCats.length})
-                      </button>
+                      <div key={b} className="border-b border-gray-800 last:border-b-0">
+                        <div className="flex items-center gap-1 px-2 py-1.5 hover:bg-gray-800/50 cursor-pointer" data-testid={`bundle-header-${b.toLowerCase().replace(/\s+/g, "-")}`}>
+                          <button
+                            onClick={() => {
+                              const next = new Set(expandedBundles);
+                              next.has(b) ? next.delete(b) : next.add(b);
+                              setExpandedBundles(next);
+                            }}
+                            className="text-gray-500 hover:text-gray-300 text-[10px] w-4 flex-shrink-0"
+                            data-testid={`button-expand-${b.toLowerCase().replace(/\s+/g, "-")}`}
+                          >
+                            {isExpanded ? "▼" : "▶"}
+                          </button>
+                          <button
+                            onClick={() => toggleBundle(b)}
+                            className={`flex-1 text-left text-[11px] font-medium transition-colors ${
+                              allSelected ? "text-pink-300" : selectedCount > 0 ? "text-pink-400/70" : "text-gray-400"
+                            }`}
+                            data-testid={`button-bundle-${b.toLowerCase().replace(/\s+/g, "-")}`}
+                          >
+                            {b}
+                          </button>
+                          <span className={`text-[10px] ${allSelected ? "text-pink-400" : selectedCount > 0 ? "text-pink-500/60" : "text-gray-600"}`}>
+                            {selectedCount}/{bundleCats.length}
+                          </span>
+                        </div>
+                        {isExpanded && (
+                          <div className="pl-6 pr-2 pb-1.5 space-y-0.5">
+                            {(categorySearch ? visibleCats : bundleCats).map(c => (
+                              <label key={c.id} className="flex items-center gap-2 text-xs cursor-pointer" data-testid={`checkbox-cat-${c.slug}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedCats.has(c.id)}
+                                  onChange={() => {
+                                    const next = new Set(selectedCats);
+                                    next.has(c.id) ? next.delete(c.id) : next.add(c.id);
+                                    setSelectedCats(next);
+                                  }}
+                                  className="rounded"
+                                />
+                                <span className="text-gray-300">{c.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
-                </div>
-                <div className="space-y-0.5 max-h-40 overflow-y-auto border border-gray-800 rounded p-2 bg-gray-900/50">
-                  {filteredCategories.map(c => (
-                    <label key={c.id} className="flex items-center gap-2 text-xs cursor-pointer" data-testid={`checkbox-cat-${c.slug}`}>
-                      <input
-                        type="checkbox"
-                        checked={selectedCats.has(c.id)}
-                        onChange={() => {
-                          const next = new Set(selectedCats);
-                          next.has(c.id) ? next.delete(c.id) : next.add(c.id);
-                          setSelectedCats(next);
-                        }}
-                        className="rounded"
-                      />
-                      <span className="text-gray-200">{c.name}</span>
-                      <span className="text-gray-600 text-[10px]">{c.bundle}</span>
-                    </label>
-                  ))}
                 </div>
               </div>
 
