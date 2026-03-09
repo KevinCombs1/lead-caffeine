@@ -18,6 +18,7 @@ run = ["node", "./dist/index.cjs"]
 build = ["npm", "run", "build"]
 
 [workflows]
+runButton = "Start application"
 
 [[workflows.workflow]]
 name = "Project"
