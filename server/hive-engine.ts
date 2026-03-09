@@ -323,6 +323,18 @@ export async function checkFlowerHealth(batchSize = 100): Promise<{ checked: num
   return { checked: flowers.length, alive, dead };
 }
 
+export async function cleanupOrphanedCrawlJobs(): Promise<void> {
+  const jobs = await storage.getHiveCrawlJobs();
+  const orphaned = jobs.filter(j => j.status === "running");
+  for (const job of orphaned) {
+    await storage.updateHiveCrawlJob(job.id, { status: "interrupted", completedAt: new Date() });
+    console.log(`[hive-engine] Cleaned up orphaned crawl job ${job.id}`);
+  }
+  if (orphaned.length > 0) {
+    console.log(`[hive-engine] Marked ${orphaned.length} orphaned job(s) as interrupted.`);
+  }
+}
+
 export async function startRayOfGrace(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number): Promise<string> {
   if (activeEngine) {
     throw new Error("A crawl is already running. Stop it first.");

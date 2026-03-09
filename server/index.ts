@@ -67,6 +67,13 @@ app.use((req, res, next) => {
     console.log("[hive-seed] Seed skipped or error:", err.message);
   }
 
+  try {
+    const { cleanupOrphanedCrawlJobs } = await import("./hive-engine");
+    await cleanupOrphanedCrawlJobs();
+  } catch (err: any) {
+    console.log("[hive-engine] Orphan cleanup error:", err.message);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
