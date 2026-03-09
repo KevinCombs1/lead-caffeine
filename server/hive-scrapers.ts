@@ -4,9 +4,10 @@ export interface ScraperLocation {
 }
 
 export interface ScraperResult {
-  name: string;
+  name: string; 
   website?: string;
   phone?: string;
+  email?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -24,6 +25,10 @@ export interface ScraperResponse {
 }
 
 export type ScraperFn = (searchTerms: string[], location: ScraperLocation) => Promise<ScraperResponse>;
+
+let globalStopSignal = false;
+export function setStopSignal(val: boolean) { globalStopSignal = val; }
+export function isStopRequested(): boolean { return globalStopSignal; }
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -109,9 +114,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function randomDelay(): Promise<void> {
+async function randomDelay(): Promise<void> {
+  if (globalStopSignal) return;
   const ms = 8000 + Math.random() * 4000;
-  return sleep(ms);
+  const chunks = Math.ceil(ms / 1000);
+  for (let i = 0; i < chunks; i++) {
+    if (globalStopSignal) return;
+    await sleep(Math.min(1000, ms - i * 1000));
+  }
 }
 
 export function normalizeUrl(url: string): string {
@@ -504,9 +514,11 @@ export function classifyResults(
 }
 
 async function fetchPage(url: string): Promise<string> {
+  if (globalStopSignal) throw new Error("Stop signal received");
   const RETRYABLE = new Set([403, 429, 503]);
 
   for (let attempt = 0; attempt < 2; attempt++) {
+    if (globalStopSignal) throw new Error("Stop signal received");
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {
@@ -518,8 +530,13 @@ async function fetchPage(url: string): Promise<string> {
       if (!response.ok) {
         if (attempt === 0 && RETRYABLE.has(response.status)) {
           clearTimeout(timeout);
+          if (globalStopSignal) throw new Error("Stop signal received");
           const backoff = 10000 + Math.random() * 5000;
-          await sleep(backoff);
+          const chunks = Math.ceil(backoff / 1000);
+          for (let c = 0; c < chunks; c++) {
+            if (globalStopSignal) throw new Error("Stop signal received");
+            await sleep(Math.min(1000, backoff - c * 1000));
+          }
           continue;
         }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -528,7 +545,11 @@ async function fetchPage(url: string): Promise<string> {
     } catch (err: any) {
       if (attempt === 0 && err?.message?.includes("abort")) {
         clearTimeout(timeout);
-        await sleep(5000);
+        if (globalStopSignal) throw new Error("Stop signal received");
+        for (let c = 0; c < 5; c++) {
+          if (globalStopSignal) throw new Error("Stop signal received");
+          await sleep(1000);
+        }
         continue;
       }
       throw err;
@@ -574,6 +595,21 @@ function extractPhone(text: string): string | undefined {
   return match ? match[0] : undefined;
 }
 
+function extractEmails(html: string): string[] {
+  const emailRegex = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+  const raw: string[] = [];
+  let m;
+  while ((m = emailRegex.exec(html)) !== null) raw.push(m[0].toLowerCase());
+  const excludeDomains = ["example.com", "sentry.io", "wixpress.com", "googleapis.com", "schema.org", "w3.org", "googleusercontent.com", "placeholder.com", "email.com", "domain.com", "yoursite.com", "yourdomain.com", "company.com", "test.com"];
+  const seen = new Set<string>();
+  return raw.filter(e => {
+    if (seen.has(e)) return false;
+    seen.add(e);
+    const domain = e.split("@")[1];
+    return !excludeDomains.some(d => domain === d || domain.endsWith("." + d));
+  });
+}
+
 function extractHref(tag: string): string {
   const match = tag.match(/href=["']([^"']+)["']/i);
   return match ? match[1] : "";
@@ -588,6 +624,7 @@ export async function scrapeYellowPages(
   const locationStr = `${location.city}, ${location.state}`;
 
   for (const term of searchTerms) {
+    if (globalStopSignal) break;
     log.push(`Searching "${term}" in ${locationStr}...`);
     const encodedTerm = encodeURIComponent(term);
     const encodedLocation = encodeURIComponent(locationStr);
@@ -596,6 +633,7 @@ export async function scrapeYellowPages(
     let termTotal = 0;
 
     while (page <= maxPages) {
+      if (globalStopSignal) break;
       try {
         const url = `https://www.yellowpages.com/search?search_terms=${encodedTerm}&geo_location_terms=${encodedLocation}&page=${page}`;
         const html = await fetchPage(url);
@@ -646,6 +684,8 @@ export async function scrapeYellowPages(
           }
         }
 
+        const pageEmails = extractEmails(html);
+
         const finalNames = names;
 
         let pageCount = 0;
@@ -656,6 +696,7 @@ export async function scrapeYellowPages(
           const entry: ScraperResult = {
             name,
             phone: phones[i] || extractPhone(html),
+            email: pageEmails[i],
             address: addresses[i],
             city: location.city,
             state: location.state,
@@ -710,6 +751,7 @@ export async function scrapeSuperpages(
   const locationStr = `${location.city}, ${location.state}`;
 
   for (const term of searchTerms) {
+    if (globalStopSignal) break;
     log.push(`Searching "${term}" in ${locationStr}...`);
     const encodedTerm = encodeURIComponent(term);
     const encodedLocation = encodeURIComponent(locationStr);
@@ -718,6 +760,7 @@ export async function scrapeSuperpages(
     let termTotal = 0;
 
     while (page <= maxPages) {
+      if (globalStopSignal) break;
       try {
         const url = `https://www.superpages.com/search?search_terms=${encodedTerm}&geo_location_terms=${encodedLocation}&page=${page}`;
         const html = await fetchPage(url);
@@ -738,6 +781,8 @@ export async function scrapeSuperpages(
         while ((match = addressRegex.exec(html)) !== null) addresses.push(stripTags(match[1]));
         while ((match = websiteRegex.exec(html)) !== null) websites.push(match[1]);
 
+        const pageEmails = extractEmails(html);
+
         if (names.length === 0) {
           log.push(page === 1 ? `No listings found for "${term}"` : `No more results after page ${page - 1}, stopping pagination`);
           break;
@@ -750,6 +795,7 @@ export async function scrapeSuperpages(
           results.push({
             name: names[i],
             phone: phones[i],
+            email: pageEmails[i],
             address: addresses[i],
             website: websiteUrl,
             city: location.city,
@@ -792,12 +838,15 @@ export async function scrapeMapQuest(
   const locationStr = `${location.city}+${location.state}`;
 
   for (const term of searchTerms) {
+    if (globalStopSignal) break;
     log.push(`Searching "${term}" in ${location.city}, ${location.state}...`);
     try {
       const encodedTerm = encodeURIComponent(`${term} ${location.city} ${location.state}`);
       const url = `https://www.mapquest.com/search/results?query=${encodedTerm}&boundingBox=&page=0`;
       const html = await fetchPage(url);
       let termCount = 0;
+      const pageEmails = extractEmails(html);
+      let emailIdx = 0;
 
       const jsonLdRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
       let match;
@@ -810,6 +859,7 @@ export async function scrapeMapQuest(
               const entry: ScraperResult = {
                 name: item.name || "",
                 phone: item.telephone,
+                email: item.email || pageEmails[emailIdx++],
                 website: item.url,
                 city: item.address?.addressLocality || location.city,
                 state: item.address?.addressRegion || location.state,
@@ -832,11 +882,13 @@ export async function scrapeMapQuest(
         const nameMatch = block.match(/<h[2-6][^>]*>([^<]+)/);
         const phoneMatch = block.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
         const linkMatch = block.match(/href="(https?:\/\/[^"]+)"/);
+        const blockEmails = extractEmails(block);
 
         if (nameMatch) {
           results.push({
             name: stripTags(nameMatch[1]),
             phone: phoneMatch ? phoneMatch[0] : undefined,
+            email: blockEmails[0],
             website: linkMatch ? linkMatch[1] : undefined,
             city: location.city,
             state: location.state,
@@ -867,6 +919,7 @@ export async function scrapeHotfrog(
   const citySlug = location.city.toLowerCase().replace(/\s+/g, "-");
 
   for (const term of searchTerms) {
+    if (globalStopSignal) break;
     log.push(`Searching "${term}" in ${location.city}, ${location.state}...`);
     let termCount = 0;
     try {
@@ -887,6 +940,8 @@ export async function scrapeHotfrog(
       while ((match = phoneRegex.exec(html)) !== null) phones.push(match[1]);
       while ((match = websiteRegex.exec(html)) !== null) websites.push(match[1]);
 
+      const pageEmails = extractEmails(html);
+
       if (names.length === 0) {
         const altNameRegex = /<h[2-4][^>]*>(?:<a[^>]*>)?(?:<strong>)?([^<]+)/g;
         while ((match = altNameRegex.exec(html)) !== null) {
@@ -906,6 +961,7 @@ export async function scrapeHotfrog(
           results.push({
             name: names[i],
             phone: phones[i],
+            email: pageEmails[i],
             website: websiteUrl,
             city: location.city,
             state: location.state,
@@ -936,6 +992,7 @@ export async function scrapeEZLocal(
   const citySlug = location.city.toLowerCase().replace(/\s+/g, "-");
 
   for (const term of searchTerms) {
+    if (globalStopSignal) break;
     log.push(`Searching "${term}" in ${location.city}, ${location.state}...`);
     let termCount = 0;
     try {
@@ -956,6 +1013,8 @@ export async function scrapeEZLocal(
       while ((match = phoneRegex.exec(html)) !== null) phones.push(stripTags(match[1]));
       while ((match = addressRegex.exec(html)) !== null) addresses.push(stripTags(match[1]));
 
+      const pageEmails = extractEmails(html);
+
       if (names.length === 0) {
         const altNameRegex = /class="result vcard[\s\S]*?<h[2-4][^>]*>(?:\d+\.\s*)?(?:<a[^>]*>)?([^<]+)/g;
         while ((match = altNameRegex.exec(html)) !== null) {
@@ -972,6 +1031,7 @@ export async function scrapeEZLocal(
           results.push({
             name: names[i],
             phone: phones[i],
+            email: pageEmails[i],
             address: addresses[i],
             city: location.city,
             state: location.state,
@@ -1001,6 +1061,7 @@ export async function scrapeN49(
   const locationStr = `${location.city}, ${location.state}`;
 
   for (const term of searchTerms) {
+    if (globalStopSignal) break;
     log.push(`Searching "${term}" in ${locationStr}...`);
     let termCount = 0;
     try {
@@ -1017,11 +1078,13 @@ export async function scrapeN49(
         const phoneMatch = block.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
         const websiteMatch = block.match(/href="(https?:\/\/(?!www\.n49)[^"]+)"/);
         const addressMatch = block.match(/class="[^"]*address[^"]*"[^>]*>([^<]+)/);
+        const blockEmails = extractEmails(block);
 
         if (nameMatch) {
           results.push({
             name: stripTags(nameMatch[1]),
             phone: phoneMatch ? phoneMatch[0] : undefined,
+            email: blockEmails[0],
             website: websiteMatch ? websiteMatch[1] : undefined,
             address: addressMatch ? stripTags(addressMatch[1]) : undefined,
             city: location.city,
@@ -1043,6 +1106,7 @@ export async function scrapeN49(
                 results.push({
                   name: item.name,
                   phone: item.telephone,
+                  email: item.email,
                   website: item.url,
                   city: item.address?.addressLocality || location.city,
                   state: item.address?.addressRegion || location.state,

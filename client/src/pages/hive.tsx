@@ -42,6 +42,7 @@ interface HiveFlower {
   website: string;
   normalizedUrl: string;
   phone: string | null;
+  email: string | null;
   city: string | null;
   state: string | null;
   category: string;
@@ -58,6 +59,7 @@ interface HivePollen {
   id: string;
   name: string;
   phone: string | null;
+  email: string | null;
   city: string | null;
   state: string | null;
   category: string;
@@ -546,10 +548,10 @@ export default function HivePage() {
                 <button
                   onClick={() => stopCrawl.mutate()}
                   disabled={stopCrawl.isPending}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded transition-colors"
+                  className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-500 text-white text-base font-bold rounded ring-2 ring-red-400 animate-pulse transition-colors"
                   data-testid="button-stop-crawl"
                 >
-                  <Square className="w-4 h-4" />
+                  <Square className="w-5 h-5" />
                   Stop Crawl
                 </button>
               )}
@@ -790,6 +792,7 @@ export default function HivePage() {
                       <th className="text-left p-2 font-medium">City/State</th>
                       <th className="text-left p-2 font-medium">Category</th>
                       <th className="text-left p-2 font-medium">Phone</th>
+                      <th className="text-left p-2 font-medium">Email</th>
                       <th className="text-left p-2 font-medium">Source</th>
                       <th className="text-center p-2 font-medium">Beauty</th>
                       <th className="text-center p-2 font-medium">Status</th>
@@ -812,6 +815,7 @@ export default function HivePage() {
                         <td className="p-2 text-gray-400">{f.city}{f.state ? `, ${f.state}` : ""}</td>
                         <td className="p-2 text-gray-400">{f.category}</td>
                         <td className="p-2 text-gray-400">{f.phone || "-"}</td>
+                        <td className="p-2 text-gray-400 max-w-[180px] truncate">{f.email ? <a href={`mailto:${f.email}`} className="text-blue-400 hover:text-blue-300" data-testid={`link-email-${f.id}`}>{f.email}</a> : "-"}</td>
                         <td className="p-2 text-gray-500">{f.sourceDirectory}</td>
                         <td className="p-2 text-center">
                           <BeautyBadge score={f.beautyScore} flags={f.beautyFlags} />
@@ -891,6 +895,7 @@ export default function HivePage() {
                       <th className="text-left p-2 font-medium">City/State</th>
                       <th className="text-left p-2 font-medium">Category</th>
                       <th className="text-left p-2 font-medium">Phone</th>
+                      <th className="text-left p-2 font-medium">Email</th>
                       <th className="text-left p-2 font-medium">Source</th>
                     </tr>
                   </thead>
@@ -901,12 +906,13 @@ export default function HivePage() {
                         <td className="p-2 text-gray-400">{p.city}{p.state ? `, ${p.state}` : ""}</td>
                         <td className="p-2 text-gray-400">{p.category}</td>
                         <td className="p-2 text-gray-400">{p.phone || "-"}</td>
+                        <td className="p-2 text-gray-400 max-w-[180px] truncate">{p.email ? <a href={`mailto:${p.email}`} className="text-blue-400 hover:text-blue-300" data-testid={`link-email-${p.id}`}>{p.email}</a> : "-"}</td>
                         <td className="p-2 text-gray-500">{p.sourceDirectory}</td>
                       </tr>
                     ))}
                     {(!pollenData?.pollen || pollenData.pollen.length === 0) && (
                       <tr>
-                        <td colSpan={5} className="p-8 text-center text-gray-600">
+                        <td colSpan={6} className="p-8 text-center text-gray-600">
                           No pollen entries yet.
                         </td>
                       </tr>

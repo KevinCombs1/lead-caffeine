@@ -1,6 +1,6 @@
 import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
-import { SCRAPERS, classifyResults, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
+import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
 
 let activeEngine: RayOfGraceEngine | null = null;
 
@@ -70,6 +70,7 @@ export class RayOfGraceEngine {
 
     this.jobId = job.id;
     this.stopped = false;
+    setStopSignal(false);
     this.comboIndex = 0;
     this.totalFlowers = 0;
     this.totalPollen = 0;
@@ -98,8 +99,9 @@ export class RayOfGraceEngine {
 
   async stop(): Promise<void> {
     this.stopped = true;
+    setStopSignal(true);
     await storage.updateHiveCrawlJob(this.jobId, { shouldStop: true });
-    await this.log("Stop requested — finishing current work...");
+    await this.log("Stop requested — aborting all workers immediately...");
   }
 
   getStatus() {
@@ -164,9 +166,13 @@ export class RayOfGraceEngine {
         await this.processCombo(combo, workerId);
         comboFlowers = this.totalFlowers - before.f;
         comboPollen = this.totalPollen - before.p;
-        await storage.markComboCompleted(combo.directory.id, combo.category.id, combo.location.id, comboFlowers, comboPollen);
+        if (!this.stopped) {
+          await storage.markComboCompleted(combo.directory.id, combo.category.id, combo.location.id, comboFlowers, comboPollen);
+        }
       } catch (err: any) {
-        await this.log(`[W${workerId}] Error: ${combo.directory.name}/${combo.category.name}/${combo.location.city} — ${err.message}`);
+        if (!this.stopped) {
+          await this.log(`[W${workerId}] Error: ${combo.directory.name}/${combo.category.name}/${combo.location.city} — ${err.message}`);
+        }
       }
 
       this.completedCombos++;
@@ -237,6 +243,7 @@ export class RayOfGraceEngine {
       website: f.website,
       normalizedUrl: f.normalizedUrl,
       phone: f.phone || null,
+      email: f.email || null,
       address: f.address || null,
       city: f.city || location.city,
       state: f.state || location.state,
@@ -251,6 +258,7 @@ export class RayOfGraceEngine {
     const pollenInserts: InsertHivePollen[] = pollen.map(p => ({
       name: p.name,
       phone: p.phone || null,
+      email: p.email || null,
       address: p.address || null,
       city: p.city || location.city,
       state: p.state || location.state,
