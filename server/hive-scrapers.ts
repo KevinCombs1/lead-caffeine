@@ -457,6 +457,26 @@ function detectFranchise(name: string): boolean {
   return false;
 }
 
+const CATEGORY_RELEVANCE_KEYWORDS: Record<string, string[]> = {
+  "Veteran Service Organization": [
+    "veteran", "veterans", "vfw", "american legion", "dav", "amvets",
+    "marine corps league", "military", "purple heart", "fleet reserve",
+    "jewish war veterans", "catholic war veterans", "paralyzed veterans",
+    "blinded veterans", "wounded warrior", "vietnam veterans",
+    "foreign wars", "legion post", "vfw post", "amvets post",
+    "disabled american", "armed forces", "service officer",
+    "gold star", "blue star", "silver star",
+    "combat veterans", "war veterans", "mil vet",
+  ],
+};
+
+function isCategoryRelevant(name: string, category: string): boolean {
+  const keywords = CATEGORY_RELEVANCE_KEYWORDS[category];
+  if (!keywords) return true;
+  const lower = name.toLowerCase();
+  return keywords.some((kw) => lower.includes(kw));
+}
+
 export function classifyResults(
   results: ScraperResult[],
   category: string
@@ -468,6 +488,16 @@ export function classifyResults(
     if (!result.name || result.name.trim().length === 0) continue;
 
     if (isGovNonprofit(result.name)) continue;
+
+    const isFranchise = detectFranchise(result.name);
+    if (isFranchise) {
+      pollen.push({ ...result, website: undefined });
+      continue;
+    }
+
+    if (!isCategoryRelevant(result.name, category)) {
+      continue;
+    }
 
     if (result.website && isDirectoryPlaceholder(result.website)) {
       pollen.push({ ...result, website: undefined });
@@ -500,12 +530,11 @@ export function classifyResults(
     }
 
     const normalizedUrl = normalizeUrl(result.website);
-    const isFranchise = detectFranchise(result.name);
 
     flowers.push({
       ...result,
       normalizedUrl,
-      isFranchise,
+      isFranchise: false,
     });
   }
 
