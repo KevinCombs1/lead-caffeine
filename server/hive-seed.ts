@@ -88,6 +88,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Identity & Access Management", "Technology", ["Identity Management Company", "IAM Solutions", "Access Control Software"]),
   cat("GIS & Mapping", "Technology", ["GIS Services Company", "Geospatial Technology", "Mapping Solutions"]),
   cat("Voice & Conversational AI", "Technology", ["Conversational AI Company", "Chatbot Development", "Voice Technology"]),
+  cat("Surveillance Systems", "Technology", ["Surveillance Camera Installer", "CCTV Installation", "Video Surveillance"]),
+  cat("Data Destruction", "Technology", ["Data Destruction Company", "Hard Drive Shredding", "Secure Data Disposal"]),
+  cat("Dark Web Monitoring", "Technology", ["Dark Web Monitoring Service", "Threat Intelligence", "Cyber Threat Detection"]),
 
   // Financial Services (23)
   cat("Financial Planning", "Financial Services", ["Financial Planning Firm", "Financial Planner", "Wealth Planning"]),
@@ -121,6 +124,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Merchant Services", "Financial Services", ["Merchant Services Provider", "Payment Processing", "Credit Card Processing"]),
   cat("Structured Settlements", "Financial Services", ["Structured Settlement Company", "Settlement Funding", "Annuity Purchasing"]),
   cat("Cost Segregation", "Financial Services", ["Cost Segregation Study", "Cost Segregation Firm", "Accelerated Depreciation"]),
+  cat("Debt Collection Agency", "Financial Services", ["Debt Collector", "Collection Agency", "Accounts Receivable Collection"]),
+  cat("Pawn Shop", "Financial Services", ["Pawn Shop", "Pawnbroker", "Collateral Lending"]),
+  cat("Check Cashing", "Financial Services", ["Check Cashing Store", "Payday Loans", "Cash Advance"]),
 
   // Legal (18)
   cat("Corporate Law", "Legal", ["Corporate Law Firm", "Business Attorney", "Corporate Lawyer"]),
@@ -149,6 +155,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Whistleblower Law", "Legal", ["Whistleblower Attorney", "Qui Tam Lawyer", "False Claims Act"]),
   cat("Appellate Law", "Legal", ["Appellate Attorney", "Appeals Lawyer", "Appellate Litigation"]),
   cat("Construction Law", "Legal", ["Construction Attorney", "Construction Law Firm", "Builder Litigation"]),
+  cat("DUI Defense", "Legal", ["DUI Attorney", "DUI Lawyer", "Drunk Driving Defense"]),
+  cat("Criminal Defense", "Legal", ["Criminal Defense Lawyer", "Criminal Attorney", "Defense Counsel"]),
+  cat("Bail Bonds Attorney", "Legal", ["Bail Bond Lawyer", "Bail Hearing Attorney", "Pretrial Release Lawyer"]),
 
   // Personal Injury (20)
   cat("Personal Injury Attorney", "Personal Injury", ["Personal Injury Attorney", "Accident Lawyer", "Injury Law Firm"]),
@@ -179,6 +188,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Toxic Exposure Lawyer", "Personal Injury", ["Toxic Exposure Attorney", "Chemical Exposure Lawyer", "Contamination Injury"]),
   cat("Premises Liability Lawyer", "Personal Injury", ["Premises Liability Attorney", "Property Owner Negligence", "Unsafe Property Lawyer"]),
   cat("Camp Lejeune Lawyer", "Personal Injury", ["Camp Lejeune Attorney", "Water Contamination Lawyer", "Military Base Exposure"]),
+  cat("Dog Bite Lawyer", "Personal Injury", ["Dog Bite Attorney", "Animal Attack Lawyer", "Dog Attack Injury"]),
+  cat("Prison Injury Lawyer", "Personal Injury", ["Prison Injury Attorney", "Inmate Abuse Lawyer", "Jail Negligence"]),
+  cat("Sexual Assault Lawyer", "Personal Injury", ["Sexual Assault Attorney", "Abuse Survivor Lawyer", "Sexual Abuse Litigation"]),
 
   // Marketing & Advertising (22)
   cat("Digital Marketing", "Marketing & Advertising", ["Digital Marketing Agency", "Online Marketing", "Internet Marketing"]),
@@ -211,6 +223,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Direct Mail Marketing", "Marketing & Advertising", ["Direct Mail Company", "Direct Mail Marketing", "Postcard Marketing"]),
   cat("Out of Home Advertising", "Marketing & Advertising", ["OOH Advertising Company", "Billboard Company", "Outdoor Advertising"]),
   cat("Medical Marketing", "Marketing & Advertising", ["Medical Marketing Agency", "Healthcare Marketing", "Doctor Marketing"]),
+  cat("Adult Industry Marketing", "Marketing & Advertising", ["Adult Marketing Agency", "Adult Content Marketing", "Adult SEO"]),
+  cat("Political Campaign Marketing", "Marketing & Advertising", ["Political Campaign Firm", "Campaign Advertising", "Political Consulting"]),
+  cat("Mugshot Removal", "Marketing & Advertising", ["Mugshot Removal Service", "Arrest Record Removal", "Online Record Suppression"]),
 
   // Staffing & HR (20)
   cat("Executive Search", "Staffing & HR", ["Executive Search Firm", "Executive Recruiter", "Headhunter"]),
@@ -241,6 +256,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("HR Technology", "Staffing & HR", ["HR Technology Company", "HRIS Provider", "HR Software"]),
   cat("Compliance Training", "Staffing & HR", ["Compliance Training Company", "Regulatory Training", "Workplace Compliance"]),
   cat("Interim Management", "Staffing & HR", ["Interim Executive", "Interim Management Firm", "Temporary Executive"]),
+  cat("Day Labor", "Staffing & HR", ["Day Labor Agency", "Casual Labor Staffing", "Temporary Manual Labor"]),
+  cat("Felon Employment Services", "Staffing & HR", ["Second Chance Staffing", "Ex-Offender Employment", "Reentry Staffing"]),
+  cat("Strikebreaker Staffing", "Staffing & HR", ["Emergency Replacement Workers", "Contingency Staffing", "Strike Staffing"]),
 
   // Healthcare (22)
   cat("Medical Device Sales", "Healthcare", ["Medical Device Company", "Medical Equipment Sales", "Healthcare Devices"]),
@@ -307,6 +325,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Geriatric Medicine", "Healthcare", ["Geriatrician", "Geriatric Medicine Practice", "Senior Healthcare"]),
   cat("Concierge Medicine", "Healthcare", ["Concierge Doctor", "Concierge Medicine Practice", "Direct Primary Care"]),
   cat("Functional Medicine", "Healthcare", ["Functional Medicine Doctor", "Functional Medicine Practice", "Integrative Medicine"]),
+  cat("Methadone Clinic", "Healthcare", ["Methadone Clinic", "Opioid Treatment Program", "MAT Clinic"]),
+  cat("Abortion Clinic", "Healthcare", ["Abortion Clinic", "Reproductive Health Clinic", "Pregnancy Termination"]),
+  cat("Medical Marijuana Doctor", "Healthcare", ["Medical Marijuana Doctor", "Cannabis Physician", "MMJ Certification"]),
 
   // Real Estate (20)
   cat("Commercial Real Estate", "Real Estate", ["Commercial Real Estate Company", "CRE Firm", "Commercial Property"]),
@@ -341,6 +362,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("HOA Management", "Real Estate", ["HOA Management Company", "Homeowners Association", "Community Association Management"]),
   cat("Build-to-Rent", "Real Estate", ["Build to Rent Developer", "BTR Community", "Single Family Rental Development"]),
   cat("Opportunity Zone", "Real Estate", ["Opportunity Zone Fund", "Qualified Opportunity Zone", "OZ Investment"]),
+  cat("Slumlord Management", "Real Estate", ["Low Income Property Management", "Section 8 Property Manager", "Subsidized Housing Landlord"]),
+  cat("Foreclosure Services", "Real Estate", ["Foreclosure Cleanup", "REO Property Management", "Bank Owned Property Services"]),
+  cat("Mobile Home Park", "Real Estate", ["Mobile Home Park Owner", "Manufactured Housing Community", "Trailer Park Management"]),
 
   // Manufacturing & Industrial (22)
   cat("Industrial Supply", "Manufacturing & Industrial", ["Industrial Supply Company", "Industrial Distributor", "Industrial Products"]),
@@ -373,6 +397,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Wire Harness", "Manufacturing & Industrial", ["Wire Harness Manufacturer", "Cable Assembly", "Wiring Harness"]),
   cat("Industrial Coatings", "Manufacturing & Industrial", ["Industrial Coatings Company", "Protective Coatings", "Specialty Coatings"]),
   cat("Cleanroom Manufacturing", "Manufacturing & Industrial", ["Cleanroom Manufacturing", "Cleanroom Services", "ISO Cleanroom"]),
+  cat("Ammunition Manufacturing", "Manufacturing & Industrial", ["Ammo Manufacturer", "Ammunition Factory", "Cartridge Manufacturing"]),
+  cat("Vape Manufacturing", "Manufacturing & Industrial", ["Vape Manufacturer", "E-Liquid Production", "Vaporizer Manufacturing"]),
+  cat("Rendering Plant", "Manufacturing & Industrial", ["Rendering Company", "Animal Byproduct Processing", "Grease Recycling"]),
 
   // Energy (20)
   cat("Solar Sales", "Energy", ["Solar Energy Company", "Solar Panel Installation", "Solar Power"]),
@@ -403,6 +430,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Energy Auditing", "Energy", ["Energy Auditor", "Commercial Energy Audit", "Building Energy Assessment"]),
   cat("Power Purchase Agreements", "Energy", ["PPA Provider", "Power Purchase Agreement", "Renewable Energy PPA"]),
   cat("LED Lighting Retrofit", "Energy", ["LED Retrofit Company", "Commercial Lighting Upgrade", "Energy Efficient Lighting"]),
+  cat("Fracking Services", "Energy", ["Hydraulic Fracturing Company", "Fracking Contractor", "Well Stimulation"]),
+  cat("Nuclear Decommissioning", "Energy", ["Nuclear Decommissioning Company", "Reactor Decommission", "Radioactive Waste Management"]),
+  cat("Coal Ash Remediation", "Energy", ["Coal Ash Cleanup", "Fly Ash Remediation", "CCR Management"]),
 
   // Professional Services (22)
   cat("Management Consulting", "Professional Services", ["Management Consulting Firm", "Business Management", "Management Advisory"]),
@@ -435,6 +465,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Grant Writing", "Professional Services", ["Grant Writing Company", "Grant Consultant", "Grant Application Services"]),
   cat("Economic Consulting", "Professional Services", ["Economic Consulting Firm", "Litigation Economics", "Economic Analysis"]),
   cat("Fiduciary Services", "Professional Services", ["Professional Fiduciary", "Trust Administration", "Independent Fiduciary"]),
+  cat("Private Investigation", "Professional Services", ["Private Investigator", "PI Services", "Surveillance Investigation"]),
+  cat("Lie Detector Services", "Professional Services", ["Polygraph Examiner", "Lie Detector Test", "Truth Verification"]),
+  cat("Skip Tracing", "Professional Services", ["Skip Tracing Service", "People Finder", "Debtor Location"]),
 
   // Construction & Engineering (20)
   cat("Construction Management", "Construction & Engineering", ["Construction Management Firm", "CM Company", "Construction Services"]),
@@ -473,6 +506,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Concrete Polishing", "Construction & Engineering", ["Concrete Polishing Company", "Polished Concrete Floors", "Concrete Restoration"]),
   cat("Waterproofing", "Construction & Engineering", ["Waterproofing Contractor", "Foundation Waterproofing", "Below Grade Waterproofing"]),
   cat("Seismic Retrofit", "Construction & Engineering", ["Seismic Retrofit Company", "Earthquake Retrofit", "Structural Strengthening"]),
+  cat("Demolition Contractor", "Construction & Engineering", ["Demolition Company", "Building Demolition", "Wrecking Contractor"]),
+  cat("Porta Potty Rental", "Construction & Engineering", ["Portable Toilet Rental", "Porta John Rental", "Construction Restroom"]),
+  cat("Grease Trap Cleaning", "Construction & Engineering", ["Grease Trap Service", "Grease Interceptor Cleaning", "FOG Management"]),
 
   // Automotive (18)
   cat("Auto Dealerships", "Automotive", ["Auto Dealer", "Car Dealership", "New Car Dealer"]),
@@ -501,6 +537,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Classic Car Restoration", "Automotive", ["Classic Car Restoration Shop", "Vintage Auto Restoration", "Antique Car Repair"]),
   cat("Auto Upholstery", "Automotive", ["Auto Upholstery Shop", "Car Interior Restoration", "Vehicle Upholstery"]),
   cat("Performance Tuning", "Automotive", ["Performance Tuning Shop", "ECU Tuning", "Custom Performance"]),
+  cat("Repo Company", "Automotive", ["Repossession Company", "Vehicle Recovery", "Auto Repossession"]),
+  cat("Salvage Yard", "Automotive", ["Salvage Yard", "Junkyard", "Auto Wrecking"]),
+  cat("Lemon Law Attorney", "Automotive", ["Lemon Law Lawyer", "Vehicle Defect Attorney", "Auto Fraud Lawyer"]),
 
   // Final Expense (10)
   cat("Funeral Home", "Final Expense", ["Funeral Home", "Funeral Services", "Mortuary"]),
@@ -521,6 +560,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Obituary Services", "Final Expense", ["Obituary Writing Service", "Death Notice Services", "Memorial Tribute"]),
   cat("Body Transport", "Final Expense", ["Body Transport Services", "Funeral Transport", "Remains Shipping"]),
   cat("Veteran Funeral Services", "Final Expense", ["Veteran Funeral Services", "Military Funeral", "VA Burial Benefits"]),
+  cat("Crime Scene Cleanup", "Final Expense", ["Crime Scene Cleanup Company", "Biohazard Cleaning", "Trauma Scene Remediation"]),
+  cat("Hoarder Cleanup", "Final Expense", ["Hoarder Cleanup Service", "Hoarding Remediation", "Extreme Cleaning"]),
+  cat("Unclaimed Body Services", "Final Expense", ["Unclaimed Remains Service", "Indigent Burial", "County Burial Contractor"]),
 
   // Insurance (25)
   cat("Homeowners Insurance", "Insurance", ["Homeowners Insurance Agency", "Home Insurance", "Property Insurance"]),
@@ -566,6 +608,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Liquor Liability Insurance", "Insurance", ["Liquor Liability Insurance", "Alcohol Liability", "Bar Liability Insurance"]),
   cat("Inland Marine Insurance", "Insurance", ["Inland Marine Insurance", "Equipment in Transit", "Contractor Equipment Insurance"]),
   cat("Garage Keepers Insurance", "Insurance", ["Garage Keepers Insurance", "Auto Shop Insurance", "Mechanic Insurance"]),
+  cat("Bail Bond Insurance", "Insurance", ["Bail Bond Surety", "Bail Bond Underwriter", "Surety Bail Bond"]),
+  cat("Strip Club Insurance", "Insurance", ["Adult Entertainment Insurance", "Nightclub Insurance", "Gentlemen Club Insurance"]),
+  cat("Gun Shop Insurance", "Insurance", ["Firearms Dealer Insurance", "Gun Store Insurance", "FFL Insurance"]),
 
   // Travel & Hospitality (20)
   cat("Luxury Hotels", "Travel & Hospitality", ["Luxury Hotel", "Five Star Hotel", "Boutique Luxury Hotel"]),
@@ -606,6 +651,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Safari Outfitter", "Travel & Hospitality", ["Safari Tour Company", "Wildlife Safari", "Hunting Outfitter"]),
   cat("Treehouse Lodging", "Travel & Hospitality", ["Treehouse Hotel", "Treehouse Rental", "Unique Lodging"]),
   cat("RV Resort", "Travel & Hospitality", ["RV Resort", "RV Park", "Luxury RV Campground"]),
+  cat("Hookah Lounge", "Travel & Hospitality", ["Hookah Bar", "Shisha Lounge", "Hookah Cafe"]),
+  cat("Gentlemen's Club", "Travel & Hospitality", ["Gentlemen's Club", "Strip Club", "Adult Entertainment Venue"]),
+  cat("Casino Junket", "Travel & Hospitality", ["Casino Junket Operator", "Gambling Tour", "Casino Travel"]),
 
   // Trades & Home Services (12) - IYKYK
   cat("Septic Services", "Trades & Home Services", ["Septic Tank Pumping", "Septic System Installer", "Septic Repair"]),
@@ -620,6 +668,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Asbestos Abatement", "Trades & Home Services", ["Asbestos Abatement Company", "Asbestos Removal", "Asbestos Testing"]),
   cat("Radon Mitigation", "Trades & Home Services", ["Radon Mitigation Company", "Radon Testing", "Radon Reduction"]),
   cat("Crawl Space Repair", "Trades & Home Services", ["Crawl Space Repair Company", "Crawl Space Encapsulation", "Crawl Space Waterproofing"]),
+  cat("Dead Animal Removal", "Trades & Home Services", ["Dead Animal Removal Service", "Animal Carcass Pickup", "Roadkill Removal"]),
+  cat("Sewage Cleanup", "Trades & Home Services", ["Sewage Cleanup Company", "Raw Sewage Remediation", "Sewage Backup Cleaning"]),
+  cat("Bed Bug Exterminator", "Trades & Home Services", ["Bed Bug Treatment", "Bed Bug Removal", "Bed Bug Heat Treatment"]),
 
   // Veterinary & Animal Services (10) - IYKYK
   cat("Equine Veterinarian", "Veterinary & Animal Services", ["Equine Veterinarian", "Horse Vet", "Large Animal Vet"]),
@@ -632,6 +683,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Animal Hospital", "Veterinary & Animal Services", ["Animal Hospital", "Emergency Vet Clinic", "24 Hour Vet"]),
   cat("Farrier", "Veterinary & Animal Services", ["Farrier Service", "Horseshoeing", "Equine Hoof Care"]),
   cat("Livestock Services", "Veterinary & Animal Services", ["Livestock Veterinarian", "Large Animal Services", "Farm Animal Vet"]),
+  cat("Taxidermist", "Veterinary & Animal Services", ["Taxidermy Shop", "Animal Mounting", "Trophy Taxidermy"]),
+  cat("Animal Rendering", "Veterinary & Animal Services", ["Animal Disposal Service", "Livestock Rendering", "Dead Stock Removal"]),
+  cat("Exotic Animal Dealer", "Veterinary & Animal Services", ["Exotic Animal Breeder", "Reptile Dealer", "Exotic Pet Sales"]),
 
   // Specialty Wellness & Alternative Health (10) - IYKYK
   cat("Acupuncturist", "Specialty Wellness & Alternative Health", ["Acupuncture Clinic", "Licensed Acupuncturist", "Chinese Medicine"]),
@@ -644,6 +698,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("Ayurvedic Practitioner", "Specialty Wellness & Alternative Health", ["Ayurvedic Medicine", "Ayurveda Clinic", "Vedic Healing"]),
   cat("Herbalist", "Specialty Wellness & Alternative Health", ["Clinical Herbalist", "Herbal Medicine", "Botanical Medicine"]),
   cat("Craniosacral Therapy", "Specialty Wellness & Alternative Health", ["Craniosacral Therapist", "CST Therapy", "Cranial Sacral"]),
+  cat("Psychedelic Therapy", "Specialty Wellness & Alternative Health", ["Ketamine Therapy Clinic", "Psychedelic Assisted Therapy", "Psilocybin Therapy"]),
+  cat("Leech Therapy", "Specialty Wellness & Alternative Health", ["Hirudotherapy", "Leech Therapy Practitioner", "Medical Leech Therapy"]),
+  cat("Colonic Hydrotherapy", "Specialty Wellness & Alternative Health", ["Colon Hydrotherapy", "Colonic Irrigation", "Colon Cleanse"]),
 
   // Niche Consulting & Compliance (10) - IYKYK
   cat("ADA Compliance", "Niche Consulting & Compliance", ["ADA Compliance Consultant", "Accessibility Consulting", "ADA Audit"]),
@@ -656,6 +713,9 @@ const CATEGORIES: CategorySeed[] = [
   cat("CMMC Consulting", "Niche Consulting & Compliance", ["CMMC Compliance", "DoD Cybersecurity", "Defense Contractor Security"]),
   cat("Customs Brokerage", "Niche Consulting & Compliance", ["Customs Broker", "Import Export Broker", "Customs Clearance"]),
   cat("Minority Certification", "Niche Consulting & Compliance", ["MBE Certification", "Minority Business Certification", "Disadvantaged Business"]),
+  cat("Money Transmitter Licensing", "Niche Consulting & Compliance", ["Money Transmitter License", "MSB Compliance", "FinCEN Registration"]),
+  cat("Cannabis Compliance", "Niche Consulting & Compliance", ["Cannabis Compliance Consultant", "Marijuana Licensing", "Cannabis Regulatory"]),
+  cat("Tribal Sovereignty Consulting", "Niche Consulting & Compliance", ["Tribal Business Consulting", "Tribal Gaming Compliance", "Indian Country Regulation"]),
 
   // Skilled Trades & Specialty Contractors (10) - IYKYK
   cat("Elevator Services", "Skilled Trades & Specialty Contractors", ["Elevator Company", "Elevator Repair", "Elevator Installation"]),
@@ -668,6 +728,103 @@ const CATEGORIES: CategorySeed[] = [
   cat("Sandblasting", "Skilled Trades & Specialty Contractors", ["Sandblasting Company", "Abrasive Blasting", "Media Blasting"]),
   cat("Insulation Contractor", "Skilled Trades & Specialty Contractors", ["Insulation Contractor", "Spray Foam Insulation", "Commercial Insulation"]),
   cat("Hazmat Services", "Skilled Trades & Specialty Contractors", ["Hazmat Cleanup", "Hazardous Materials", "Environmental Remediation"]),
+  cat("Dumpster Diving Salvage", "Skilled Trades & Specialty Contractors", ["Salvage Recovery", "Waste Reclamation", "Dumpster Salvage"]),
+  cat("Sewer Camera Inspection", "Skilled Trades & Specialty Contractors", ["Sewer Camera Service", "Pipe Video Inspection", "Drain Camera"]),
+  cat("Manhole Rehabilitation", "Skilled Trades & Specialty Contractors", ["Manhole Repair", "Manhole Lining", "Underground Utility Repair"]),
+
+  // High Ticket Closing (8)
+  cat("Solar Sales Closer", "High Ticket Closing", ["Solar Sales Closer", "Solar Appointment Setter", "Door to Door Solar Sales"]),
+  cat("Roofing Sales", "High Ticket Closing", ["Roofing Sales Rep", "Storm Damage Sales", "Insurance Restoration Sales"]),
+  cat("Timeshare Exit", "High Ticket Closing", ["Timeshare Exit Company", "Timeshare Cancellation", "Timeshare Relief"]),
+  cat("Merchant Cash Advance", "High Ticket Closing", ["MCA Broker", "Business Cash Advance", "Revenue Based Financing"]),
+  cat("Business Coaching", "High Ticket Closing", ["High Ticket Business Coach", "Mastermind Group", "Business Mentorship"]),
+  cat("Life Coaching", "High Ticket Closing", ["Life Coach", "Transformation Coach", "High Performance Coach"]),
+  cat("Sales Training", "High Ticket Closing", ["Sales Trainer", "Closer Training", "High Ticket Sales Program"]),
+  cat("Real Estate Wholesaling", "High Ticket Closing", ["Real Estate Wholesaler", "Wholesale Property Deals", "Off Market Properties"]),
+
+  // Bail Bonds & Surety (5) - dark flowers
+  cat("Bail Bondsman", "Bail Bonds & Surety", ["Bail Bonds Company", "Bail Agent", "24 Hour Bail Bonds"]),
+  cat("Immigration Bail Bonds", "Bail Bonds & Surety", ["Immigration Bond", "ICE Bail Bond", "Deportation Bond"]),
+  cat("Federal Bail Bonds", "Bail Bonds & Surety", ["Federal Bail Bond Agent", "Federal Court Bond", "US District Bail"]),
+  cat("Fugitive Recovery", "Bail Bonds & Surety", ["Bounty Hunter", "Fugitive Recovery Agent", "Bail Enforcement"]),
+  cat("Surety Bond Provider", "Bail Bonds & Surety", ["Surety Bond Company", "Contract Bond", "Performance Bond"]),
+
+  // Debt & Collections (5) - dark flowers
+  cat("Judgment Enforcement", "Debt & Collections", ["Judgment Collection Agency", "Judgment Recovery", "Court Order Enforcement"]),
+  cat("Zombie Debt Buyer", "Debt & Collections", ["Debt Buyer", "Aged Debt Portfolio", "Charged Off Debt"]),
+  cat("Wage Garnishment Services", "Debt & Collections", ["Wage Garnishment Company", "Payroll Garnishment", "Income Execution"]),
+  cat("Asset Recovery", "Debt & Collections", ["Asset Recovery Company", "Hidden Asset Investigation", "Asset Search"]),
+  cat("Medical Debt Collection", "Debt & Collections", ["Medical Debt Collector", "Healthcare Collections", "Patient Balance Recovery"]),
+
+  // Adult Industry Services (5) - dark flowers
+  cat("Adult Talent Agency", "Adult Industry Services", ["Adult Entertainment Agency", "Model Agency Adult", "Performer Management"]),
+  cat("Adult Retail", "Adult Industry Services", ["Adult Store", "Adult Novelty Shop", "Adult Boutique"]),
+  cat("Adult Content Platform", "Adult Industry Services", ["Content Creator Platform", "Fan Site Services", "Adult Subscription"]),
+  cat("Adult Web Development", "Adult Industry Services", ["Adult Website Developer", "Adult SEO Company", "Adult Payment Processing"]),
+  cat("Escort Agency", "Adult Industry Services", ["Escort Service", "Companion Service", "VIP Escort"]),
+
+  // Cannabis & Psychedelics (5) - dark flowers
+  cat("Cannabis Dispensary", "Cannabis & Psychedelics", ["Marijuana Dispensary", "Cannabis Shop", "Weed Dispensary"]),
+  cat("Cannabis Cultivation", "Cannabis & Psychedelics", ["Cannabis Grow Operation", "Marijuana Farm", "Indoor Cannabis Grow"]),
+  cat("Cannabis Delivery", "Cannabis & Psychedelics", ["Weed Delivery Service", "Cannabis Courier", "Marijuana Delivery"]),
+  cat("Hemp Processing", "Cannabis & Psychedelics", ["Hemp Processor", "CBD Extraction", "Hemp Manufacturing"]),
+  cat("Psychedelic Retreat", "Cannabis & Psychedelics", ["Ayahuasca Retreat", "Psilocybin Retreat", "Plant Medicine Retreat"]),
+
+  // Firearms & Defense (5) - dark flowers
+  cat("FFL Dealer", "Firearms & Defense", ["Federal Firearms Dealer", "Gun Shop", "Licensed Gun Dealer"]),
+  cat("Gunsmith", "Firearms & Defense", ["Gunsmith Shop", "Firearms Repair", "Custom Gunwork"]),
+  cat("Shooting Range", "Firearms & Defense", ["Indoor Shooting Range", "Gun Range", "Firearms Training Facility"]),
+  cat("Tactical Training", "Firearms & Defense", ["Tactical Training Academy", "Defensive Firearms Training", "CCW Classes"]),
+  cat("Body Armor Sales", "Firearms & Defense", ["Body Armor Company", "Bulletproof Vest Sales", "Ballistic Protection"]),
+
+  // Gambling & Gaming (5) - dark flowers
+  cat("Casino Consulting", "Gambling & Gaming", ["Casino Consultant", "Gaming Advisor", "Casino Operations"]),
+  cat("Slot Machine Sales", "Gambling & Gaming", ["Slot Machine Distributor", "Gaming Machine Sales", "VLT Provider"]),
+  cat("Sports Betting Consulting", "Gambling & Gaming", ["Sports Betting Advisor", "Sportsbook Consulting", "Wagering Consultant"]),
+  cat("Poker Room", "Gambling & Gaming", ["Poker Room", "Card Room", "Poker Club"]),
+  cat("Lottery Services", "Gambling & Gaming", ["Lottery Retailer", "Lottery Consulting", "Gaming Compliance"]),
+
+  // Pawn & Secondhand (5) - dark flowers
+  cat("Gold Buyer", "Pawn & Secondhand", ["Cash for Gold", "Gold Buying Store", "Precious Metal Buyer"]),
+  cat("Title Loan", "Pawn & Secondhand", ["Title Loan Company", "Auto Title Loan", "Car Title Pawn"]),
+  cat("Consignment Shop", "Pawn & Secondhand", ["Consignment Store", "Resale Shop", "Secondhand Store"]),
+  cat("Coin Dealer", "Pawn & Secondhand", ["Coin Dealer", "Numismatic Dealer", "Rare Coin Shop"]),
+  cat("Electronics Buyback", "Pawn & Secondhand", ["Phone Buyback", "Electronics Trade In", "Device Resale"]),
+
+  // Towing & Recovery (5) - dark flowers
+  cat("Predatory Towing", "Towing & Recovery", ["Private Property Towing", "Impound Lot", "Unauthorized Parking Tow"]),
+  cat("Heavy Equipment Towing", "Towing & Recovery", ["Heavy Haul Towing", "Equipment Transport", "Oversize Load"]),
+  cat("Motorcycle Towing", "Towing & Recovery", ["Motorcycle Tow Service", "Bike Recovery", "Motorcycle Transport"]),
+  cat("Accident Recovery", "Towing & Recovery", ["Accident Towing", "Wreck Recovery", "Collision Tow"]),
+  cat("Abandoned Vehicle Removal", "Towing & Recovery", ["Abandoned Car Removal", "Junk Car Tow", "Vehicle Disposal"]),
+
+  // Waste & Disposal (5) - dark flowers
+  cat("Medical Waste Disposal", "Waste & Disposal", ["Medical Waste Company", "Biohazard Waste Disposal", "Sharps Disposal"]),
+  cat("Grease Recycling", "Waste & Disposal", ["Used Cooking Oil Recycling", "Grease Collection", "Yellow Grease Buyer"]),
+  cat("E-Waste Recycling", "Waste & Disposal", ["E-Waste Recycler", "Electronics Recycling", "Computer Disposal"]),
+  cat("Portable Restrooms", "Waste & Disposal", ["Portable Restroom Rental", "Porta Potty Company", "Sanitation Rental"]),
+  cat("Dumpster Rental", "Waste & Disposal", ["Dumpster Rental Company", "Roll Off Container", "Construction Dumpster"]),
+
+  // Repo & Asset Seizure (5) - dark flowers
+  cat("Vehicle Repossession", "Repo & Asset Seizure", ["Repo Company", "Auto Repossession", "Vehicle Recovery Agent"]),
+  cat("Aircraft Repossession", "Repo & Asset Seizure", ["Aircraft Repo Company", "Airplane Repossession", "Aviation Recovery"]),
+  cat("Boat Repossession", "Repo & Asset Seizure", ["Marine Repossession", "Boat Recovery", "Yacht Seizure"]),
+  cat("Equipment Repossession", "Repo & Asset Seizure", ["Equipment Recovery", "Heavy Equipment Repo", "Construction Equipment Seizure"]),
+  cat("Eviction Services", "Repo & Asset Seizure", ["Eviction Company", "Tenant Removal", "Lockout Service"]),
+
+  // Pest & Wildlife Control (5) - dark flowers
+  cat("Wildlife Trapping", "Pest & Wildlife Control", ["Wildlife Trapper", "Animal Trapping Service", "Nuisance Wildlife Control"]),
+  cat("Termite Control", "Pest & Wildlife Control", ["Termite Company", "Termite Inspection", "Termite Treatment"]),
+  cat("Snake Removal", "Pest & Wildlife Control", ["Snake Removal Service", "Venomous Snake Control", "Reptile Removal"]),
+  cat("Pigeon Control", "Pest & Wildlife Control", ["Pigeon Removal", "Bird Control", "Pigeon Deterrent"]),
+  cat("Bat Removal", "Pest & Wildlife Control", ["Bat Removal Service", "Bat Exclusion", "Bat Colony Removal"]),
+
+  // Liquidation & Distressed Assets (5) - dark flowers
+  cat("Business Liquidation", "Liquidation & Distressed Assets", ["Business Liquidator", "Going Out of Business Sale", "Inventory Liquidation"]),
+  cat("Surplus Auction", "Liquidation & Distressed Assets", ["Surplus Auction Company", "Government Surplus", "Industrial Auction"]),
+  cat("Distressed Property Buyer", "Liquidation & Distressed Assets", ["We Buy Ugly Houses", "Distressed Property Investor", "Cash Home Buyer"]),
+  cat("Restaurant Equipment Liquidation", "Liquidation & Distressed Assets", ["Used Restaurant Equipment", "Commercial Kitchen Liquidation", "Food Equipment Resale"]),
+  cat("Bankruptcy Trustee", "Liquidation & Distressed Assets", ["Bankruptcy Trustee Service", "Chapter 7 Trustee", "Asset Distribution"]),
 ];
 
 const LOCATIONS: LocationSeed[] = [

@@ -22,7 +22,7 @@ export class RayOfGraceEngine {
   private totalFlowers = 0;
   private totalPollen = 0;
   private completedCombos = 0;
-  private workerCount = 100;
+  private workerCount = 164;
   private maxResults: number | null = null;
 
   async start(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number): Promise<string> {
