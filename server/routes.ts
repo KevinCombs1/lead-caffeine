@@ -2784,6 +2784,7 @@ export async function registerRoutes(
         state: req.query.state as string | undefined,
         search: req.query.search as string | undefined,
         isAlive: req.query.alive !== undefined ? req.query.alive === "true" : undefined,
+        phoneValid: req.query.phoneValid as string | undefined,
         sortBy: req.query.sortBy as string | undefined,
         beauteousOnly: req.query.beauteousOnly === "true",
         tag: req.query.tag as string | undefined,
@@ -2816,6 +2817,7 @@ export async function registerRoutes(
         state: req.query.state as string | undefined,
         directory: req.query.directory as string | undefined,
         crawlJobId: req.query.crawlJobId as string | undefined,
+        phoneValid: req.query.phoneValid as string | undefined,
         sortBy: req.query.sortBy as string | undefined,
         page: req.query.page ? parseInt(req.query.page as string) : 1,
         limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
@@ -2858,6 +2860,7 @@ export async function registerRoutes(
         state: req.query.state as string | undefined,
         search: req.query.search as string | undefined,
         isAlive: req.query.alive !== undefined ? req.query.alive === "true" : undefined,
+        phoneValid: req.query.phoneValid as string | undefined,
         tag: req.query.tag as string | undefined,
         sortBy: req.query.sortBy as string | undefined,
         beauteousOnly: req.query.beauteousOnly === "true" ? true : undefined,
@@ -2867,14 +2870,14 @@ export async function registerRoutes(
       };
       const { flowers } = await storage.getHiveFlowers(filters);
 
-      const header = "Name,Website,Phone,City,State,Category,Source,Franchise,Alive,BeautyScore,BeautyFlags\n";
+      const header = "Name,Website,Phone,City,State,Category,Source,Franchise,Alive,BeautyScore,BeautyFlags,PhoneValid\n";
       const csvEscape = (s: string | null) => {
         if (!s) return "";
         if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
         return s;
       };
       const rows = flowers.map(f =>
-        [f.name, f.website, f.phone, f.city, f.state, f.category, f.sourceDirectory, f.isFranchise ? "Yes" : "No", f.isAlive ? "Yes" : "No", f.beautyScore !== null && f.beautyScore !== undefined ? String(f.beautyScore) : "", f.beautyFlags || ""]
+        [f.name, f.website, f.phone, f.city, f.state, f.category, f.sourceDirectory, f.isFranchise ? "Yes" : "No", f.isAlive ? "Yes" : "No", f.beautyScore !== null && f.beautyScore !== undefined ? String(f.beautyScore) : "", f.beautyFlags || "", f.phoneValid === true ? "Yes" : f.phoneValid === false ? "No" : ""]
           .map(csvEscape).join(",")
       ).join("\n");
 
@@ -2895,20 +2898,21 @@ export async function registerRoutes(
         state: req.query.state as string | undefined,
         directory: req.query.directory as string | undefined,
         crawlJobId: req.query.crawlJobId as string | undefined,
+        phoneValid: req.query.phoneValid as string | undefined,
         sortBy: req.query.sortBy as string | undefined,
         page: 1,
         limit: 999999,
       };
       const { pollen } = await storage.getHivePollen(filters);
 
-      const header = "Name,Phone,City,State,Category,Source\n";
+      const header = "Name,Phone,City,State,Category,Source,PhoneValid\n";
       const csvEscape = (s: string | null) => {
         if (!s) return "";
         if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
         return s;
       };
       const rows = pollen.map(p =>
-        [p.name, p.phone, p.city, p.state, p.category, p.sourceDirectory]
+        [p.name, p.phone, p.city, p.state, p.category, p.sourceDirectory, p.phoneValid === true ? "Yes" : p.phoneValid === false ? "No" : ""]
           .map(csvEscape).join(",")
       ).join("\n");
 
@@ -2958,6 +2962,71 @@ export async function registerRoutes(
 
   app.get("/api/hive/beauty-scan/status", requireAuth, async (_req: Request, res: Response) => {
     res.json({ running: beautyScanRunning });
+  });
+
+  let phoneScanRunning = false;
+  let phoneScanProgress = { scanned: 0, total: 0, type: "" };
+
+  app.post("/api/hive/phone-scan", requireAuth, async (req: Request, res: Response) => {
+    if (phoneScanRunning) {
+      return res.status(409).json({ error: "Phone scan already in progress" });
+    }
+    try {
+      const rescan = req.body?.rescan === true;
+      const target = req.body?.target || "flowers";
+      const { buildPhoneMap, authenticatePhone } = await import("./phone-auth");
+
+      if (target === "pollen") {
+        const rows = await storage.getPollenForPhoneScan(rescan);
+        if (rows.length === 0) return res.json({ scanned: 0, message: "No pollen to scan" });
+        phoneScanRunning = true;
+        phoneScanProgress = { scanned: 0, total: rows.length, type: "pollen" };
+        res.json({ started: true, total: rows.length, message: `Scanning ${rows.length} pollen...` });
+        const phoneMap = buildPhoneMap(rows);
+        const BATCH = 500;
+        for (let i = 0; i < rows.length; i += BATCH) {
+          const batch = rows.slice(i, i + BATCH);
+          const updates = batch.map(r => {
+            const result = authenticatePhone(r.phone, r.state, phoneMap);
+            return { id: r.id, valid: result.valid };
+          });
+          for (const u of updates) {
+            await storage.updatePollenPhoneAuth(u.id, u.valid);
+          }
+          phoneScanProgress.scanned = Math.min(i + BATCH, rows.length);
+        }
+        phoneScanRunning = false;
+      } else {
+        const rows = await storage.getFlowersForPhoneScan(rescan);
+        if (rows.length === 0) return res.json({ scanned: 0, message: "No flowers to scan" });
+        phoneScanRunning = true;
+        phoneScanProgress = { scanned: 0, total: rows.length, type: "flowers" };
+        res.json({ started: true, total: rows.length, message: `Scanning ${rows.length} flowers...` });
+        const phoneMap = buildPhoneMap(rows);
+        const BATCH = 500;
+        for (let i = 0; i < rows.length; i += BATCH) {
+          const batch = rows.slice(i, i + BATCH);
+          const updates = batch.map(r => {
+            const result = authenticatePhone(r.phone, r.state, phoneMap);
+            return { id: r.id, valid: result.valid };
+          });
+          for (const u of updates) {
+            await storage.updateFlowerPhoneAuth(u.id, u.valid);
+          }
+          phoneScanProgress.scanned = Math.min(i + BATCH, rows.length);
+        }
+        phoneScanRunning = false;
+      }
+    } catch (err: any) {
+      phoneScanRunning = false;
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  });
+
+  app.get("/api/hive/phone-scan/status", requireAuth, async (_req: Request, res: Response) => {
+    res.json({ running: phoneScanRunning, ...phoneScanProgress });
   });
 
   app.get("/api/hive/completed-combos/count", requireAuth, async (_req: Request, res: Response) => {

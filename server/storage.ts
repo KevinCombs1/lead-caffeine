@@ -91,12 +91,16 @@ export interface IStorage {
   appendCrawlLog(jobId: string, message: string): Promise<void>;
   bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number>;
   bulkInsertPollen(pollen: InsertHivePollen[]): Promise<number>;
-  getHiveFlowers(filters: { directory?: string; category?: string; categories?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
-  getHivePollen(filters: { search?: string; category?: string; categories?: string; state?: string; directory?: string; crawlJobId?: string; sortBy?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }>;
+  getHiveFlowers(filters: { directory?: string; category?: string; categories?: string; city?: string; state?: string; search?: string; isAlive?: boolean; phoneValid?: string; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
+  getHivePollen(filters: { search?: string; category?: string; categories?: string; state?: string; directory?: string; crawlJobId?: string; phoneValid?: string; sortBy?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }>;
   deleteFlower(id: string): Promise<void>;
   updateFlowerHealth(id: string, isAlive: boolean): Promise<void>;
   updateFlowerBeauty(id: string, beautyScore: number, beautyFlags: string): Promise<void>;
   getFlowersForBeautyScan(rescan: boolean): Promise<{ id: string; website: string }[]>;
+  getFlowersForPhoneScan(rescan: boolean): Promise<{ id: string; phone: string | null; state: string | null; name: string; category: string }[]>;
+  updateFlowerPhoneAuth(id: string, phoneValid: boolean): Promise<void>;
+  getPollenForPhoneScan(rescan: boolean): Promise<{ id: string; phone: string | null; state: string | null; name: string; category: string }[]>;
+  updatePollenPhoneAuth(id: string, phoneValid: boolean): Promise<void>;
   getHiveStats(): Promise<{ totalFlowers: number; totalPollen: number; byDirectory: Record<string, number>; byCategory: Record<string, number> }>;
   getHiveCoverage(): Promise<{ category: string; city: string; state: string; count: number }[]>;
   getHiveDirectoryCount(): Promise<number>;
@@ -488,7 +492,7 @@ export class DatabaseStorage implements IStorage {
     return inserted;
   }
 
-  async getHiveFlowers(filters: { directory?: string; category?: string; categories?: string; city?: string; state?: string; search?: string; isAlive?: boolean; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }> {
+  async getHiveFlowers(filters: { directory?: string; category?: string; categories?: string; city?: string; state?: string; search?: string; isAlive?: boolean; phoneValid?: string; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }> {
     const conditions: any[] = [];
     if (filters.directory) conditions.push(eq(hiveFlowers.sourceDirectory, filters.directory));
     if (filters.categories) conditions.push(inArray(hiveFlowers.category, filters.categories.split(",")));
@@ -496,6 +500,10 @@ export class DatabaseStorage implements IStorage {
     if (filters.city) conditions.push(eq(hiveFlowers.city, filters.city));
     if (filters.state) conditions.push(eq(hiveFlowers.state, filters.state));
     if (filters.isAlive !== undefined) conditions.push(eq(hiveFlowers.isAlive, filters.isAlive));
+    if (filters.phoneValid === "true") conditions.push(eq(hiveFlowers.phoneValid, true));
+    else if (filters.phoneValid === "false") conditions.push(eq(hiveFlowers.phoneValid, false));
+    else if (filters.phoneValid === "nophone") conditions.push(sql`phone IS NULL OR phone = ''`);
+    else if (filters.phoneValid === "unchecked") conditions.push(sql`phone_checked IS NULL AND phone IS NOT NULL AND phone != ''`);
     if (filters.beauteousOnly) conditions.push(sql`beauty_score >= 90`);
     if (filters.tag) conditions.push(sql`(${hiveFlowers.city}, ${hiveFlowers.state}) IN (SELECT city, state FROM hive_locations WHERE tag = ${filters.tag})`);
     if (filters.crawlJobId) conditions.push(eq(hiveFlowers.crawlJobId, filters.crawlJobId));
@@ -518,6 +526,8 @@ export class DatabaseStorage implements IStorage {
     let orderClause;
     if (filters.sortBy === "beauty") {
       orderClause = sql`beauty_score DESC NULLS LAST`;
+    } else if (filters.sortBy === "phone") {
+      orderClause = sql`phone_valid DESC NULLS LAST, phone ASC`;
     } else if (filters.sortBy === "name") {
       orderClause = sql`name ASC`;
     } else if (filters.sortBy === "category") {
@@ -533,11 +543,15 @@ export class DatabaseStorage implements IStorage {
     return { flowers, total };
   }
 
-  async getHivePollen(filters: { search?: string; category?: string; categories?: string; state?: string; directory?: string; crawlJobId?: string; sortBy?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }> {
+  async getHivePollen(filters: { search?: string; category?: string; categories?: string; state?: string; directory?: string; crawlJobId?: string; phoneValid?: string; sortBy?: string; page?: number; limit?: number }): Promise<{ pollen: HivePollen[]; total: number }> {
     const conditions: any[] = [];
     if (filters.search) {
       conditions.push(ilike(hivePollen.name, `%${filters.search}%`));
     }
+    if (filters.phoneValid === "true") conditions.push(eq(hivePollen.phoneValid, true));
+    else if (filters.phoneValid === "false") conditions.push(eq(hivePollen.phoneValid, false));
+    else if (filters.phoneValid === "nophone") conditions.push(sql`phone IS NULL OR phone = ''`);
+    else if (filters.phoneValid === "unchecked") conditions.push(sql`phone_checked IS NULL AND phone IS NOT NULL AND phone != ''`);
     if (filters.category) {
       if (filters.category.startsWith("bundle:")) {
         const bundleName = filters.category.slice(7);
@@ -576,6 +590,7 @@ export class DatabaseStorage implements IStorage {
     if (filters.sortBy === "category") orderBy = asc(hivePollen.category);
     else if (filters.sortBy === "state") orderBy = asc(hivePollen.state);
     else if (filters.sortBy === "name") orderBy = asc(hivePollen.name);
+    else if (filters.sortBy === "phone") orderBy = sql`phone_valid DESC NULLS LAST, phone ASC`;
 
     const pollen = await db.select().from(hivePollen).where(whereClause).orderBy(orderBy).limit(limit).offset(offset);
 
@@ -599,6 +614,26 @@ export class DatabaseStorage implements IStorage {
       return db.select({ id: hiveFlowers.id, website: hiveFlowers.website }).from(hiveFlowers);
     }
     return db.select({ id: hiveFlowers.id, website: hiveFlowers.website }).from(hiveFlowers).where(sql`beauty_score IS NULL`);
+  }
+
+  async getFlowersForPhoneScan(rescan: boolean): Promise<{ id: string; phone: string | null; state: string | null; name: string; category: string }[]> {
+    const cols = { id: hiveFlowers.id, phone: hiveFlowers.phone, state: hiveFlowers.state, name: hiveFlowers.name, category: hiveFlowers.category };
+    if (rescan) return db.select(cols).from(hiveFlowers);
+    return db.select(cols).from(hiveFlowers).where(sql`phone_checked IS NULL`);
+  }
+
+  async updateFlowerPhoneAuth(id: string, phoneValid: boolean): Promise<void> {
+    await db.update(hiveFlowers).set({ phoneValid, phoneChecked: new Date() }).where(eq(hiveFlowers.id, id));
+  }
+
+  async getPollenForPhoneScan(rescan: boolean): Promise<{ id: string; phone: string | null; state: string | null; name: string; category: string }[]> {
+    const cols = { id: hivePollen.id, phone: hivePollen.phone, state: hivePollen.state, name: hivePollen.name, category: hivePollen.category };
+    if (rescan) return db.select(cols).from(hivePollen);
+    return db.select(cols).from(hivePollen).where(sql`phone_checked IS NULL`);
+  }
+
+  async updatePollenPhoneAuth(id: string, phoneValid: boolean): Promise<void> {
+    await db.update(hivePollen).set({ phoneValid, phoneChecked: new Date() }).where(eq(hivePollen.id, id));
   }
 
   async getHiveStats(): Promise<{ totalFlowers: number; totalPollen: number; byDirectory: Record<string, number>; byCategory: Record<string, number> }> {

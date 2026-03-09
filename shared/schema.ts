@@ -1248,11 +1248,14 @@ export const hivePollen = pgTable("hive_pollen", {
   sourceDirectory: text("source_directory").notNull(),
   sourceUrl: text("source_url"),
   crawlJobId: varchar("crawl_job_id"),
+  phoneValid: boolean("phone_valid"),
+  phoneChecked: timestamp("phone_checked"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("hp_category_idx").on(table.category),
   index("hp_directory_idx").on(table.sourceDirectory),
   uniqueIndex("hp_name_city_dir_idx").on(table.name, table.city, table.sourceDirectory),
+  index("hp_phone_valid_idx").on(table.phoneValid),
 ]);
 
 export const insertHivePollenSchema = createInsertSchema(hivePollen).omit({ id: true, createdAt: true });

@@ -4,9 +4,9 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useTheme } from "@/hooks/use-theme";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Flower2, Search, Play, Square, Download, Trash2, Heart,
+  Flower2, Search, Play, Square, Download, Trash2, Heart, Phone,
   ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw, Palmtree, Building2, Plane,
-  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw
+  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall
 } from "lucide-react";
 
 interface HiveDirectory {
@@ -51,6 +51,8 @@ interface HiveFlower {
   lastChecked: string | null;
   beautyScore: number | null;
   beautyFlags: string | null;
+  phoneValid: boolean | null;
+  phoneChecked: string | null;
   createdAt: string;
 }
 
@@ -63,6 +65,8 @@ interface HivePollen {
   category: string;
   sourceDirectory: string;
   crawlJobId: string | null;
+  phoneValid: boolean | null;
+  phoneChecked: string | null;
 }
 
 interface CrawlStatus {
@@ -119,6 +123,8 @@ export default function HivePage() {
   const [selectedState, setSelectedState] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [filterAlive, setFilterAlive] = useState<string>("");
+  const [filterPhoneValid, setFilterPhoneValid] = useState<string>("");
+  const [pollenFilterPhoneValid, setPollenFilterPhoneValid] = useState<string>("");
   const [filterState, setFilterState] = useState("");
   const [filterTag, setFilterTag] = useState("");
   const [filterBatch, setFilterBatch] = useState("");
@@ -143,6 +149,7 @@ export default function HivePage() {
     if (bundleCatNames.length > 0) flowerFilters.categories = bundleCatNames.join(",");
   } else if (filterCategory) flowerFilters.category = filterCategory;
   if (filterAlive) flowerFilters.alive = filterAlive;
+  if (filterPhoneValid) flowerFilters.phoneValid = filterPhoneValid;
   if (filterState) flowerFilters.state = filterState;
   if (filterTag) flowerFilters.tag = filterTag;
   if (filterBatch) flowerFilters.crawlJobId = filterBatch;
@@ -164,6 +171,7 @@ export default function HivePage() {
   if (pollenFilterState) pollenFilters.state = pollenFilterState;
   if (pollenFilterDirectory) pollenFilters.directory = pollenFilterDirectory;
   if (pollenFilterBatch) pollenFilters.crawlJobId = pollenFilterBatch;
+  if (pollenFilterPhoneValid) pollenFilters.phoneValid = pollenFilterPhoneValid;
   if (pollenSortBy) pollenFilters.sortBy = pollenSortBy;
   const pollenQs = new URLSearchParams(pollenFilters).toString();
   const { data: pollenData, isLoading: pollenLoading } = useQuery<{ pollen: HivePollen[]; total: number }>({
@@ -271,6 +279,32 @@ export default function HivePage() {
     }
     prevScanRunning.current = beautyScanStatus?.running || false;
   }, [beautyScanStatus?.running]);
+
+  const phoneScan = useMutation({
+    mutationFn: (opts: { rescan: boolean; target: string }) => apiRequest("POST", "/api/hive/phone-scan", opts),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      toast({ title: "Phone scan started", description: data.message || `${data.total} entries queued` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const { data: phoneScanStatus } = useQuery<{ running: boolean; scanned: number; total: number; type: string }>({
+    queryKey: ["/api/hive/phone-scan/status"],
+    refetchInterval: 2000,
+  });
+
+  const prevPhoneScanRunning = useRef(false);
+  useEffect(() => {
+    if (prevPhoneScanRunning.current && phoneScanStatus && !phoneScanStatus.running) {
+      queryClient.invalidateQueries({ predicate: (query) => {
+        const key = query.queryKey[0] as string;
+        return key?.includes?.("/api/hive/flowers") || key?.includes?.("/api/hive/pollen");
+      }});
+      toast({ title: "Phone scan complete" });
+    }
+    prevPhoneScanRunning.current = phoneScanStatus?.running || false;
+  }, [phoneScanStatus?.running]);
 
   const bundles = [...new Set(categories.map(c => c.bundle))].sort();
 
@@ -698,6 +732,18 @@ export default function HivePage() {
               <option value="false">Dead</option>
             </select>
             <select
+              value={filterPhoneValid}
+              onChange={e => { setFilterPhoneValid(e.target.value); setFlowerPage(1); }}
+              className={`text-xs bg-gray-900 border rounded px-2 py-1.5 ${filterPhoneValid ? "border-cyan-500 text-cyan-300" : "border-gray-700 text-gray-200"}`}
+              data-testid="select-filter-phone"
+            >
+              <option value="">All Phones</option>
+              <option value="true">Verified</option>
+              <option value="false">Invalid</option>
+              <option value="nophone">No Phone</option>
+              <option value="unchecked">Unchecked</option>
+            </select>
+            <select
               value={filterState}
               onChange={e => { setFilterState(e.target.value); setFilterTag(""); setFlowerPage(1); }}
               className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200 max-w-[120px]"
@@ -751,6 +797,7 @@ export default function HivePage() {
               <option value="category">By Category</option>
               <option value="state">By State</option>
               <option value="beauty">Most Beauteous</option>
+              <option value="phone">Phone Verified</option>
               <option value="name">Name A-Z</option>
             </select>
             <label className="flex items-center gap-1.5 text-xs cursor-pointer" data-testid="checkbox-beauteous-only">
@@ -771,6 +818,15 @@ export default function HivePage() {
             >
               {beautyScanStatus?.running ? <Loader2 className="w-3 h-3 animate-spin" /> : <ScanLine className="w-3 h-3" />}
               {beautyScanStatus?.running ? "Scanning..." : "Beauty Scan"}
+            </button>
+            <button
+              onClick={() => phoneScan.mutate({ rescan: false, target: "flowers" })}
+              disabled={phoneScan.isPending || phoneScanStatus?.running}
+              className="flex items-center gap-1 text-xs px-2 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-cyan-300 transition-colors disabled:opacity-30"
+              data-testid="button-phone-scan"
+            >
+              {phoneScanStatus?.running && phoneScanStatus.type === "flowers" ? <Loader2 className="w-3 h-3 animate-spin" /> : <PhoneCall className="w-3 h-3" />}
+              {phoneScanStatus?.running && phoneScanStatus.type === "flowers" ? `${phoneScanStatus.scanned}/${phoneScanStatus.total}` : "Phone Scan"}
             </button>
             <a
               href={`/api/hive/export?${new URLSearchParams(Object.fromEntries(Object.entries(flowerFilters).filter(([k]) => k !== "page" && k !== "limit"))).toString()}`}
@@ -843,6 +899,18 @@ export default function HivePage() {
               ))}
             </select>
             <select
+              value={pollenFilterPhoneValid}
+              onChange={e => { setPollenFilterPhoneValid(e.target.value); setPollenPage(1); }}
+              className={`text-xs bg-gray-900 border rounded px-2 py-1.5 ${pollenFilterPhoneValid ? "border-cyan-500 text-cyan-300" : "border-gray-700 text-gray-200"}`}
+              data-testid="select-pollen-filter-phone"
+            >
+              <option value="">All Phones</option>
+              <option value="true">Verified</option>
+              <option value="false">Invalid</option>
+              <option value="nophone">No Phone</option>
+              <option value="unchecked">Unchecked</option>
+            </select>
+            <select
               value={pollenSortBy}
               onChange={e => { setPollenSortBy(e.target.value); setPollenPage(1); }}
               className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200"
@@ -851,8 +919,18 @@ export default function HivePage() {
               <option value="">Newest</option>
               <option value="category">By Category</option>
               <option value="state">By State</option>
+              <option value="phone">Phone Verified</option>
               <option value="name">Name A-Z</option>
             </select>
+            <button
+              onClick={() => phoneScan.mutate({ rescan: false, target: "pollen" })}
+              disabled={phoneScan.isPending || phoneScanStatus?.running}
+              className="flex items-center gap-1 text-xs px-2 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-cyan-300 transition-colors disabled:opacity-30"
+              data-testid="button-pollen-phone-scan"
+            >
+              {phoneScanStatus?.running && phoneScanStatus.type === "pollen" ? <Loader2 className="w-3 h-3 animate-spin" /> : <PhoneCall className="w-3 h-3" />}
+              {phoneScanStatus?.running && phoneScanStatus.type === "pollen" ? `${phoneScanStatus.scanned}/${phoneScanStatus.total}` : "Phone Scan"}
+            </button>
             <a
               href={`/api/hive/export-pollen?${new URLSearchParams(Object.fromEntries(Object.entries(pollenFilters).filter(([k]) => k !== "page" && k !== "limit"))).toString()}`}
               className="flex items-center gap-1 text-xs px-2 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-gray-200 transition-colors"
@@ -881,6 +959,7 @@ export default function HivePage() {
                       <th className="text-left p-2 font-medium">Phone</th>
                       <th className="text-left p-2 font-medium">Source</th>
                       <th className="text-center p-2 font-medium">Beauty</th>
+                      <th className="text-center p-2 font-medium">Ph. Auth</th>
                       <th className="text-center p-2 font-medium">Status</th>
                       <th className="text-center p-2 font-medium w-10"></th>
                     </tr>
@@ -906,6 +985,9 @@ export default function HivePage() {
                           <BeautyBadge score={f.beautyScore} flags={f.beautyFlags} />
                         </td>
                         <td className="p-2 text-center">
+                          <PhoneBadge valid={f.phoneValid} checked={f.phoneChecked} />
+                        </td>
+                        <td className="p-2 text-center">
                           {f.lastChecked ? (
                             f.isAlive
                               ? <span className="text-green-400 text-[10px]">ALIVE</span>
@@ -929,7 +1011,7 @@ export default function HivePage() {
                     ))}
                     {(!flowersData?.flowers || flowersData.flowers.length === 0) && (
                       <tr>
-                        <td colSpan={9} className="p-8 text-center text-gray-600">
+                        <td colSpan={10} className="p-8 text-center text-gray-600">
                           No flowers yet. Run a Ray of Grace crawl to discover businesses.
                         </td>
                       </tr>
@@ -980,6 +1062,7 @@ export default function HivePage() {
                       <th className="text-left p-2 font-medium">City/State</th>
                       <th className="text-left p-2 font-medium">Category</th>
                       <th className="text-left p-2 font-medium">Phone</th>
+                      <th className="text-center p-2 font-medium">Ph. Auth</th>
                       <th className="text-left p-2 font-medium">Source</th>
                     </tr>
                   </thead>
@@ -990,12 +1073,15 @@ export default function HivePage() {
                         <td className="p-2 text-gray-400">{p.city}{p.state ? `, ${p.state}` : ""}</td>
                         <td className="p-2 text-gray-400">{p.category}</td>
                         <td className="p-2 text-gray-400">{p.phone || "-"}</td>
+                        <td className="p-2 text-center">
+                          <PhoneBadge valid={p.phoneValid} checked={p.phoneChecked} />
+                        </td>
                         <td className="p-2 text-gray-500">{p.sourceDirectory}</td>
                       </tr>
                     ))}
                     {(!pollenData?.pollen || pollenData.pollen.length === 0) && (
                       <tr>
-                        <td colSpan={6} className="p-8 text-center text-gray-600">
+                        <td colSpan={7} className="p-8 text-center text-gray-600">
                           No pollen entries yet.
                         </td>
                       </tr>
@@ -1074,6 +1160,24 @@ function BeautyBadge({ score, flags }: { score: number | null; flags: string | n
       data-testid="beauty-badge"
     >
       {score} {label}
+    </span>
+  );
+}
+
+function PhoneBadge({ valid, checked }: { valid: boolean | null; checked: string | null }) {
+  if (!checked) {
+    return <span className="text-[10px] text-gray-600" data-testid="phone-unchecked">—</span>;
+  }
+  if (valid === true) {
+    return (
+      <span className="text-[10px] px-1.5 py-0.5 rounded text-green-400 bg-green-900/30" data-testid="phone-valid">
+        Valid
+      </span>
+    );
+  }
+  return (
+    <span className="text-[10px] px-1.5 py-0.5 rounded text-red-400 bg-red-900/30" data-testid="phone-invalid">
+      Invalid
     </span>
   );
 }
