@@ -88,6 +88,7 @@ export interface IStorage {
   updateHiveCrawlJob(id: string, updates: Partial<HiveCrawlJob>): Promise<HiveCrawlJob | undefined>;
   getHiveCrawlJobs(): Promise<HiveCrawlJob[]>;
   getHiveCrawlJob(id: string): Promise<HiveCrawlJob | undefined>;
+  getHiveCrawlJobShouldStop(id: string): Promise<boolean>;
   appendCrawlLog(jobId: string, message: string): Promise<void>;
   bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number>;
   bulkInsertPollen(pollen: InsertHivePollen[]): Promise<number>;
@@ -462,6 +463,11 @@ export class DatabaseStorage implements IStorage {
   async getHiveCrawlJob(id: string): Promise<HiveCrawlJob | undefined> {
     const [job] = await db.select().from(hiveCrawlJobs).where(eq(hiveCrawlJobs.id, id));
     return job;
+  }
+
+  async getHiveCrawlJobShouldStop(id: string): Promise<boolean> {
+    const [row] = await db.select({ shouldStop: hiveCrawlJobs.shouldStop }).from(hiveCrawlJobs).where(eq(hiveCrawlJobs.id, id));
+    return row?.shouldStop ?? false;
   }
 
   async appendCrawlLog(jobId: string, message: string): Promise<void> {

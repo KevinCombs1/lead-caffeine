@@ -164,12 +164,6 @@ export class RayOfGraceEngine {
       const combo = this.getNextCombo();
       if (!combo) break;
 
-      const job = await storage.getHiveCrawlJob(this.jobId);
-      if (job?.shouldStop) {
-        this.stopped = true;
-        break;
-      }
-
       let comboFlowers = 0;
       let comboPollen = 0;
       try {
@@ -194,6 +188,17 @@ export class RayOfGraceEngine {
           pollenFound: this.totalPollen,
           completedCombos: this.completedCombos,
         });
+      }
+
+      if (this.completedCombos % 50 === 0) {
+        try {
+          const shouldStop = await storage.getHiveCrawlJobShouldStop(this.jobId);
+          if (shouldStop) {
+            this.stopped = true;
+            setStopSignal(true);
+            break;
+          }
+        } catch {}
       }
     }
   }
