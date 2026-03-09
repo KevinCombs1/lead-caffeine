@@ -5,7 +5,14 @@ import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type Sc
 let activeEngine: RayOfGraceEngine | null = null;
 
 export function getActiveEngine(): RayOfGraceEngine | null {
+  if (activeEngine && activeEngine.isStopped()) {
+    activeEngine = null;
+  }
   return activeEngine;
+}
+
+export function clearActiveEngine(): void {
+  activeEngine = null;
 }
 
 interface CrawlCombo {
@@ -24,6 +31,10 @@ export class RayOfGraceEngine {
   private completedCombos = 0;
   private workerCount = 164;
   private maxResults: number | null = null;
+
+  isStopped(): boolean {
+    return this.stopped;
+  }
 
   async start(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number): Promise<string> {
     const directories = (await storage.getHiveDirectories()).filter(d => directoryIds.includes(d.id) && d.enabled);
