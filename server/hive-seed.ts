@@ -755,6 +755,8 @@ const CATEGORIES: CategorySeed[] = [
   cat("Wage Garnishment Services", "Debt & Collections", ["Wage Garnishment Company", "Payroll Garnishment", "Income Execution"]),
   cat("Asset Recovery", "Debt & Collections", ["Asset Recovery Company", "Hidden Asset Investigation", "Asset Search"]),
   cat("Medical Debt Collection", "Debt & Collections", ["Medical Debt Collector", "Healthcare Collections", "Patient Balance Recovery"]),
+  cat("Licensed & Bonded Debt Collector", "Debt & Collections", ["Licensed Debt Collector", "Bonded Collection Agency", "State Licensed Collections"]),
+  cat("Timeshare Debt Collection", "Debt & Collections", ["Timeshare Debt Collector", "Vacation Ownership Collections", "Resort Debt Recovery"]),
 
   // Adult Industry Services (5) - dark flowers
   cat("Adult Talent Agency", "Adult Industry Services", ["Adult Entertainment Agency", "Model Agency Adult", "Performer Management"]),
