@@ -591,7 +591,7 @@ export async function initializeSources(): Promise<void> {
     }
   }
   console.log(`[DEAL-SOURCES] Initialized ${allSources.length} sources`);
-  startScheduler();
+  setTimeout(() => startScheduler(), 30000);
 }
 
 export async function getSources(): Promise<DealSource[]> {
@@ -1268,7 +1268,7 @@ function startScheduler() {
     } catch (err: any) {
       console.error(`[SCHEDULER] Initial convergence detection error:`, err.message);
     }
-  }, 60 * 1000);
+  }, 90 * 1000);
 
   setTimeout(async () => {
     try {
@@ -1279,7 +1279,7 @@ function startScheduler() {
     } catch (err: any) {
       console.error(`[SCHEDULER] Initial credit gap scan error:`, err.message);
     }
-  }, 90 * 1000);
+  }, 120 * 1000);
 
   console.log(`[SCHEDULER] Background fetch scheduler started (5-minute check, 30-minute convergence + gap scan)`);
 }
