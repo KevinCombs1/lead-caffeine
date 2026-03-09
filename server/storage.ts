@@ -90,6 +90,7 @@ export interface IStorage {
   getHiveCrawlJob(id: string): Promise<HiveCrawlJob | undefined>;
   getHiveCrawlJobShouldStop(id: string): Promise<boolean>;
   appendCrawlLog(jobId: string, message: string): Promise<void>;
+  appendCrawlLogBatch(jobId: string, messages: string[]): Promise<void>;
   bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number>;
   bulkInsertPollen(pollen: InsertHivePollen[]): Promise<number>;
   getHiveFlowers(filters: { directory?: string; category?: string; categories?: string; city?: string; state?: string; search?: string; isAlive?: boolean; phoneValid?: string; sortBy?: string; beauteousOnly?: boolean; tag?: string; crawlJobId?: string; page?: number; limit?: number }): Promise<{ flowers: HiveFlower[]; total: number }>;
@@ -472,6 +473,12 @@ export class DatabaseStorage implements IStorage {
 
   async appendCrawlLog(jobId: string, message: string): Promise<void> {
     await db.execute(sql`UPDATE hive_crawl_jobs SET log = array_append(log, ${message}) WHERE id = ${jobId}`);
+  }
+
+  async appendCrawlLogBatch(jobId: string, messages: string[]): Promise<void> {
+    if (messages.length === 0) return;
+    const pgArray = `{${messages.map(m => `"${m.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',')}}`;
+    await db.execute(sql`UPDATE hive_crawl_jobs SET log = log || ${pgArray}::text[] WHERE id = ${jobId}`);
   }
 
   async bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number> {

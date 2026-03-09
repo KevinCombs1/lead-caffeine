@@ -2766,9 +2766,15 @@ export async function registerRoutes(
 
   app.get("/api/hive/crawl/:id/log", requireAuth, async (req: Request, res: Response) => {
     try {
+      const { getActiveEngine } = await import("./hive-engine");
+      const engine = getActiveEngine();
       const job = await storage.getHiveCrawlJob(req.params.id);
       if (!job) return res.status(404).json({ error: "Job not found" });
-      res.json({ log: job.log || [], status: job.status, flowersFound: job.flowersFound, pollenFound: job.pollenFound });
+      const isActiveJob = engine && engine.getStatus().jobId === req.params.id;
+      const log = isActiveJob ? [...(job.log || []), ...engine.getLogBuffer()] : (job.log || []);
+      const flowersFound = isActiveJob ? engine.getStatus().flowersFound : job.flowersFound;
+      const pollenFound = isActiveJob ? engine.getStatus().pollenFound : job.pollenFound;
+      res.json({ log, status: job.status, flowersFound, pollenFound });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

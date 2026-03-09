@@ -31,9 +31,15 @@ export class RayOfGraceEngine {
   private completedCombos = 0;
   private workerCount = 164;
   private maxResults: number | null = null;
+  private logBuffer: string[] = [];
+  private logFlushLock = false;
 
   isStopped(): boolean {
     return this.stopped;
+  }
+
+  getLogBuffer(): string[] {
+    return [...this.logBuffer];
   }
 
   async start(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number): Promise<string> {
@@ -90,17 +96,20 @@ export class RayOfGraceEngine {
 
     const limitMsg = this.maxResults ? ` (limit: ${this.maxResults} flowers)` : " (unlimited)";
     const skipMsg = skippedCount > 0 ? `, skipping ${skippedCount} already-scanned` : "";
-    await this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${allCombos.length} combos${skipMsg}, ${this.combos.length} remaining${limitMsg}`);
+    this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${allCombos.length} combos${skipMsg}, ${this.combos.length} remaining${limitMsg}`);
+    await this.flushLogs();
 
     if (this.combos.length === 0) {
-      await this.log("All combos already scanned — nothing to do. Clear scan history to re-scan.");
+      this.log("All combos already scanned — nothing to do. Clear scan history to re-scan.");
+      await this.flushLogs();
       await storage.updateHiveCrawlJob(this.jobId, { status: "completed", completedAt: new Date() });
       activeEngine = null;
       return this.jobId;
     }
 
     this.runWorkers().catch(async (err) => {
-      await this.log(`Fatal error: ${err.message}`);
+      this.log(`Fatal error: ${err.message}`);
+      await this.flushLogs();
       await storage.updateHiveCrawlJob(this.jobId, { status: "failed", completedAt: new Date() });
       activeEngine = null;
     });
@@ -112,7 +121,8 @@ export class RayOfGraceEngine {
     this.stopped = true;
     setStopSignal(true);
     await storage.updateHiveCrawlJob(this.jobId, { shouldStop: true });
-    await this.log("Stop requested — aborting all workers immediately...");
+    this.log("Stop requested — aborting all workers immediately...");
+    await this.flushLogs();
   }
 
   getStatus() {
@@ -147,7 +157,8 @@ export class RayOfGraceEngine {
       completedCombos: this.completedCombos,
     });
 
-    await this.log(`Ray of Grace ${finalStatus}: ${this.totalFlowers} flowers, ${this.totalPollen} pollen from ${this.completedCombos} combos`);
+    this.log(`Ray of Grace ${finalStatus}: ${this.totalFlowers} flowers, ${this.totalPollen} pollen from ${this.completedCombos} combos`);
+    await this.flushLogs();
     activeEngine = null;
   }
 
@@ -156,7 +167,7 @@ export class RayOfGraceEngine {
       if (this.stopped) break;
 
       if (this.maxResults && this.totalFlowers >= this.maxResults) {
-        await this.log(`[W${workerId}] Flower limit reached (${this.maxResults}), stopping`);
+        this.log(`[W${workerId}] Flower limit reached (${this.maxResults}), stopping`);
         this.stopped = true;
         break;
       }
@@ -176,13 +187,14 @@ export class RayOfGraceEngine {
         }
       } catch (err: any) {
         if (!this.stopped) {
-          await this.log(`[W${workerId}] Error: ${combo.directory.name}/${combo.category.name}/${combo.location.city} — ${err.message}`);
+          this.log(`[W${workerId}] Error: ${combo.directory.name}/${combo.category.name}/${combo.location.city} — ${err.message}`);
         }
       }
 
       this.completedCombos++;
 
       if (this.completedCombos % 10 === 0) {
+        await this.flushLogs();
         await storage.updateHiveCrawlJob(this.jobId, {
           flowersFound: this.totalFlowers,
           pollenFound: this.totalPollen,
@@ -213,7 +225,7 @@ export class RayOfGraceEngine {
     const scraperFn = SCRAPERS[directory.scraperKey];
 
     if (!scraperFn) {
-      await this.log(`[W${workerId}] No scraper for ${directory.scraperKey}, skipping`);
+      this.log(`[W${workerId}] No scraper for ${directory.scraperKey}, skipping`);
       return;
     }
 
@@ -227,18 +239,18 @@ export class RayOfGraceEngine {
     try {
       output = await scraperFn(searchTerms, loc);
     } catch (scraperErr: any) {
-      await this.log(`[W${workerId}] ${directory.name}: Scraper threw: ${scraperErr.message || scraperErr}`);
+      this.log(`[W${workerId}] ${directory.name}: Scraper threw: ${scraperErr.message || scraperErr}`);
       return;
     }
 
     if (!output || !output.results) {
-      await this.log(`[W${workerId}] ${directory.name}: Scraper returned invalid output, skipping`);
+      this.log(`[W${workerId}] ${directory.name}: Scraper returned invalid output, skipping`);
       return;
     }
 
     if (output.log && output.log.length > 0) {
       for (const msg of output.log) {
-        await this.log(`[W${workerId}] ${directory.name}: ${msg}`);
+        this.log(`[W${workerId}] ${directory.name}: ${msg}`);
       }
     }
 
@@ -248,7 +260,7 @@ export class RayOfGraceEngine {
     try {
       classified = classifyResults(output.results, category.name);
     } catch (classifyErr: any) {
-      await this.log(`[W${workerId}] ${directory.name}: Classification error: ${classifyErr.message || classifyErr}`);
+      this.log(`[W${workerId}] ${directory.name}: Classification error: ${classifyErr.message || classifyErr}`);
       return;
     }
 
@@ -289,16 +301,23 @@ export class RayOfGraceEngine {
     this.totalPollen += insertedPollen;
 
     if (insertedFlowers > 0 || insertedPollen > 0) {
-      await this.log(`[W${workerId}] ${directory.name}/${category.name}/${location.city}: +${insertedFlowers} flowers, +${insertedPollen} pollen`);
+      this.log(`[W${workerId}] ${directory.name}/${category.name}/${location.city}: +${insertedFlowers} flowers, +${insertedPollen} pollen`);
     }
   }
 
-  private async log(message: string): Promise<void> {
+  private log(message: string): void {
     const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
-    const fullMsg = `[${timestamp}] ${message}`;
+    this.logBuffer.push(`[${timestamp}] ${message}`);
+  }
+
+  async flushLogs(): Promise<void> {
+    if (this.logFlushLock || this.logBuffer.length === 0) return;
+    this.logFlushLock = true;
+    const batch = this.logBuffer.splice(0, this.logBuffer.length);
     try {
-      await storage.appendCrawlLog(this.jobId, fullMsg);
+      await storage.appendCrawlLogBatch(this.jobId, batch);
     } catch {}
+    this.logFlushLock = false;
   }
 }
 
