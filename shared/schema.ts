@@ -1220,6 +1220,8 @@ export const hiveFlowers = pgTable("hive_flowers", {
   lastChecked: timestamp("last_checked"),
   beautyScore: integer("beauty_score"),
   beautyFlags: text("beauty_flags"),
+  phoneValid: boolean("phone_valid"),
+  phoneChecked: timestamp("phone_checked"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("hf_category_idx").on(table.category),
@@ -1228,6 +1230,7 @@ export const hiveFlowers = pgTable("hive_flowers", {
   index("hf_state_idx").on(table.state),
   index("hf_alive_idx").on(table.isAlive),
   index("hf_name_city_idx").on(table.name, table.city),
+  index("hf_phone_valid_idx").on(table.phoneValid),
 ]);
 
 export const insertHiveFlowerSchema = createInsertSchema(hiveFlowers).omit({ id: true, createdAt: true });
