@@ -193,7 +193,7 @@ export class RayOfGraceEngine {
 
       this.completedCombos++;
 
-      if (this.completedCombos % 10 === 0) {
+      if (this.completedCombos % 5 === 0) {
         await this.flushLogs();
         await storage.updateHiveCrawlJob(this.jobId, {
           flowersFound: this.totalFlowers,

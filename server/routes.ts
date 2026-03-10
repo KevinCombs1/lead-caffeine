@@ -2754,10 +2754,17 @@ export async function registerRoutes(
     try {
       const { getActiveEngine } = await import("./hive-engine");
       const engine = getActiveEngine();
+      const engineStatus = engine ? engine.getStatus() : null;
       const jobs = await storage.getHiveCrawlJobs();
+      const recentJobs = jobs.map((job: any) => {
+        if (engineStatus && job.id === engineStatus.jobId) {
+          return { ...job, flowersFound: engineStatus.flowersFound, pollenFound: engineStatus.pollenFound, completedCombos: engineStatus.completedCombos };
+        }
+        return job;
+      });
       res.json({
-        active: engine ? engine.getStatus() : null,
-        recentJobs: jobs,
+        active: engineStatus,
+        recentJobs,
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
