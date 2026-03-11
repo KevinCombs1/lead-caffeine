@@ -114,6 +114,7 @@ export default function HivePage() {
   const [pollenFilterState, setPollenFilterState] = useState("");
   const [pollenFilterDirectory, setPollenFilterDirectory] = useState("");
   const [pollenFilterBatch, setPollenFilterBatch] = useState("");
+  const [pollenFilterIndustry, setPollenFilterIndustry] = useState("");
   const [pollenSortBy, setPollenSortBy] = useState("");
   const [flowerPage, setFlowerPage] = useState(1);
   const [pollenPage, setPollenPage] = useState(1);
@@ -122,6 +123,7 @@ export default function HivePage() {
   const [locationSearch, setLocationSearch] = useState("");
   const [selectedState, setSelectedState] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
+  const [filterIndustry, setFilterIndustry] = useState("");
   const [filterAlive, setFilterAlive] = useState<string>("");
   const [filterPhoneValid, setFilterPhoneValid] = useState<string>("");
   const [pollenFilterPhoneValid, setPollenFilterPhoneValid] = useState<string>("");
@@ -143,7 +145,10 @@ export default function HivePage() {
   const flowerFilters: Record<string, string> = {};
   if (activeTab !== "all" && activeTab !== "pollen") flowerFilters.directory = activeTab;
   if (flowerSearch) flowerFilters.search = flowerSearch;
-  if (filterCategory && filterCategory.startsWith("bundle:")) {
+  if (filterIndustry) {
+    const industryCatNames = categories.filter(c => c.bundle === filterIndustry).map(c => c.name);
+    if (industryCatNames.length > 0) flowerFilters.categories = industryCatNames.join(",");
+  } else if (filterCategory && filterCategory.startsWith("bundle:")) {
     const bundleName = filterCategory.slice(7);
     const bundleCatNames = categories.filter(c => c.bundle === bundleName).map(c => c.name);
     if (bundleCatNames.length > 0) flowerFilters.categories = bundleCatNames.join(",");
@@ -167,7 +172,14 @@ export default function HivePage() {
   });
 
   const pollenFilters: Record<string, string> = { search: pollenSearch, page: String(pollenPage), limit: "50" };
-  if (pollenFilterCategory) pollenFilters.category = pollenFilterCategory;
+  if (pollenFilterIndustry) {
+    const industryCatNames = categories.filter(c => c.bundle === pollenFilterIndustry).map(c => c.name);
+    if (industryCatNames.length > 0) pollenFilters.categories = industryCatNames.join(",");
+  } else if (pollenFilterCategory && pollenFilterCategory.startsWith("bundle:")) {
+    const bundleName = pollenFilterCategory.slice(7);
+    const bundleCatNames = categories.filter(c => c.bundle === bundleName).map(c => c.name);
+    if (bundleCatNames.length > 0) pollenFilters.categories = bundleCatNames.join(",");
+  } else if (pollenFilterCategory) pollenFilters.category = pollenFilterCategory;
   if (pollenFilterState) pollenFilters.state = pollenFilterState;
   if (pollenFilterDirectory) pollenFilters.directory = pollenFilterDirectory;
   if (pollenFilterBatch) pollenFilters.crawlJobId = pollenFilterBatch;
@@ -707,7 +719,7 @@ export default function HivePage() {
             </div>
             <select
               value={filterCategory}
-              onChange={e => { setFilterCategory(e.target.value); setFlowerPage(1); }}
+              onChange={e => { setFilterCategory(e.target.value); setFilterIndustry(""); setFlowerPage(1); }}
               className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200 max-w-[200px]"
               data-testid="select-filter-category"
             >
@@ -838,6 +850,26 @@ export default function HivePage() {
           </div>
         )}
 
+        {activeTab !== "pollen" && bundles.length > 0 && (
+          <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-gray-800 overflow-x-auto" data-testid="flower-industry-filter">
+            <Filter className="w-3 h-3 text-gray-600 flex-shrink-0" />
+            {bundles.map(b => (
+              <button
+                key={b}
+                onClick={() => { setFilterIndustry(filterIndustry === b ? "" : b); setFilterCategory(""); setFlowerPage(1); }}
+                className={`text-[10px] px-2 py-1 rounded border whitespace-nowrap transition-colors ${
+                  filterIndustry === b
+                    ? "border-amber-500 bg-amber-500/20 text-amber-300"
+                    : "border-gray-700 text-gray-500 hover:text-gray-300"
+                }`}
+                data-testid={`button-industry-${b.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                {b}
+              </button>
+            ))}
+          </div>
+        )}
+
         {activeTab === "pollen" && (
           <div className="flex flex-wrap items-center gap-2 p-2 border-b border-gray-800">
             <div className="relative flex-1 min-w-[180px]">
@@ -853,7 +885,7 @@ export default function HivePage() {
             </div>
             <select
               value={pollenFilterCategory}
-              onChange={e => { setPollenFilterCategory(e.target.value); setPollenPage(1); }}
+              onChange={e => { setPollenFilterCategory(e.target.value); setPollenFilterIndustry(""); setPollenPage(1); }}
               className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200 max-w-[200px]"
               data-testid="select-pollen-filter-category"
             >
@@ -938,6 +970,26 @@ export default function HivePage() {
             >
               <Download className="w-3 h-3" />CSV
             </a>
+          </div>
+        )}
+
+        {activeTab === "pollen" && bundles.length > 0 && (
+          <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-gray-800 overflow-x-auto" data-testid="pollen-industry-filter">
+            <Filter className="w-3 h-3 text-gray-600 flex-shrink-0" />
+            {bundles.map(b => (
+              <button
+                key={b}
+                onClick={() => { setPollenFilterIndustry(pollenFilterIndustry === b ? "" : b); setPollenFilterCategory(""); setPollenPage(1); }}
+                className={`text-[10px] px-2 py-1 rounded border whitespace-nowrap transition-colors ${
+                  pollenFilterIndustry === b
+                    ? "border-amber-500 bg-amber-500/20 text-amber-300"
+                    : "border-gray-700 text-gray-500 hover:text-gray-300"
+                }`}
+                data-testid={`button-pollen-industry-${b.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                {b}
+              </button>
+            ))}
           </div>
         )}
 
