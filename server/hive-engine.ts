@@ -33,13 +33,15 @@ export class RayOfGraceEngine {
   private maxResults: number | null = null;
   private logBuffer: string[] = [];
   private logFlushLock = false;
+  private static readonly MAX_LOG_BUFFER = 500;
 
   isStopped(): boolean {
     return this.stopped;
   }
 
-  getLogBuffer(): string[] {
-    return [...this.logBuffer];
+  getLogBuffer(limit = 200): string[] {
+    if (this.logBuffer.length <= limit) return this.logBuffer.slice();
+    return this.logBuffer.slice(-limit);
   }
 
   async start(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number): Promise<string> {
@@ -249,7 +251,10 @@ export class RayOfGraceEngine {
     }
 
     if (output.log && output.log.length > 0) {
-      for (const msg of output.log) {
+      const summaryLines = output.log.filter((msg: string) =>
+        msg.startsWith("Searching ") || msg.startsWith("Completed ") || msg.startsWith("Total:") || msg.includes("Error") || msg.startsWith("No listings")
+      );
+      for (const msg of summaryLines) {
         this.log(`[W${workerId}] ${directory.name}: ${msg}`);
       }
     }
@@ -308,6 +313,9 @@ export class RayOfGraceEngine {
   private log(message: string): void {
     const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
     this.logBuffer.push(`[${timestamp}] ${message}`);
+    if (this.logBuffer.length > RayOfGraceEngine.MAX_LOG_BUFFER) {
+      this.logBuffer.splice(0, this.logBuffer.length - RayOfGraceEngine.MAX_LOG_BUFFER);
+    }
   }
 
   async flushLogs(): Promise<void> {

@@ -458,7 +458,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getHiveCrawlJobs(): Promise<HiveCrawlJob[]> {
-    return db.select().from(hiveCrawlJobs).orderBy(desc(hiveCrawlJobs.startedAt)).limit(20);
+    return db.select({
+      id: hiveCrawlJobs.id,
+      status: hiveCrawlJobs.status,
+      directoryIds: hiveCrawlJobs.directoryIds,
+      categoryIds: hiveCrawlJobs.categoryIds,
+      locationIds: hiveCrawlJobs.locationIds,
+      flowersFound: hiveCrawlJobs.flowersFound,
+      pollenFound: hiveCrawlJobs.pollenFound,
+      totalCombos: hiveCrawlJobs.totalCombos,
+      completedCombos: hiveCrawlJobs.completedCombos,
+      shouldStop: hiveCrawlJobs.shouldStop,
+      log: sql<string[] | null>`'{}'::text[]`.as('log'),
+      startedAt: hiveCrawlJobs.startedAt,
+      completedAt: hiveCrawlJobs.completedAt,
+    }).from(hiveCrawlJobs).orderBy(desc(hiveCrawlJobs.startedAt)).limit(20);
   }
 
   async getHiveCrawlJob(id: string): Promise<HiveCrawlJob | undefined> {

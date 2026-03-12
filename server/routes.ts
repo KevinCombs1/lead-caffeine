@@ -2778,7 +2778,15 @@ export async function registerRoutes(
       const job = await storage.getHiveCrawlJob(req.params.id);
       if (!job) return res.status(404).json({ error: "Job not found" });
       const isActiveJob = engine && engine.getStatus().jobId === req.params.id;
-      const log = isActiveJob ? [...(job.log || []), ...engine.getLogBuffer()] : (job.log || []);
+      const maxLogLines = 500;
+      let log: string[];
+      if (isActiveJob) {
+        const bufferLog = engine.getLogBuffer(maxLogLines);
+        log = bufferLog;
+      } else {
+        const dbLog = job.log || [];
+        log = dbLog.length > maxLogLines ? dbLog.slice(-maxLogLines) : dbLog;
+      }
       const flowersFound = isActiveJob ? engine.getStatus().flowersFound : job.flowersFound;
       const pollenFound = isActiveJob ? engine.getStatus().pollenFound : job.pollenFound;
       res.json({ log, status: job.status, flowersFound, pollenFound });
