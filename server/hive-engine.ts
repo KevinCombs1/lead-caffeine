@@ -344,7 +344,9 @@ export class RayOfGraceEngine {
     try {
       const batch = this.logBuffer.splice(0, this.logBuffer.length);
       await storage.appendCrawlLogBatch(this.jobId, batch);
-    } catch {}
+    } catch (err) {
+      console.log(`[hive-engine] Log flush DB write failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
     if (this.logBuffer.length > RayOfGraceEngine.MAX_LOG_BUFFER) {
       const excess = this.logBuffer.length - RayOfGraceEngine.MAX_LOG_BUFFER;
       this.logBuffer.splice(0, excess);
