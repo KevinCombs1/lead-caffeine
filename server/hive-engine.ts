@@ -251,76 +251,79 @@ export class RayOfGraceEngine {
 
     const loc: ScraperLocation = { city: location.city, state: location.state };
 
-    let output: ScraperResponse;
-    try {
-      output = await scraperFn(searchTerms, loc);
-    } catch (scraperErr: any) {
-      this.log(`[W${workerId}] ${directory.name}: Scraper threw: ${scraperErr.message || scraperErr}`);
-      return;
-    }
+    for (let ai = 0; ai < searchTerms.length; ai++) {
+      if (this.stopped) break;
 
-    if (!output || !output.results) {
-      this.log(`[W${workerId}] ${directory.name}: Scraper returned invalid output, skipping`);
-      return;
-    }
+      const alias = searchTerms[ai];
 
-    if (output.log && output.log.length > 0) {
-      const summaryLines = output.log.filter((msg: string) =>
-        msg.startsWith("Searching ") || msg.startsWith("Completed ") || msg.startsWith("Total:") || msg.includes("Error") || msg.startsWith("No listings")
-      );
-      for (const msg of summaryLines) {
-        this.log(`[W${workerId}] ${directory.name}: ${msg}`);
+      let output: ScraperResponse;
+      try {
+        output = await scraperFn([alias], loc);
+      } catch (scraperErr: any) {
+        this.log(`[W${workerId}] ${directory.name}: Scraper threw on "${alias}": ${scraperErr.message || scraperErr}`);
+        continue;
       }
-    }
 
-    if (output.results.length === 0) return;
+      if (!output || !output.results) continue;
 
-    let classified;
-    try {
-      classified = classifyResults(output.results, category.name);
-    } catch (classifyErr: any) {
-      this.log(`[W${workerId}] ${directory.name}: Classification error: ${classifyErr.message || classifyErr}`);
-      return;
-    }
+      if (output.log && output.log.length > 0) {
+        const summaryLines = output.log.filter((msg: string) =>
+          msg.startsWith("Searching ") || msg.startsWith("Completed ") || msg.startsWith("Total:") || msg.includes("Error") || msg.startsWith("No listings")
+        );
+        for (const msg of summaryLines) {
+          this.log(`[W${workerId}] ${directory.name}: ${msg}`);
+        }
+      }
 
-    const { flowers, pollen } = classified;
+      if (output.results.length === 0) continue;
 
-    const flowerInserts: InsertHiveFlower[] = flowers.map(f => ({
-      name: f.name,
-      website: f.website,
-      normalizedUrl: f.normalizedUrl,
-      phone: f.phone || null,
-      address: f.address || null,
-      city: f.city || location.city,
-      state: f.state || location.state,
-      category: category.name,
-      sourceDirectory: directory.name,
-      sourceUrl: f.sourceUrl || null,
-      crawlJobId: this.jobId,
-      isFranchise: f.isFranchise,
-      isAlive: true,
-    }));
+      let classified;
+      try {
+        classified = classifyResults(output.results, category.name);
+      } catch (classifyErr: any) {
+        this.log(`[W${workerId}] ${directory.name}: Classification error on "${alias}": ${classifyErr.message || classifyErr}`);
+        continue;
+      }
 
-    const pollenInserts: InsertHivePollen[] = pollen.map(p => ({
-      name: p.name,
-      phone: p.phone || null,
-      address: p.address || null,
-      city: p.city || location.city,
-      state: p.state || location.state,
-      category: category.name,
-      sourceDirectory: directory.name,
-      sourceUrl: p.sourceUrl || null,
-      crawlJobId: this.jobId,
-    }));
+      const { flowers, pollen } = classified;
 
-    const insertedFlowers = await storage.bulkInsertFlowers(flowerInserts);
-    const insertedPollen = await storage.bulkInsertPollen(pollenInserts);
+      const flowerInserts: InsertHiveFlower[] = flowers.map(f => ({
+        name: f.name,
+        website: f.website,
+        normalizedUrl: f.normalizedUrl,
+        phone: f.phone || null,
+        address: f.address || null,
+        city: f.city || location.city,
+        state: f.state || location.state,
+        category: category.name,
+        sourceDirectory: directory.name,
+        sourceUrl: f.sourceUrl || null,
+        crawlJobId: this.jobId,
+        isFranchise: f.isFranchise,
+        isAlive: true,
+      }));
 
-    this.totalFlowers += insertedFlowers;
-    this.totalPollen += insertedPollen;
+      const pollenInserts: InsertHivePollen[] = pollen.map(p => ({
+        name: p.name,
+        phone: p.phone || null,
+        address: p.address || null,
+        city: p.city || location.city,
+        state: p.state || location.state,
+        category: category.name,
+        sourceDirectory: directory.name,
+        sourceUrl: p.sourceUrl || null,
+        crawlJobId: this.jobId,
+      }));
 
-    if (insertedFlowers > 0 || insertedPollen > 0) {
-      this.log(`[W${workerId}] ${directory.name}/${category.name}/${location.city}: +${insertedFlowers} flowers, +${insertedPollen} pollen`);
+      const insertedFlowers = await storage.bulkInsertFlowers(flowerInserts);
+      const insertedPollen = await storage.bulkInsertPollen(pollenInserts);
+
+      this.totalFlowers += insertedFlowers;
+      this.totalPollen += insertedPollen;
+
+      if (insertedFlowers > 0 || insertedPollen > 0) {
+        this.log(`[W${workerId}] ${directory.name}/${category.name}/${location.city} [${ai + 1}/${searchTerms.length}]: +${insertedFlowers} flowers, +${insertedPollen} pollen`);
+      }
     }
   }
 
