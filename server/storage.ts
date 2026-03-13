@@ -502,15 +502,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getHiveCrawlJobLogTail(id: string, limit: number): Promise<string[]> {
-    const result: { tail: string[] | null }[] = await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT (SELECT ARRAY(
         SELECT unnest(log) AS entry
         FROM hive_crawl_jobs WHERE id = ${id}
         OFFSET GREATEST(0, (SELECT COALESCE(array_length(log, 1), 0) FROM hive_crawl_jobs WHERE id = ${id}) - ${limit})
       )) AS tail
     `);
-    const row = result[0];
-    return row?.tail || [];
+    const rows = result.rows as { tail: string[] | null }[];
+    return rows[0]?.tail || [];
   }
 
   async interruptAllRunningCrawlJobs(): Promise<number> {
