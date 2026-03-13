@@ -340,7 +340,7 @@ export class RayOfGraceEngine {
       const batch = this.logBuffer.splice(0, this.logBuffer.length);
       await storage.appendCrawlLogBatch(this.jobId, batch);
     } catch {}
-    if (this.logBuffer.length > RayOfGraceEngine.MAX_LOG_BUFFER * 2) {
+    while (this.logBuffer.length > RayOfGraceEngine.MAX_LOG_BUFFER) {
       this.logBuffer.splice(0, this.logBuffer.length - RayOfGraceEngine.MAX_LOG_BUFFER);
     }
     this.logFlushLock = false;
