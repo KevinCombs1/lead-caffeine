@@ -29,7 +29,7 @@ export class RayOfGraceEngine {
   private totalFlowers = 0;
   private totalPollen = 0;
   private completedCombos = 0;
-  private workerCount = 164;
+  private workerCount = 64;
   private maxResults: number | null = null;
   private logBuffer: string[] = [];
   private logFlushLock = false;
@@ -209,15 +209,14 @@ export class RayOfGraceEngine {
       }
 
       this.completedCombos++;
+      this.log(`[W${workerId}] Done: ${combo.directory.name}/${combo.location.city},${combo.location.state} — ${comboFlowers}f/${comboPollen}p (${this.completedCombos}/${this.combos.length})`);
 
-      if (this.completedCombos % 5 === 0) {
-        await this.flushLogs();
-        await storage.updateHiveCrawlJob(this.jobId, {
-          flowersFound: this.totalFlowers,
-          pollenFound: this.totalPollen,
-          completedCombos: this.completedCombos,
-        });
-      }
+      await this.flushLogs();
+      await storage.updateHiveCrawlJob(this.jobId, {
+        flowersFound: this.totalFlowers,
+        pollenFound: this.totalPollen,
+        completedCombos: this.completedCombos,
+      });
 
       if (this.completedCombos % 50 === 0) {
         try {
