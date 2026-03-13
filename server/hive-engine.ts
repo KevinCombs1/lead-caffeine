@@ -334,14 +334,20 @@ export class RayOfGraceEngine {
   }
 
   async flushLogs(): Promise<void> {
+    if (this.logBuffer.length > RayOfGraceEngine.MAX_LOG_BUFFER * 2) {
+      const dropped = this.logBuffer.length - RayOfGraceEngine.MAX_LOG_BUFFER;
+      this.logBuffer.splice(0, dropped);
+      console.log(`[hive-engine] Emergency trim: dropped ${dropped} log entries (buffer exceeded ${RayOfGraceEngine.MAX_LOG_BUFFER * 2})`);
+    }
     if (this.logFlushLock || this.logBuffer.length === 0) return;
     this.logFlushLock = true;
     try {
       const batch = this.logBuffer.splice(0, this.logBuffer.length);
       await storage.appendCrawlLogBatch(this.jobId, batch);
     } catch {}
-    while (this.logBuffer.length > RayOfGraceEngine.MAX_LOG_BUFFER) {
-      this.logBuffer.splice(0, this.logBuffer.length - RayOfGraceEngine.MAX_LOG_BUFFER);
+    if (this.logBuffer.length > RayOfGraceEngine.MAX_LOG_BUFFER) {
+      const excess = this.logBuffer.length - RayOfGraceEngine.MAX_LOG_BUFFER;
+      this.logBuffer.splice(0, excess);
     }
     this.logFlushLock = false;
   }
