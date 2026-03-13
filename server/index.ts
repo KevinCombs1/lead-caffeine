@@ -68,11 +68,13 @@ app.use((req, res, next) => {
   }
 
   try {
-    const { cleanupOrphanedCrawlJobs } = await import("./hive-engine");
+    const { cleanupOrphanedCrawlJobs, getActiveEngine } = await import("./hive-engine");
     await cleanupOrphanedCrawlJobs();
     setTimeout(async () => {
       try {
-        await cleanupOrphanedCrawlJobs();
+        if (!getActiveEngine()) {
+          await cleanupOrphanedCrawlJobs();
+        }
       } catch (err: any) {
         console.log("[hive-engine] Delayed orphan cleanup error:", err.message);
       }
