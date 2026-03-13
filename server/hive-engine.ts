@@ -109,12 +109,7 @@ export class RayOfGraceEngine {
       return this.jobId;
     }
 
-    this.runWorkers().catch(async (err) => {
-      this.log(`Fatal error: ${err.message}`);
-      await this.flushLogs();
-      await storage.updateHiveCrawlJob(this.jobId, { status: "failed", completedAt: new Date() });
-      activeEngine = null;
-    });
+    this.runWorkersSafe();
 
     return this.jobId;
   }
@@ -138,6 +133,26 @@ export class RayOfGraceEngine {
       maxResults: this.maxResults,
       progress: this.combos.length > 0 ? Math.round((this.completedCombos / this.combos.length) * 100) : 0,
     };
+  }
+
+  private async runWorkersSafe(): Promise<void> {
+    try {
+      await this.runWorkers();
+    } catch (err: any) {
+      try {
+        this.log(`Fatal error: ${err.message}`);
+        await this.flushLogs();
+        await storage.updateHiveCrawlJob(this.jobId, {
+          status: "failed",
+          completedAt: new Date(),
+          flowersFound: this.totalFlowers,
+          pollenFound: this.totalPollen,
+          completedCombos: this.completedCombos,
+        });
+      } catch {}
+      activeEngine = null;
+      this.stopped = true;
+    }
   }
 
   private async runWorkers(): Promise<void> {
@@ -321,10 +336,13 @@ export class RayOfGraceEngine {
   async flushLogs(): Promise<void> {
     if (this.logFlushLock || this.logBuffer.length === 0) return;
     this.logFlushLock = true;
-    const batch = this.logBuffer.splice(0, this.logBuffer.length);
     try {
+      const batch = this.logBuffer.splice(0, this.logBuffer.length);
       await storage.appendCrawlLogBatch(this.jobId, batch);
     } catch {}
+    if (this.logBuffer.length > RayOfGraceEngine.MAX_LOG_BUFFER * 2) {
+      this.logBuffer.splice(0, this.logBuffer.length - RayOfGraceEngine.MAX_LOG_BUFFER);
+    }
     this.logFlushLock = false;
   }
 }
@@ -367,15 +385,11 @@ export async function checkFlowerHealth(batchSize = 100): Promise<{ checked: num
 }
 
 export async function cleanupOrphanedCrawlJobs(): Promise<void> {
-  const jobs = await storage.getHiveCrawlJobs();
-  const orphaned = jobs.filter(j => j.status === "running");
-  for (const job of orphaned) {
-    await storage.updateHiveCrawlJob(job.id, { status: "interrupted", completedAt: new Date() });
-    console.log(`[hive-engine] Cleaned up orphaned crawl job ${job.id}`);
+  const count = await storage.interruptAllRunningCrawlJobs();
+  if (count > 0) {
+    console.log(`[hive-engine] Marked ${count} orphaned running job(s) as interrupted.`);
   }
-  if (orphaned.length > 0) {
-    console.log(`[hive-engine] Marked ${orphaned.length} orphaned job(s) as interrupted.`);
-  }
+  activeEngine = null;
 }
 
 export async function startRayOfGrace(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number): Promise<string> {

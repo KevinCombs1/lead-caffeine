@@ -88,7 +88,10 @@ export interface IStorage {
   updateHiveCrawlJob(id: string, updates: Partial<HiveCrawlJob>): Promise<HiveCrawlJob | undefined>;
   getHiveCrawlJobs(): Promise<HiveCrawlJob[]>;
   getHiveCrawlJob(id: string): Promise<HiveCrawlJob | undefined>;
+  getHiveCrawlJobMeta(id: string): Promise<Omit<HiveCrawlJob, 'log'> | undefined>;
+  getHiveCrawlJobLogTail(id: string, limit: number): Promise<string[]>;
   getHiveCrawlJobShouldStop(id: string): Promise<boolean>;
+  interruptAllRunningCrawlJobs(): Promise<number>;
   appendCrawlLog(jobId: string, message: string): Promise<void>;
   appendCrawlLogBatch(jobId: string, messages: string[]): Promise<void>;
   bulkInsertFlowers(flowers: InsertHiveFlower[]): Promise<number>;
@@ -478,6 +481,44 @@ export class DatabaseStorage implements IStorage {
   async getHiveCrawlJob(id: string): Promise<HiveCrawlJob | undefined> {
     const [job] = await db.select().from(hiveCrawlJobs).where(eq(hiveCrawlJobs.id, id));
     return job;
+  }
+
+  async getHiveCrawlJobMeta(id: string): Promise<Omit<HiveCrawlJob, 'log'> | undefined> {
+    const [job] = await db.select({
+      id: hiveCrawlJobs.id,
+      status: hiveCrawlJobs.status,
+      directoryIds: hiveCrawlJobs.directoryIds,
+      categoryIds: hiveCrawlJobs.categoryIds,
+      locationIds: hiveCrawlJobs.locationIds,
+      flowersFound: hiveCrawlJobs.flowersFound,
+      pollenFound: hiveCrawlJobs.pollenFound,
+      totalCombos: hiveCrawlJobs.totalCombos,
+      completedCombos: hiveCrawlJobs.completedCombos,
+      shouldStop: hiveCrawlJobs.shouldStop,
+      startedAt: hiveCrawlJobs.startedAt,
+      completedAt: hiveCrawlJobs.completedAt,
+    }).from(hiveCrawlJobs).where(eq(hiveCrawlJobs.id, id));
+    return job;
+  }
+
+  async getHiveCrawlJobLogTail(id: string, limit: number): Promise<string[]> {
+    const result = await db.execute(sql`
+      SELECT (SELECT ARRAY(
+        SELECT unnest(log) AS entry
+        FROM hive_crawl_jobs WHERE id = ${id}
+        OFFSET GREATEST(0, (SELECT COALESCE(array_length(log, 1), 0) FROM hive_crawl_jobs WHERE id = ${id}) - ${limit})
+      )) AS tail
+    `);
+    const row = (result as any).rows?.[0];
+    return row?.tail || [];
+  }
+
+  async interruptAllRunningCrawlJobs(): Promise<number> {
+    const result = await db.update(hiveCrawlJobs)
+      .set({ status: "interrupted", completedAt: new Date() })
+      .where(eq(hiveCrawlJobs.status, "running"))
+      .returning({ id: hiveCrawlJobs.id });
+    return result.length;
   }
 
   async getHiveCrawlJobShouldStop(id: string): Promise<boolean> {

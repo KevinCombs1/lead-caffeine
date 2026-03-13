@@ -2775,17 +2775,16 @@ export async function registerRoutes(
     try {
       const { getActiveEngine } = await import("./hive-engine");
       const engine = getActiveEngine();
-      const job = await storage.getHiveCrawlJob(req.params.id);
+      const jobId = req.params.id;
+      const job = await storage.getHiveCrawlJobMeta(jobId);
       if (!job) return res.status(404).json({ error: "Job not found" });
-      const isActiveJob = engine && engine.getStatus().jobId === req.params.id;
+      const isActiveJob = engine && engine.getStatus().jobId === jobId;
       const maxLogLines = 500;
       let log: string[];
       if (isActiveJob) {
-        const bufferLog = engine.getLogBuffer(maxLogLines);
-        log = bufferLog;
+        log = engine.getLogBuffer(maxLogLines);
       } else {
-        const dbLog = job.log || [];
-        log = dbLog.length > maxLogLines ? dbLog.slice(-maxLogLines) : dbLog;
+        log = await storage.getHiveCrawlJobLogTail(jobId, maxLogLines);
       }
       const flowersFound = isActiveJob ? engine.getStatus().flowersFound : job.flowersFound;
       const pollenFound = isActiveJob ? engine.getStatus().pollenFound : job.pollenFound;
