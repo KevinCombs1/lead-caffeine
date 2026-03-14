@@ -39,6 +39,20 @@ const DIRECTORIES: DirectorySeed[] = [
   { name: "Clutch", baseUrl: "https://clutch.co", scraperKey: "clutch", enabled: false, status: "blocked" },
   { name: "Manta", baseUrl: "https://www.manta.com", scraperKey: "manta", enabled: false, status: "blocked" },
   { name: "ChamberOfCommerce", baseUrl: "https://www.chamberofcommerce.com", scraperKey: "chamberofcommerce", enabled: false, status: "blocked" },
+  { name: "Kompass", baseUrl: "https://www.kompass.com", scraperKey: "kompass", enabled: true, status: "working" },
+  { name: "Europages", baseUrl: "https://www.europages.co.uk", scraperKey: "europages", enabled: true, status: "working" },
+  { name: "Yell", baseUrl: "https://www.yell.com", scraperKey: "yell", enabled: true, status: "working" },
+  { name: "Cylex", baseUrl: "https://www.cylex-usa.com", scraperKey: "cylex", enabled: true, status: "working" },
+  { name: "TradeKey", baseUrl: "https://www.tradekey.com", scraperKey: "tradekey", enabled: true, status: "working" },
+  { name: "ExportHub", baseUrl: "https://www.exporthub.com", scraperKey: "exporthub", enabled: true, status: "working" },
+  { name: "Go4WorldBusiness", baseUrl: "https://www.go4worldbusiness.com", scraperKey: "go4worldbusiness", enabled: true, status: "working" },
+  { name: "TradeFord", baseUrl: "https://www.tradeford.com", scraperKey: "tradeford", enabled: true, status: "working" },
+  { name: "TradeIndia", baseUrl: "https://www.tradeindia.com", scraperKey: "tradeindia", enabled: false, status: "blocked" },
+  { name: "Made-in-China", baseUrl: "https://www.made-in-china.com", scraperKey: "madeinchina", enabled: false, status: "blocked" },
+  { name: "IndiaMart", baseUrl: "https://www.indiamart.com", scraperKey: "indiamart", enabled: false, status: "blocked" },
+  { name: "EC21", baseUrl: "https://www.ec21.com", scraperKey: "ec21", enabled: false, status: "blocked" },
+  { name: "GlobalSources", baseUrl: "https://www.globalsources.com", scraperKey: "globalsources", enabled: false, status: "blocked" },
+  { name: "WLW", baseUrl: "https://www.wlw.de", scraperKey: "wlw", enabled: false, status: "blocked" },
 ];
 
 function slugify(s: string): string {
@@ -894,6 +908,83 @@ const CATEGORIES: CategorySeed[] = [
   cat("Distressed Property Buyer", "Liquidation & Distressed Assets", ["We Buy Ugly Houses", "Distressed Property Investor", "Cash Home Buyer"]),
   cat("Restaurant Equipment Liquidation", "Liquidation & Distressed Assets", ["Used Restaurant Equipment", "Commercial Kitchen Liquidation", "Food Equipment Resale"]),
   cat("Bankruptcy Trustee", "Liquidation & Distressed Assets", ["Bankruptcy Trustee Service", "Chapter 7 Trustee", "Asset Distribution"]),
+
+  // International Trade — Import/Export & Logistics (15)
+  cat("Import/Export Company", "International Trade", ["Import Export Business", "International Trading Company", "Global Trade Company", "Import Export Firm"]),
+  cat("Customs Brokerage", "International Trade", ["Customs Broker", "Licensed Customs Broker", "Customs Clearance Agent", "Import Clearance"]),
+  cat("International Freight Forwarding", "International Trade", ["Freight Forwarder", "International Freight", "Global Freight Services", "Ocean Freight", "Air Freight Forwarding"]),
+  cat("International Shipping & Cargo", "International Trade", ["International Shipping Company", "Cargo Shipping", "Ocean Cargo", "Container Shipping", "Bulk Shipping"]),
+  cat("Trade Compliance & Licensing", "International Trade", ["Trade Compliance Consultant", "Export Licensing", "Import Compliance", "Trade Regulations"]),
+  cat("Export Management Company", "International Trade", ["Export Management", "EMC Company", "Export Trading Company", "ETC Services"]),
+  cat("Cross-border Logistics", "International Trade", ["Cross Border Logistics", "International 3PL", "Global Logistics Provider", "Multimodal Transport"]),
+  cat("Bonded Warehouse & FTZ", "International Trade", ["Bonded Warehouse", "Foreign Trade Zone", "Free Trade Zone Operator", "FTZ Services"]),
+  cat("International Courier & Express", "International Trade", ["International Courier Service", "Express Shipping International", "Global Parcel Delivery"]),
+  cat("Supply Chain Consulting (Global)", "International Trade", ["Global Supply Chain Consultant", "International Supply Chain", "Supply Chain Optimization"], true),
+  cat("Cargo Insurance", "International Trade", ["Marine Cargo Insurance", "International Cargo Insurance", "Freight Insurance", "Transit Insurance"]),
+  cat("Port & Terminal Services", "International Trade", ["Port Services Company", "Terminal Operator", "Stevedoring Company", "Port Logistics"]),
+  cat("Ship Brokerage & Chartering", "International Trade", ["Ship Broker", "Vessel Chartering", "Maritime Brokerage", "Shipbroking"]),
+  cat("International Moving & Relocation", "International Trade", ["International Moving Company", "Global Relocation Services", "Overseas Moving", "Corporate Relocation International"]),
+  cat("Dangerous Goods Transport", "International Trade", ["Hazmat Shipping International", "Dangerous Goods Transport", "IMDG Shipping", "ADR Transport"]),
+
+  // International Trade — Finance & Trade Services (12)
+  cat("Foreign Exchange Services", "International Trade", ["Forex Broker", "Currency Exchange Business", "Foreign Exchange Company", "FX Services"]),
+  cat("Trade Finance & Letters of Credit", "International Trade", ["Trade Finance Company", "Letter of Credit Services", "LC Advising", "Documentary Collection"]),
+  cat("International Factoring", "International Trade", ["International Factoring Company", "Export Factoring", "Forfaiting Services", "Receivables Finance International"]),
+  cat("Export Credit Insurance", "International Trade", ["Export Credit Insurance", "Trade Credit Insurance", "Political Risk Insurance", "ECA Services"]),
+  cat("Cross-border Payment Solutions", "International Trade", ["International Payment Services", "Cross Border Payments", "Global Payment Processing", "Multi-currency Payments"]),
+  cat("International Banking Services", "International Trade", ["International Bank", "Offshore Banking", "Correspondent Banking", "Trade Banking"]),
+  cat("International Tax Advisory", "International Trade", ["International Tax Consultant", "Cross Border Tax Planning", "Global Tax Advisory", "Transfer Pricing Services"], true),
+  cat("Transfer Pricing Consulting", "International Trade", ["Transfer Pricing Firm", "TP Documentation", "Intercompany Pricing", "BEPS Advisory"], true),
+  cat("International Audit & Accounting", "International Trade", ["International Accounting Firm", "Cross Border Audit", "IFRS Consulting", "Global Accounting Services"]),
+  cat("AML & Compliance Services", "International Trade", ["Anti Money Laundering Compliance", "AML Consulting", "KYC Services", "Sanctions Screening"]),
+  cat("International Venture Capital", "International Trade", ["International VC Firm", "Cross Border Investment", "Global Venture Capital", "Foreign Direct Investment Fund"]),
+  cat("Duty Drawback Specialists", "International Trade", ["Duty Drawback Services", "Customs Duty Recovery", "Import Duty Refund", "Drawback Filing"]),
+
+  // International Trade — Legal & Compliance (10)
+  cat("International Trade Law", "International Trade", ["International Trade Attorney", "Trade Law Firm", "Customs Law Attorney", "Import Export Lawyer"]),
+  cat("Immigration & Visa Services (Business)", "International Trade", ["Business Immigration Lawyer", "Work Visa Attorney", "L1 Visa Lawyer", "E2 Visa Attorney", "EB5 Immigration"]),
+  cat("International Arbitration", "International Trade", ["International Arbitration Firm", "Cross Border Dispute Resolution", "ICC Arbitration", "LCIA Arbitration"]),
+  cat("Foreign Investment Law", "International Trade", ["Foreign Investment Attorney", "FDI Lawyer", "CFIUS Counsel", "Inbound Investment Legal"]),
+  cat("Sanctions & Export Controls", "International Trade", ["Export Controls Attorney", "Sanctions Compliance Lawyer", "ITAR Compliance", "EAR Consultant", "OFAC Compliance"]),
+  cat("International IP & Patents", "International Trade", ["International Patent Attorney", "Global IP Protection", "PCT Filing Agent", "International Trademark", "Madrid Protocol"]),
+  cat("Cross-border M&A Advisory", "International Trade", ["International M&A Firm", "Cross Border Acquisition", "Global M&A Advisory", "International Deal Advisory"], true),
+  cat("International Employment Law", "International Trade", ["International Employment Lawyer", "Global HR Compliance", "Expatriate Employment Law", "International Labor Law"]),
+  cat("International Regulatory Compliance", "International Trade", ["International Compliance Consulting", "Global Regulatory Affairs", "Cross Border Compliance", "Multi-jurisdiction Compliance"], true),
+  cat("International Dispute Resolution", "International Trade", ["International Mediation", "Cross Border Litigation", "Foreign Judgment Enforcement", "Hague Convention Services"]),
+
+  // International Trade — Global Sourcing & Manufacturing (10)
+  cat("Product Sourcing Agent", "International Trade", ["Sourcing Agent", "Procurement Agent", "Buying Agent International", "China Sourcing Agent", "Global Sourcing"]),
+  cat("Contract Manufacturing (International)", "International Trade", ["International Contract Manufacturer", "OEM Manufacturing", "Offshore Manufacturing", "Global Contract Production"]),
+  cat("OEM/ODM Services", "International Trade", ["OEM Manufacturer", "ODM Company", "Private Label Manufacturing", "White Label Production"]),
+  cat("Quality Inspection (International)", "International Trade", ["International Quality Inspection", "Pre-shipment Inspection", "Factory Audit", "QC Services International"]),
+  cat("Supplier Verification & Audit", "International Trade", ["Supplier Audit Company", "Factory Verification", "Vendor Assessment", "Supply Chain Audit"]),
+  cat("International Procurement", "International Trade", ["International Procurement Firm", "Global Purchasing", "Strategic Sourcing International", "Cross Border Procurement"]),
+  cat("Industrial Equipment Export", "International Trade", ["Industrial Equipment Exporter", "Machinery Export", "Heavy Equipment International", "Manufacturing Equipment Export"]),
+  cat("Textile & Garment Sourcing", "International Trade", ["Textile Sourcing Company", "Garment Manufacturer International", "Apparel Sourcing Agent", "Fashion Manufacturing"]),
+  cat("Electronics Contract Manufacturing", "International Trade", ["Electronics Manufacturer International", "PCB Assembly", "Electronic Components Supplier", "EMS Provider International"]),
+  cat("International Certification", "International Trade", ["ISO Certification Body", "CE Marking Services", "International Product Certification", "Compliance Testing International"]),
+
+  // International Trade — Business Services (10)
+  cat("Translation & Localization", "International Trade", ["Translation Company", "Localization Services", "Business Translation", "Document Translation International", "Interpretation Services"]),
+  cat("International Market Research", "International Trade", ["International Market Research Firm", "Global Market Analysis", "Cross Border Market Intelligence", "Foreign Market Research"]),
+  cat("Cross-cultural Business Consulting", "International Trade", ["Cross Cultural Consultant", "International Business Etiquette", "Cultural Training Business", "Intercultural Communication"], true),
+  cat("Foreign Market Entry Strategy", "International Trade", ["Market Entry Consultant", "International Expansion Advisory", "Go-to-Market International", "Foreign Market Strategy"], true),
+  cat("International PR & Communications", "International Trade", ["International PR Agency", "Global Communications Firm", "Cross Border Public Relations", "Multinational PR"]),
+  cat("International Recruitment", "International Trade", ["International Executive Search", "Global Recruitment Agency", "Cross Border Hiring", "Expatriate Recruitment"]),
+  cat("Trade Show & Exhibition Services", "International Trade", ["International Trade Show Organizer", "Exhibition Services Global", "Trade Fair Management", "Global Event Services"]),
+  cat("Export Marketing & Branding", "International Trade", ["Export Marketing Agency", "International Branding Firm", "Global Marketing Services", "Cross Border Advertising"]),
+  cat("Country Risk Assessment", "International Trade", ["Country Risk Consulting", "Political Risk Analysis", "Sovereign Risk Assessment", "International Risk Advisory"], true),
+  cat("International Business Matchmaking", "International Trade", ["Business Matchmaking International", "Trade Matchmaking Services", "B2B Matchmaking Global", "International Partner Search"]),
+
+  // International Trade — Digital & E-commerce (8)
+  cat("Cross-border E-commerce", "International Trade", ["International E-commerce Company", "Cross Border Online Retail", "Global E-commerce", "International Online Sales"]),
+  cat("International SaaS & Tech Export", "International Trade", ["International SaaS Company", "Global Software Company", "Tech Export Firm", "Software Internationalization"]),
+  cat("Global IT Outsourcing", "International Trade", ["IT Outsourcing Company", "Offshore Development Center", "International IT Services", "Nearshore Development"]),
+  cat("International Data & Cloud", "International Trade", ["International Data Center", "Global Cloud Services", "Cross Border Data Hosting", "Multi-region Cloud"]),
+  cat("Digital Trade Platform", "International Trade", ["Digital Trade Platform", "B2B Marketplace Platform", "Online Trade Portal", "E-commerce Marketplace International"]),
+  cat("International Affiliate & Distribution", "International Trade", ["International Distribution Company", "Global Affiliate Network", "Cross Border Distribution", "International Channel Partner"]),
+  cat("Global Marketplace Management", "International Trade", ["Amazon Global Selling Services", "International Marketplace Manager", "Cross Border Marketplace", "Multi-channel International"]),
+  cat("International Digital Marketing", "International Trade", ["International SEO Agency", "Multilingual Digital Marketing", "Global PPC Management", "Cross Border Social Media Marketing"]),
 ];
 
 const LOCATIONS: LocationSeed[] = [
@@ -1871,6 +1962,107 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Kennebunkport", state: "ME", slug: "kennebunkport-me", population: 3603, tag: "travel" },
   { city: "Bar Harbor", state: "ME", slug: "bar-harbor-me", population: 5827, tag: "travel" },
   { city: "Ketchum", state: "ID", slug: "ketchum-id", population: 3598, tag: "travel" },
+
+  // International — Europe (25)
+  { city: "London", state: "UK", slug: "london-uk", population: 8982000 },
+  { city: "Frankfurt", state: "DE", slug: "frankfurt-de", population: 753056 },
+  { city: "Paris", state: "FR", slug: "paris-fr", population: 2161000 },
+  { city: "Amsterdam", state: "NL", slug: "amsterdam-nl", population: 872680 },
+  { city: "Zurich", state: "CH", slug: "zurich-ch", population: 421878 },
+  { city: "Milan", state: "IT", slug: "milan-it", population: 1352000 },
+  { city: "Madrid", state: "ES", slug: "madrid-es", population: 3223000 },
+  { city: "Barcelona", state: "ES", slug: "barcelona-es", population: 1620000 },
+  { city: "Dublin", state: "IE", slug: "dublin-ie", population: 544107 },
+  { city: "Brussels", state: "BE", slug: "brussels-be", population: 1209000 },
+  { city: "Vienna", state: "AT", slug: "vienna-at", population: 1911000 },
+  { city: "Stockholm", state: "SE", slug: "stockholm-se", population: 975904 },
+  { city: "Copenhagen", state: "DK", slug: "copenhagen-dk", population: 794128 },
+  { city: "Oslo", state: "NO", slug: "oslo-no", population: 697549 },
+  { city: "Helsinki", state: "FI", slug: "helsinki-fi", population: 658457 },
+  { city: "Warsaw", state: "PL", slug: "warsaw-pl", population: 1790658 },
+  { city: "Prague", state: "CZ", slug: "prague-cz", population: 1309000 },
+  { city: "Lisbon", state: "PT", slug: "lisbon-pt", population: 544851 },
+  { city: "Munich", state: "DE", slug: "munich-de", population: 1472000 },
+  { city: "Hamburg", state: "DE", slug: "hamburg-de", population: 1841179 },
+  { city: "Bucharest", state: "RO", slug: "bucharest-ro", population: 1883425 },
+  { city: "Budapest", state: "HU", slug: "budapest-hu", population: 1752286 },
+  { city: "Athens", state: "GR", slug: "athens-gr", population: 3153000 },
+  { city: "Rotterdam", state: "NL", slug: "rotterdam-nl", population: 651446 },
+  { city: "Geneva", state: "CH", slug: "geneva-ch", population: 203856 },
+
+  // International — Asia-Pacific (25)
+  { city: "Tokyo", state: "JP", slug: "tokyo-jp", population: 13960000 },
+  { city: "Shanghai", state: "CN", slug: "shanghai-cn", population: 24870000 },
+  { city: "Beijing", state: "CN", slug: "beijing-cn", population: 21540000 },
+  { city: "Shenzhen", state: "CN", slug: "shenzhen-cn", population: 12590000 },
+  { city: "Guangzhou", state: "CN", slug: "guangzhou-cn", population: 15310000 },
+  { city: "Hong Kong", state: "HK", slug: "hong-kong-hk", population: 7482000 },
+  { city: "Singapore", state: "SG", slug: "singapore-sg", population: 5454000 },
+  { city: "Seoul", state: "KR", slug: "seoul-kr", population: 9776000 },
+  { city: "Taipei", state: "TW", slug: "taipei-tw", population: 2646000 },
+  { city: "Mumbai", state: "IN", slug: "mumbai-in", population: 20411000 },
+  { city: "Delhi", state: "IN", slug: "delhi-in", population: 16787941 },
+  { city: "Bangalore", state: "IN", slug: "bangalore-in", population: 8443675 },
+  { city: "Chennai", state: "IN", slug: "chennai-in", population: 7088000 },
+  { city: "Bangkok", state: "TH", slug: "bangkok-th", population: 10539000 },
+  { city: "Jakarta", state: "ID", slug: "jakarta-id", population: 10560000 },
+  { city: "Kuala Lumpur", state: "MY", slug: "kuala-lumpur-my", population: 1768000 },
+  { city: "Manila", state: "PH", slug: "manila-ph", population: 1780148 },
+  { city: "Ho Chi Minh City", state: "VN", slug: "ho-chi-minh-vn", population: 8993000 },
+  { city: "Sydney", state: "AU", slug: "sydney-au", population: 5312000 },
+  { city: "Melbourne", state: "AU", slug: "melbourne-au", population: 5078000 },
+  { city: "Auckland", state: "NZ", slug: "auckland-nz", population: 1657000 },
+  { city: "Osaka", state: "JP", slug: "osaka-jp", population: 2691000 },
+  { city: "Hanoi", state: "VN", slug: "hanoi-vn", population: 8054000 },
+  { city: "Pune", state: "IN", slug: "pune-in", population: 3124458 },
+  { city: "Hyderabad", state: "IN", slug: "hyderabad-in", population: 6809970 },
+
+  // International — Middle East & Africa (15)
+  { city: "Dubai", state: "AE", slug: "dubai-ae", population: 3331000 },
+  { city: "Abu Dhabi", state: "AE", slug: "abu-dhabi-ae", population: 1483000 },
+  { city: "Riyadh", state: "SA", slug: "riyadh-sa", population: 7676654 },
+  { city: "Jeddah", state: "SA", slug: "jeddah-sa", population: 4610176 },
+  { city: "Doha", state: "QA", slug: "doha-qa", population: 1186023 },
+  { city: "Istanbul", state: "TR", slug: "istanbul-tr", population: 15460000 },
+  { city: "Tel Aviv", state: "IL", slug: "tel-aviv-il", population: 460613 },
+  { city: "Cairo", state: "EG", slug: "cairo-eg", population: 10230000 },
+  { city: "Nairobi", state: "KE", slug: "nairobi-ke", population: 4397073 },
+  { city: "Lagos", state: "NG", slug: "lagos-ng", population: 15388000 },
+  { city: "Johannesburg", state: "ZA", slug: "johannesburg-za", population: 5783000 },
+  { city: "Cape Town", state: "ZA", slug: "cape-town-za", population: 4618000 },
+  { city: "Casablanca", state: "MA", slug: "casablanca-ma", population: 3752000 },
+  { city: "Accra", state: "GH", slug: "accra-gh", population: 2291352 },
+  { city: "Dar es Salaam", state: "TZ", slug: "dar-es-salaam-tz", population: 4365000 },
+
+  // International — Americas non-US (16)
+  { city: "Toronto", state: "CA", slug: "toronto-ca-intl", population: 2794356 },
+  { city: "Vancouver", state: "CA", slug: "vancouver-ca-intl", population: 662248 },
+  { city: "Montreal", state: "CA", slug: "montreal-ca-intl", population: 1762949 },
+  { city: "Calgary", state: "CA", slug: "calgary-ca-intl", population: 1306784 },
+  { city: "Mexico City", state: "MX", slug: "mexico-city-mx", population: 9209944 },
+  { city: "Monterrey", state: "MX", slug: "monterrey-mx", population: 1142952 },
+  { city: "Guadalajara", state: "MX", slug: "guadalajara-mx", population: 1495189 },
+  { city: "Sao Paulo", state: "BR", slug: "sao-paulo-br", population: 12330000 },
+  { city: "Rio de Janeiro", state: "BR", slug: "rio-de-janeiro-br", population: 6748000 },
+  { city: "Buenos Aires", state: "AR", slug: "buenos-aires-ar", population: 3075646 },
+  { city: "Bogota", state: "CO", slug: "bogota-co", population: 7181000 },
+  { city: "Santiago", state: "CL", slug: "santiago-cl", population: 6269000 },
+  { city: "Lima", state: "PE", slug: "lima-pe", population: 10555000 },
+  { city: "Panama City", state: "PA", slug: "panama-city-pa", population: 880691 },
+  { city: "Medellin", state: "CO", slug: "medellin-co", population: 2529403 },
+  { city: "San Jose", state: "CR", slug: "san-jose-cr", population: 342188 },
+
+  // International — Special Trade Zones (10)
+  { city: "Jebel Ali", state: "AE", slug: "jebel-ali-ae", population: 100000 },
+  { city: "Shannon", state: "IE", slug: "shannon-ie", population: 9729 },
+  { city: "Yiwu", state: "CN", slug: "yiwu-cn", population: 1234000 },
+  { city: "Dongguan", state: "CN", slug: "dongguan-cn", population: 10466000 },
+  { city: "Tijuana", state: "MX", slug: "tijuana-mx", population: 1810645 },
+  { city: "Ciudad Juarez", state: "MX", slug: "ciudad-juarez-mx", population: 1512450 },
+  { city: "Colon", state: "PA", slug: "colon-pa", population: 78000 },
+  { city: "Batam", state: "ID", slug: "batam-id", population: 1196396 },
+  { city: "Labuan", state: "MY", slug: "labuan-my", population: 95120 },
+  { city: "Manaus", state: "BR", slug: "manaus-br", population: 2219580 },
 ];
 
 export async function seedHiveData(): Promise<void> {
@@ -1910,7 +2102,17 @@ export async function seedHiveData(): Promise<void> {
       console.log(`[hive-seed] Added ${newCategories.length} new categories.`);
     }
 
-    console.log("[hive-seed] Directories already seeded, skipping.");
+    const existingDirKeys = new Set(
+      (await db.select({ scraperKey: hiveDirectories.scraperKey }).from(hiveDirectories)).map(d => d.scraperKey)
+    );
+    const newDirs = DIRECTORIES.filter(d => !existingDirKeys.has(d.scraperKey));
+    if (newDirs.length > 0) {
+      console.log(`[hive-seed] Adding ${newDirs.length} new directories...`);
+      await db.insert(hiveDirectories).values(newDirs);
+      console.log(`[hive-seed] Added ${newDirs.length} new directories.`);
+    }
+
+    console.log("[hive-seed] Incremental seed complete.");
     return;
   }
 

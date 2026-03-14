@@ -152,6 +152,25 @@ function isDotCom(url: string): boolean {
   return domain.endsWith(".com");
 }
 
+const COMMERCIAL_TLDS = [
+  ".com", ".co", ".biz", ".io", ".net", ".info", ".shop", ".store", ".online", ".tech", ".app",
+  ".co.uk", ".com.au", ".co.jp", ".com.cn", ".co.za", ".com.br", ".com.mx", ".co.in", ".com.sg",
+  ".com.hk", ".co.kr", ".com.tw", ".com.my", ".co.nz", ".com.ar", ".com.co", ".com.pe", ".co.il",
+  ".com.tr", ".com.eg", ".co.ke", ".com.ng", ".co.th", ".com.ph", ".com.vn", ".com.pk",
+  ".de", ".fr", ".it", ".es", ".nl", ".be", ".at", ".ch", ".se", ".dk", ".no", ".fi",
+  ".pl", ".cz", ".pt", ".ro", ".hu", ".gr", ".ie", ".ru", ".ua",
+  ".jp", ".cn", ".kr", ".tw", ".in", ".sg", ".hk", ".th", ".id", ".my", ".ph", ".vn",
+  ".au", ".nz", ".za", ".ae", ".sa", ".qa", ".eg", ".ke", ".ng", ".gh", ".tz", ".ma",
+  ".br", ".mx", ".ar", ".cl", ".co", ".pe", ".pa", ".cr",
+  ".uk", ".eu", ".asia",
+];
+
+function isCommercialDomain(url: string): boolean {
+  const domain = getDomain(url);
+  if (!domain) return false;
+  return COMMERCIAL_TLDS.some(tld => domain.endsWith(tld));
+}
+
 function isExcludedDomain(url: string): boolean {
   const domain = getDomain(url);
   return domain.endsWith(".gov") || domain.endsWith(".org") || domain.endsWith(".edu");
@@ -164,6 +183,20 @@ const DIRECTORY_PLACEHOLDER_DOMAINS = [
   "hotfrog.com",
   "ezlocal.com",
   "n49.com",
+  "kompass.com",
+  "europages.co.uk",
+  "europages.com",
+  "yell.com",
+  "cylex-usa.com",
+  "cylex.co.uk",
+  "cylex.de",
+  "cylex.fr",
+  "cylex.it",
+  "cylex.es",
+  "tradekey.com",
+  "exporthub.com",
+  "go4worldbusiness.com",
+  "tradeford.com",
 ];
 
 export function isDirectoryPlaceholder(url: string): boolean {
@@ -235,6 +268,20 @@ const FRANCHISE_LOCATOR_DOMAINS = [
   "locations.kumon.com",
   "locations.starbucks.com",
   "locations.mcdonalds.com",
+  "dhl.com",
+  "maersk.com",
+  "kuehne-nagel.com",
+  "dbschenker.com",
+  "agility.com",
+  "expeditors.com",
+  "nipponexpress.com",
+  "hsbc.com",
+  "standardchartered.com",
+  "deutschebank.com",
+  "bnpparibas.com",
+  "societegenerale.com",
+  "barclays.com",
+  "unicreditgroup.eu",
 ];
 
 const FRANCHISE_LOCATOR_PATH_PATTERNS: { domain: string; pathPrefix: string }[] = [
@@ -440,6 +487,14 @@ const FRANCHISE_BRANDS = [
   "Kforce", "TEKsystems", "Hays", "Michael Page", "Modis",
   "PrideStaff", "Snelling", "AppleOne", "Volt",
   "Jackson Hewitt", "Community Tax",
+  "DHL", "Maersk", "Kuehne+Nagel", "DB Schenker", "Agility Logistics",
+  "Expeditors International", "Nippon Express", "HSBC", "Standard Chartered",
+  "Deutsche Bank", "BNP Paribas", "Societe Generale", "Barclays",
+  "UniCredit", "UBS", "Credit Suisse", "Santander", "ING",
+  "ABN AMRO", "Rabobank", "Commerzbank", "Nordea",
+  "Deloitte", "PricewaterhouseCoopers", "PwC", "Ernst & Young", "EY", "KPMG",
+  "Accenture", "McKinsey", "Boston Consulting", "BCG", "Bain & Company",
+  "TNT Express", "FedEx", "UPS", "Aramex", "SF Express",
 ];
 
 const FRANCHISE_BRANDS_LOWER = FRANCHISE_BRANDS.map((b) => b.toLowerCase());
@@ -524,7 +579,7 @@ export function classifyResults(
       continue;
     }
 
-    if (!isDotCom(result.website)) {
+    if (!isCommercialDomain(result.website)) {
       pollen.push(result);
       continue;
     }
@@ -619,8 +674,10 @@ function stripTags(html: string): string {
 }
 
 function extractPhone(text: string): string | undefined {
-  const match = text.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
-  return match ? match[0] : undefined;
+  const intlMatch = text.match(/\+?\d{1,4}[\s.-]?\(?\d{1,5}\)?[\s.-]?\d{2,5}[\s.-]?\d{2,5}[\s.-]?\d{0,5}/);
+  if (intlMatch && intlMatch[0].replace(/\D/g, "").length >= 7) return intlMatch[0].trim();
+  const usMatch = text.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
+  return usMatch ? usMatch[0] : undefined;
 }
 
 
@@ -1125,6 +1182,608 @@ export async function scrapeN49(
   return { results, log };
 }
 
+const CYLEX_TLDS: Record<string, string> = {
+  "UK": "co.uk", "DE": "de", "FR": "fr", "IT": "it", "ES": "es", "NL": "nl",
+  "BE": "be", "AT": "at", "CH": "ch", "SE": "se", "DK": "dk", "NO": "no",
+  "FI": "fi", "PL": "pl", "CZ": "cz", "PT": "pt", "RO": "ro", "HU": "hu",
+  "GR": "gr", "IE": "ie", "AU": "com.au", "CA": "ca", "IN": "co.in",
+  "ZA": "co.za", "BR": "com.br", "MX": "com.mx",
+};
+
+export async function scrapeKompass(
+  searchTerms: string[],
+  location: ScraperLocation
+): Promise<ScraperResponse> {
+  const results: ScraperResult[] = [];
+  const log: string[] = [];
+
+  for (const term of searchTerms) {
+    if (globalStopSignal) break;
+    log.push(`[Kompass] Searching "${term}" in ${location.city}, ${location.state}...`);
+    try {
+      const encodedTerm = encodeURIComponent(term);
+      const encodedCity = encodeURIComponent(location.city);
+      const url = `https://www.kompass.com/searchCompanies?text=${encodedTerm}&localisationLabel=${encodedCity}&localisationCode=${location.state}`;
+      const html = await fetchPage(url);
+
+      const companyBlocks = extractAllBetween(html, '<div class="company-info', '</div>');
+      let count = 0;
+
+      for (const block of companyBlocks) {
+        if (globalStopSignal) break;
+        const nameMatch = block.match(/<a[^>]*class="[^"]*companyName[^"]*"[^>]*>([^<]+)/i)
+          || block.match(/<h[23][^>]*>([^<]+)/i)
+          || block.match(/<a[^>]*title="([^"]+)"/i);
+        if (!nameMatch) continue;
+        const name = stripTags(nameMatch[1]);
+        if (!name || name.length < 2) continue;
+
+        const websiteMatch = block.match(/href="(https?:\/\/[^"]*)"[^>]*class="[^"]*website/i)
+          || block.match(/class="[^"]*website[^"]*"[^>]*href="(https?:\/\/[^"]+)"/i)
+          || block.match(/href="(https?:\/\/(?!www\.kompass\.com)[^"]+)"/i);
+
+        const phoneMatch = block.match(/tel:([^"]+)"/i)
+          || block.match(/([\+\d][\d\s\-().]{7,})/);
+
+        const addressMatch = block.match(/<span[^>]*class="[^"]*address[^"]*"[^>]*>([^<]+)/i)
+          || block.match(/<p[^>]*class="[^"]*addr[^"]*"[^>]*>([^<]+)/i);
+
+        const entry: ScraperResult = {
+          name,
+          city: location.city,
+          state: location.state,
+          sourceUrl: url,
+        };
+        if (websiteMatch) {
+          const ws = websiteMatch[1];
+          if (!isDirectoryPlaceholder(ws)) entry.website = ws;
+        }
+        if (phoneMatch) entry.phone = phoneMatch[1].trim();
+        if (addressMatch) entry.address = stripTags(addressMatch[1]);
+
+        results.push(entry);
+        count++;
+      }
+
+      if (count === 0) {
+        const altNamePattern = /<a[^>]*title="([^"]+)"[^>]*href="\/company\//gi;
+        let m;
+        while ((m = altNamePattern.exec(html)) !== null) {
+          if (globalStopSignal) break;
+          const name = stripTags(m[1]);
+          if (!name || name.length < 2) continue;
+          results.push({ name, city: location.city, state: location.state, sourceUrl: url });
+          count++;
+        }
+      }
+
+      log.push(`[Kompass] Found ${count} results for "${term}"`);
+      await randomDelay();
+    } catch (err: any) {
+      log.push(`[Kompass] Error for "${term}": ${err.message || err}`);
+    }
+  }
+
+  log.push(`[Kompass] Total: ${results.length} results`);
+  return { results, log };
+}
+
+export async function scrapeEuropages(
+  searchTerms: string[],
+  location: ScraperLocation
+): Promise<ScraperResponse> {
+  const results: ScraperResult[] = [];
+  const log: string[] = [];
+
+  for (const term of searchTerms) {
+    if (globalStopSignal) break;
+    log.push(`[Europages] Searching "${term}" in ${location.city}, ${location.state}...`);
+    try {
+      const slug = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const countrySlug = location.state.toLowerCase();
+      const url = `https://www.europages.co.uk/companies/${encodeURIComponent(slug)}/${countrySlug}.html`;
+      const html = await fetchPage(url);
+
+      const cards = extractAllBetween(html, '<article', '</article>');
+      let count = 0;
+
+      for (const card of cards) {
+        if (globalStopSignal) break;
+        const nameMatch = card.match(/<h[23][^>]*class="[^"]*company-name[^"]*"[^>]*>([^<]+)/i)
+          || card.match(/<a[^>]*class="[^"]*company[^"]*"[^>]*>([^<]+)/i)
+          || card.match(/<h[23][^>]*>([^<]+)/i);
+        if (!nameMatch) continue;
+        const name = stripTags(nameMatch[1]);
+        if (!name || name.length < 2) continue;
+
+        const websiteMatch = card.match(/href="(https?:\/\/(?!www\.europages)[^"]+)"[^>]*class="[^"]*website/i)
+          || card.match(/class="[^"]*website[^"]*"[^>]*href="(https?:\/\/(?!www\.europages)[^"]+)"/i)
+          || card.match(/data-website="(https?:\/\/[^"]+)"/i);
+
+        const countryMatch = card.match(/<span[^>]*class="[^"]*country[^"]*"[^>]*>([^<]+)/i);
+        const cityMatch = card.match(/<span[^>]*class="[^"]*city[^"]*"[^>]*>([^<]+)/i);
+
+        const entry: ScraperResult = {
+          name,
+          city: cityMatch ? stripTags(cityMatch[1]) : location.city,
+          state: location.state,
+          sourceUrl: url,
+        };
+        if (websiteMatch) {
+          const ws = websiteMatch[1];
+          if (!isDirectoryPlaceholder(ws)) entry.website = ws;
+        }
+
+        results.push(entry);
+        count++;
+      }
+
+      if (count === 0) {
+        const altPattern = /<a[^>]*href="\/company\/[^"]*"[^>]*>([^<]{2,})</gi;
+        let m;
+        while ((m = altPattern.exec(html)) !== null) {
+          if (globalStopSignal) break;
+          const name = stripTags(m[1]);
+          if (!name || name.length < 3 || name.toLowerCase().includes("europages")) continue;
+          results.push({ name, city: location.city, state: location.state, sourceUrl: url });
+          count++;
+        }
+      }
+
+      log.push(`[Europages] Found ${count} results for "${term}"`);
+      await randomDelay();
+    } catch (err: any) {
+      log.push(`[Europages] Error for "${term}": ${err.message || err}`);
+    }
+  }
+
+  log.push(`[Europages] Total: ${results.length} results`);
+  return { results, log };
+}
+
+export async function scrapeYell(
+  searchTerms: string[],
+  location: ScraperLocation
+): Promise<ScraperResponse> {
+  const results: ScraperResult[] = [];
+  const log: string[] = [];
+  const locationStr = `${location.city}`;
+
+  for (const term of searchTerms) {
+    if (globalStopSignal) break;
+    log.push(`[Yell] Searching "${term}" in ${locationStr}...`);
+    try {
+      const encodedTerm = encodeURIComponent(term);
+      const encodedLoc = encodeURIComponent(locationStr);
+      let page = 1;
+      const maxPages = 3;
+      let termTotal = 0;
+
+      while (page <= maxPages) {
+        if (globalStopSignal) break;
+        const url = `https://www.yell.com/ucs/UcsSearchAction.do?keywords=${encodedTerm}&location=${encodedLoc}&pageNum=${page}`;
+        const html = await fetchPage(url);
+
+        const namePattern = /<a[^>]*class="[^"]*businessCapsule--name[^"]*"[^>]*>([^<]+)/gi;
+        const websitePattern = /<a[^>]*class="[^"]*businessCapsule--ctaLink[^"]*"[^>]*href="(https?:\/\/[^"]+)"/gi;
+        const phonePattern = /<span[^>]*class="[^"]*businessCapsule--phone[^"]*"[^>]*>([^<]+)/gi;
+        const addressPattern = /<span[^>]*class="[^"]*businessCapsule--address[^"]*"[^>]*>([^<]+)/gi;
+
+        const names: string[] = [];
+        const phones: string[] = [];
+        const addresses: string[] = [];
+        const websites: string[] = [];
+
+        let match;
+        while ((match = namePattern.exec(html)) !== null) names.push(stripTags(match[1]));
+
+        if (names.length === 0) {
+          const altNamePattern = /<h2[^>]*class="[^"]*businessCapsule[^"]*"[^>]*>([^<]+)/gi;
+          while ((match = altNamePattern.exec(html)) !== null) names.push(stripTags(match[1]));
+        }
+
+        if (names.length === 0) {
+          if (page > 1) log.push(`[Yell] No more results after page ${page - 1}`);
+          else log.push(`[Yell] No listings for "${term}"`);
+          break;
+        }
+
+        while ((match = phonePattern.exec(html)) !== null) phones.push(stripTags(match[1]));
+        while ((match = addressPattern.exec(html)) !== null) addresses.push(stripTags(match[1]));
+        while ((match = websitePattern.exec(html)) !== null) {
+          const href = match[1];
+          if (!href.includes("yell.com")) websites.push(href);
+        }
+
+        let pageCount = 0;
+        for (let i = 0; i < names.length; i++) {
+          const name = names[i];
+          if (!name || name.length < 2) continue;
+
+          const entry: ScraperResult = {
+            name,
+            phone: phones[i],
+            address: addresses[i],
+            city: location.city,
+            state: location.state,
+            sourceUrl: url,
+          };
+
+          if (websites[i] && !isDirectoryPlaceholder(websites[i])) {
+            entry.website = websites[i];
+          }
+
+          results.push(entry);
+          pageCount++;
+        }
+
+        log.push(`[Yell] Page ${page}: ${pageCount} listings`);
+        termTotal += pageCount;
+
+        if (names.length < 5) break;
+        page++;
+        await randomDelay();
+      }
+
+      log.push(`[Yell] "${term}": ${termTotal} total`);
+    } catch (err: any) {
+      log.push(`[Yell] Error for "${term}": ${err.message || err}`);
+    }
+  }
+
+  log.push(`[Yell] Total: ${results.length} results`);
+  return { results, log };
+}
+
+export async function scrapeCylex(
+  searchTerms: string[],
+  location: ScraperLocation
+): Promise<ScraperResponse> {
+  const results: ScraperResult[] = [];
+  const log: string[] = [];
+
+  const tld = CYLEX_TLDS[location.state] || "us";
+  const domain = tld === "us" ? "cylex-usa.com" : `cylex.${tld}`;
+
+  for (const term of searchTerms) {
+    if (globalStopSignal) break;
+    log.push(`[Cylex] Searching "${term}" on ${domain}...`);
+    try {
+      const slug = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const citySlug = location.city.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const url = `https://www.${domain}/search/${slug}/${citySlug}.html`;
+      const html = await fetchPage(url);
+
+      const cards = extractAllBetween(html, '<div class="listing-', '</div>');
+      let count = 0;
+
+      for (const card of cards) {
+        if (globalStopSignal) break;
+        const nameMatch = card.match(/<a[^>]*class="[^"]*listing-name[^"]*"[^>]*>([^<]+)/i)
+          || card.match(/<h[23][^>]*>([^<]+)/i);
+        if (!nameMatch) continue;
+        const name = stripTags(nameMatch[1]);
+        if (!name || name.length < 2) continue;
+
+        const websiteMatch = card.match(/href="(https?:\/\/(?!www\.cylex)[^"]+)"[^>]*class="[^"]*website/i)
+          || card.match(/class="[^"]*website[^"]*"[^>]*href="(https?:\/\/(?!www\.cylex)[^"]+)"/i);
+        const phoneMatch = card.match(/tel:([^"]+)"/i)
+          || card.match(/<span[^>]*class="[^"]*phone[^"]*"[^>]*>([^<]+)/i);
+        const addressMatch = card.match(/<span[^>]*class="[^"]*address[^"]*"[^>]*>([^<]+)/i);
+
+        const entry: ScraperResult = {
+          name,
+          city: location.city,
+          state: location.state,
+          sourceUrl: url,
+        };
+        if (websiteMatch) {
+          const ws = websiteMatch[1] || websiteMatch[2];
+          if (ws && !isDirectoryPlaceholder(ws)) entry.website = ws;
+        }
+        if (phoneMatch) entry.phone = stripTags(phoneMatch[1] || phoneMatch[2]);
+        if (addressMatch) entry.address = stripTags(addressMatch[1]);
+
+        results.push(entry);
+        count++;
+      }
+
+      if (count === 0) {
+        const altPattern = /<a[^>]*href="\/[^"]*"[^>]*class="[^"]*listing[^"]*"[^>]*>([^<]{2,})</gi;
+        let m;
+        while ((m = altPattern.exec(html)) !== null) {
+          if (globalStopSignal) break;
+          const name = stripTags(m[1]);
+          if (!name || name.length < 3 || name.toLowerCase().includes("cylex")) continue;
+          results.push({ name, city: location.city, state: location.state, sourceUrl: url });
+          count++;
+        }
+      }
+
+      log.push(`[Cylex] Found ${count} results for "${term}"`);
+      await randomDelay();
+    } catch (err: any) {
+      log.push(`[Cylex] Error for "${term}": ${err.message || err}`);
+    }
+  }
+
+  log.push(`[Cylex] Total: ${results.length} results`);
+  return { results, log };
+}
+
+export async function scrapeTradeKey(
+  searchTerms: string[],
+  location: ScraperLocation
+): Promise<ScraperResponse> {
+  const results: ScraperResult[] = [];
+  const log: string[] = [];
+
+  for (const term of searchTerms) {
+    if (globalStopSignal) break;
+    log.push(`[TradeKey] Searching "${term}"...`);
+    try {
+      const slug = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const url = `https://www.tradekey.com/ks-${encodeURIComponent(slug)}/`;
+      const html = await fetchPage(url);
+
+      const listings = extractAllBetween(html, '<div class="companyInfo', '</div>');
+      let count = 0;
+
+      for (const listing of listings) {
+        if (globalStopSignal) break;
+        const nameMatch = listing.match(/<a[^>]*>([^<]+)<\/a>/i)
+          || listing.match(/<h[34][^>]*>([^<]+)/i);
+        if (!nameMatch) continue;
+        const name = stripTags(nameMatch[1]);
+        if (!name || name.length < 2) continue;
+
+        const websiteMatch = listing.match(/href="(https?:\/\/(?!www\.tradekey)[^"]+)"/i);
+        const countryMatch = listing.match(/<span[^>]*class="[^"]*country[^"]*"[^>]*>([^<]+)/i)
+          || listing.match(/<img[^>]*title="([^"]+)"[^>]*class="[^"]*flag/i);
+
+        const entry: ScraperResult = {
+          name,
+          city: location.city,
+          state: location.state,
+          sourceUrl: url,
+        };
+        if (websiteMatch && !isDirectoryPlaceholder(websiteMatch[1])) {
+          entry.website = websiteMatch[1];
+        }
+
+        results.push(entry);
+        count++;
+      }
+
+      if (count === 0) {
+        const altPattern = /<a[^>]*href="\/company\/[^"]*"[^>]*>([^<]{2,})<\/a>/gi;
+        let m;
+        while ((m = altPattern.exec(html)) !== null) {
+          if (globalStopSignal) break;
+          const name = stripTags(m[1]);
+          if (!name || name.length < 3 || name.toLowerCase().includes("tradekey")) continue;
+          results.push({ name, city: location.city, state: location.state, sourceUrl: url });
+          count++;
+        }
+      }
+
+      log.push(`[TradeKey] Found ${count} results for "${term}"`);
+      await randomDelay();
+    } catch (err: any) {
+      log.push(`[TradeKey] Error for "${term}": ${err.message || err}`);
+    }
+  }
+
+  log.push(`[TradeKey] Total: ${results.length} results`);
+  return { results, log };
+}
+
+export async function scrapeExportHub(
+  searchTerms: string[],
+  location: ScraperLocation
+): Promise<ScraperResponse> {
+  const results: ScraperResult[] = [];
+  const log: string[] = [];
+
+  for (const term of searchTerms) {
+    if (globalStopSignal) break;
+    log.push(`[ExportHub] Searching "${term}"...`);
+    try {
+      const slug = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const url = `https://www.exporthub.com/search/${encodeURIComponent(slug)}/`;
+      const html = await fetchPage(url);
+
+      const cards = extractAllBetween(html, '<div class="supplier-', '</div>');
+      let count = 0;
+
+      for (const card of cards) {
+        if (globalStopSignal) break;
+        const nameMatch = card.match(/<a[^>]*>([^<]+)<\/a>/i)
+          || card.match(/<h[34][^>]*>([^<]+)/i);
+        if (!nameMatch) continue;
+        const name = stripTags(nameMatch[1]);
+        if (!name || name.length < 2) continue;
+
+        const websiteMatch = card.match(/href="(https?:\/\/(?!www\.exporthub)[^"]+)"/i);
+        const countryMatch = card.match(/<span[^>]*class="[^"]*country[^"]*"[^>]*>([^<]+)/i);
+
+        const entry: ScraperResult = {
+          name,
+          city: countryMatch ? stripTags(countryMatch[1]) : location.city,
+          state: location.state,
+          sourceUrl: url,
+        };
+        if (websiteMatch && !isDirectoryPlaceholder(websiteMatch[1])) {
+          entry.website = websiteMatch[1];
+        }
+
+        results.push(entry);
+        count++;
+      }
+
+      if (count === 0) {
+        const altPattern = /<a[^>]*href="\/[^"]*"[^>]*title="([^"]{2,})"/gi;
+        let m;
+        while ((m = altPattern.exec(html)) !== null) {
+          if (globalStopSignal) break;
+          const name = stripTags(m[1]);
+          if (!name || name.length < 3 || name.toLowerCase().includes("exporthub")) continue;
+          results.push({ name, city: location.city, state: location.state, sourceUrl: url });
+          count++;
+        }
+      }
+
+      log.push(`[ExportHub] Found ${count} results for "${term}"`);
+      await randomDelay();
+    } catch (err: any) {
+      log.push(`[ExportHub] Error for "${term}": ${err.message || err}`);
+    }
+  }
+
+  log.push(`[ExportHub] Total: ${results.length} results`);
+  return { results, log };
+}
+
+export async function scrapeGo4WorldBusiness(
+  searchTerms: string[],
+  location: ScraperLocation
+): Promise<ScraperResponse> {
+  const results: ScraperResult[] = [];
+  const log: string[] = [];
+
+  for (const term of searchTerms) {
+    if (globalStopSignal) break;
+    log.push(`[Go4WorldBusiness] Searching "${term}"...`);
+    try {
+      const slug = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const url = `https://www.go4worldbusiness.com/search/${encodeURIComponent(slug)}.html`;
+      const html = await fetchPage(url);
+
+      const memberBlocks = extractAllBetween(html, '<div class="member-', '</div>');
+      let count = 0;
+
+      for (const block of memberBlocks) {
+        if (globalStopSignal) break;
+        const nameMatch = block.match(/<a[^>]*>([^<]+)<\/a>/i)
+          || block.match(/<h[34][^>]*>([^<]+)/i);
+        if (!nameMatch) continue;
+        const name = stripTags(nameMatch[1]);
+        if (!name || name.length < 2) continue;
+
+        const websiteMatch = block.match(/href="(https?:\/\/(?!www\.go4worldbusiness)[^"]+)"/i);
+        const countryMatch = block.match(/<span[^>]*class="[^"]*country[^"]*"[^>]*>([^<]+)/i);
+        const productMatch = block.match(/<span[^>]*class="[^"]*product[^"]*"[^>]*>([^<]+)/i);
+
+        const entry: ScraperResult = {
+          name,
+          city: countryMatch ? stripTags(countryMatch[1]) : location.city,
+          state: location.state,
+          sourceUrl: url,
+        };
+        if (websiteMatch && !isDirectoryPlaceholder(websiteMatch[1])) {
+          entry.website = websiteMatch[1];
+        }
+
+        results.push(entry);
+        count++;
+      }
+
+      if (count === 0) {
+        const altPattern = /<a[^>]*href="\/member\/[^"]*"[^>]*>([^<]{2,})<\/a>/gi;
+        let m;
+        while ((m = altPattern.exec(html)) !== null) {
+          if (globalStopSignal) break;
+          const name = stripTags(m[1]);
+          if (!name || name.length < 3 || name.toLowerCase().includes("go4world")) continue;
+          results.push({ name, city: location.city, state: location.state, sourceUrl: url });
+          count++;
+        }
+      }
+
+      log.push(`[Go4WorldBusiness] Found ${count} results for "${term}"`);
+      await randomDelay();
+    } catch (err: any) {
+      log.push(`[Go4WorldBusiness] Error for "${term}": ${err.message || err}`);
+    }
+  }
+
+  log.push(`[Go4WorldBusiness] Total: ${results.length} results`);
+  return { results, log };
+}
+
+export async function scrapeTradeFord(
+  searchTerms: string[],
+  location: ScraperLocation
+): Promise<ScraperResponse> {
+  const results: ScraperResult[] = [];
+  const log: string[] = [];
+
+  for (const term of searchTerms) {
+    if (globalStopSignal) break;
+    log.push(`[TradeFord] Searching "${term}"...`);
+    try {
+      const slug = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const url = `https://www.tradeford.com/suppliers/${encodeURIComponent(slug)}/`;
+      const html = await fetchPage(url);
+
+      const cards = extractAllBetween(html, '<div class="company-', '</div>');
+      let count = 0;
+
+      for (const card of cards) {
+        if (globalStopSignal) break;
+        const nameMatch = card.match(/<a[^>]*>([^<]+)<\/a>/i)
+          || card.match(/<h[34][^>]*>([^<]+)/i);
+        if (!nameMatch) continue;
+        const name = stripTags(nameMatch[1]);
+        if (!name || name.length < 2) continue;
+
+        const websiteMatch = card.match(/href="(https?:\/\/(?!www\.tradeford)[^"]+)"/i);
+        const countryMatch = card.match(/<span[^>]*class="[^"]*country[^"]*"[^>]*>([^<]+)/i);
+
+        const entry: ScraperResult = {
+          name,
+          city: countryMatch ? stripTags(countryMatch[1]) : location.city,
+          state: location.state,
+          sourceUrl: url,
+        };
+        if (websiteMatch && !isDirectoryPlaceholder(websiteMatch[1])) {
+          entry.website = websiteMatch[1];
+        }
+
+        results.push(entry);
+        count++;
+      }
+
+      if (count === 0) {
+        const altPattern = /<a[^>]*href="\/[^"]*\/company[^"]*"[^>]*>([^<]{2,})<\/a>/gi;
+        let m;
+        while ((m = altPattern.exec(html)) !== null) {
+          if (globalStopSignal) break;
+          const name = stripTags(m[1]);
+          if (!name || name.length < 3 || name.toLowerCase().includes("tradeford")) continue;
+          results.push({ name, city: location.city, state: location.state, sourceUrl: url });
+          count++;
+        }
+      }
+
+      log.push(`[TradeFord] Found ${count} results for "${term}"`);
+      await randomDelay();
+    } catch (err: any) {
+      log.push(`[TradeFord] Error for "${term}": ${err.message || err}`);
+    }
+  }
+
+  log.push(`[TradeFord] Total: ${results.length} results`);
+  return { results, log };
+}
+
+export const scrapeTradeIndia: ScraperFn = (s, l) => stubScraper("TradeIndia", s, l);
+export const scrapeMadeInChina: ScraperFn = (s, l) => stubScraper("Made-in-China", s, l);
+export const scrapeIndiaMart: ScraperFn = (s, l) => stubScraper("IndiaMart", s, l);
+export const scrapeEC21: ScraperFn = (s, l) => stubScraper("EC21", s, l);
+export const scrapeGlobalSources: ScraperFn = (s, l) => stubScraper("GlobalSources", s, l);
+export const scrapeWLW: ScraperFn = (s, l) => stubScraper("WLW", s, l);
+
 async function stubScraper(name: string, _searchTerms: string[], _location: ScraperLocation): Promise<ScraperResponse> {
   return { results: [], log: [`${name}: Stub scraper — source blocked/requires API key`] };
 }
@@ -1149,6 +1808,20 @@ export const SCRAPERS: Record<string, ScraperFn> = {
   clutch: scrapeClutch,
   manta: scrapeManta,
   chamberofcommerce: scrapeChamberOfCommerce,
+  kompass: scrapeKompass,
+  europages: scrapeEuropages,
+  yell: scrapeYell,
+  cylex: scrapeCylex,
+  tradekey: scrapeTradeKey,
+  exporthub: scrapeExportHub,
+  go4worldbusiness: scrapeGo4WorldBusiness,
+  tradeford: scrapeTradeFord,
+  tradeindia: scrapeTradeIndia,
+  madeinchina: scrapeMadeInChina,
+  indiamart: scrapeIndiaMart,
+  ec21: scrapeEC21,
+  globalsources: scrapeGlobalSources,
+  wlw: scrapeWLW,
 };
 
 export function getScraperByKey(key: string): ScraperFn | undefined {

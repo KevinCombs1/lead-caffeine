@@ -4,7 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useTheme } from "@/hooks/use-theme";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Flower2, Search, Play, Square, Download, Trash2, Heart, Phone,
+  Flower2, Search, Play, Square, Download, Trash2, Heart, Phone, Globe,
   ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw, Palmtree, Building2, Plane,
   Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall
 } from "lucide-react";
@@ -99,6 +99,16 @@ const US_STATES = [
   "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
   "VA","WA","WV","WI","WY","DC"
 ];
+
+const INTL_COUNTRIES = [
+  "UK","DE","FR","NL","CH","IT","ES","IE","BE","AT","SE","DK","NO","FI",
+  "PL","CZ","PT","RO","HU","GR",
+  "JP","CN","HK","SG","KR","TW","IN","TH","ID","MY","PH","VN","AU","NZ",
+  "AE","SA","QA","TR","IL","EG","KE","NG","ZA","MA","GH","TZ",
+  "CA","MX","BR","AR","CO","CL","PE","PA","CR",
+];
+
+const ALL_REGIONS = [...US_STATES, ...INTL_COUNTRIES];
 
 export default function HivePage() {
   const { theme } = useTheme();
@@ -507,8 +517,13 @@ export default function HivePage() {
                     className="text-xs bg-gray-900 border border-gray-700 rounded px-1 py-1 text-gray-200"
                     data-testid="select-state-filter"
                   >
-                    <option value="">All States</option>
-                    {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    <option value="">All Regions</option>
+                    <optgroup label="US States">
+                      {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </optgroup>
+                    <optgroup label="International">
+                      {INTL_COUNTRIES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </optgroup>
                   </select>
                 </div>
                 <div className="flex gap-1 flex-wrap">
@@ -561,7 +576,25 @@ export default function HivePage() {
                     }`}
                     data-testid="button-tag-metro"
                   >
-                    <Building2 className="w-3 h-3 inline mr-0.5" />Metro ({locations.filter(l => !l.tag).length})
+                    <Building2 className="w-3 h-3 inline mr-0.5" />Metro ({locations.filter(l => !l.tag && US_STATES.includes(l.state)).length})
+                  </button>
+                  <button
+                    onClick={() => {
+                      const intlLocs = locations.filter(l => INTL_COUNTRIES.includes(l.state));
+                      const allSelected = intlLocs.every(l => selectedLocs.has(l.id));
+                      const next = new Set(selectedLocs);
+                      intlLocs.forEach(l => allSelected ? next.delete(l.id) : next.add(l.id));
+                      setSelectedLocs(next);
+                    }}
+                    className={`text-[10px] px-2 py-0.5 rounded border ${
+                      locations.filter(l => INTL_COUNTRIES.includes(l.state)).length > 0 &&
+                      locations.filter(l => INTL_COUNTRIES.includes(l.state)).every(l => selectedLocs.has(l.id))
+                        ? "border-emerald-500 bg-emerald-500/20 text-emerald-300"
+                        : "border-gray-700 text-gray-400 hover:text-gray-200"
+                    }`}
+                    data-testid="button-tag-international"
+                  >
+                    <Globe className="w-3 h-3 inline mr-0.5" />International ({locations.filter(l => INTL_COUNTRIES.includes(l.state)).length})
                   </button>
                 </div>
                 <div className="space-y-0.5 max-h-52 overflow-y-auto border border-gray-800 rounded p-2 bg-gray-900/50">
@@ -578,6 +611,7 @@ export default function HivePage() {
                         className="rounded"
                       />
                       <span className="text-gray-200">{l.city}, {l.state}</span>
+                      {INTL_COUNTRIES.includes(l.state) && <Globe className="w-3 h-3 text-emerald-500 inline" />}
                       {l.tag === "travel" && <Plane className="w-3 h-3 text-amber-500 inline" data-testid={`icon-travel-${l.slug}`} />}
                       <span className="text-gray-600 text-[10px]">{l.population.toLocaleString()}</span>
                     </label>
@@ -761,8 +795,13 @@ export default function HivePage() {
               className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200 max-w-[120px]"
               data-testid="select-filter-state"
             >
-              <option value="">All States</option>
-              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              <option value="">All Regions</option>
+              <optgroup label="US States">
+                {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </optgroup>
+              <optgroup label="International">
+                {INTL_COUNTRIES.map(s => <option key={s} value={s}>{s}</option>)}
+              </optgroup>
             </select>
             <button
               onClick={() => { setFilterState(filterState === "HI" ? "" : "HI"); setFilterTag(""); setFlowerPage(1); }}
@@ -905,8 +944,13 @@ export default function HivePage() {
               className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-gray-200 max-w-[120px]"
               data-testid="select-pollen-filter-state"
             >
-              <option value="">All States</option>
-              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              <option value="">All Regions</option>
+              <optgroup label="US States">
+                {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </optgroup>
+              <optgroup label="International">
+                {INTL_COUNTRIES.map(s => <option key={s} value={s}>{s}</option>)}
+              </optgroup>
             </select>
             <select
               value={pollenFilterDirectory}
