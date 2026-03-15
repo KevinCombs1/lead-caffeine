@@ -2,12 +2,24 @@ import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
 import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
 
+const US_STATES = new Set([
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+  "VA","WA","WV","WI","WY","DC","PR","GU","VI","AS","MP"
+]);
+
+function isLocationUS(loc: HiveLocation): boolean {
+  if (loc.tag === "intl") return false;
+  return US_STATES.has(loc.state);
+}
+
 function isCompatible(dir: HiveDirectory, loc: HiveLocation): boolean {
   const region = dir.region || "us";
   if (region === "global") return true;
-  const locIntl = loc.tag === "intl";
-  if (region === "us") return !locIntl;
-  if (region === "intl") return locIntl;
+  const locUS = isLocationUS(loc);
+  if (region === "us") return locUS;
+  if (region === "intl") return !locUS;
   return true;
 }
 

@@ -355,6 +355,17 @@ export default function HivePage() {
   const selectAllLocations = () => {
     const ids = filteredLocations.map(l => l.id);
     setSelectedLocs(new Set(ids));
+    if (selectedDirs.size === 0) {
+      const hasIntl = filteredLocations.some(l => l.tag === "intl");
+      const hasUS = filteredLocations.some(l => !l.tag || US_STATES.includes(l.state));
+      const nextDirs = new Set<string>();
+      directories.filter(d => d.enabled).forEach(d => {
+        if (d.region === "global") nextDirs.add(d.id);
+        else if (d.region === "us" && hasUS) nextDirs.add(d.id);
+        else if (d.region === "intl" && hasIntl) nextDirs.add(d.id);
+      });
+      setSelectedDirs(nextDirs);
+    }
   };
 
   const clearAllLocations = () => setSelectedLocs(new Set());
@@ -418,9 +429,9 @@ export default function HivePage() {
                         disabled={!d.enabled}
                       />
                       <span className={d.enabled ? "text-gray-200" : "text-gray-600 line-through"}>{d.name}</span>
-                      {d.region === "us" && <span className="text-blue-400 text-[10px] font-mono" data-testid={`badge-region-${d.scraperKey}`}>us</span>}
-                      {d.region === "intl" && <span className="text-emerald-400 text-[10px] font-mono" data-testid={`badge-region-${d.scraperKey}`}>intl</span>}
-                      {d.region === "global" && <span className="text-amber-400 text-[10px] font-mono" data-testid={`badge-region-${d.scraperKey}`}>global</span>}
+                      {d.region === "us" && <span className="text-blue-400 text-[10px] font-mono border border-blue-500/30 px-1 rounded" data-testid={`badge-region-${d.scraperKey}`}>[US]</span>}
+                      {d.region === "intl" && <span className="text-emerald-400 text-[10px] font-mono border border-emerald-500/30 px-1 rounded" data-testid={`badge-region-${d.scraperKey}`}><Globe className="w-3 h-3 inline" /></span>}
+                      {d.region === "global" && <span className="text-purple-400 text-[10px] font-mono border border-purple-500/30 px-1 rounded" data-testid={`badge-region-${d.scraperKey}`}>[ALL]</span>}
                       {d.status === "working" && <span className="text-green-500 text-[10px]">OK</span>}
                       {d.status === "blocked" && <span className="text-red-500 text-[10px]">BLOCKED</span>}
                     </label>
@@ -572,7 +583,7 @@ export default function HivePage() {
                       metroLocs.forEach(l => allSelected ? nextLocs.delete(l.id) : nextLocs.add(l.id));
                       setSelectedLocs(nextLocs);
                       if (!allSelected && selectedDirs.size === 0) {
-                        const nextDirs = new Set<number>();
+                        const nextDirs = new Set<string>();
                         directories.filter(d => d.enabled && (d.region === "us" || d.region === "global")).forEach(d => nextDirs.add(d.id));
                         setSelectedDirs(nextDirs);
                       }
@@ -595,7 +606,7 @@ export default function HivePage() {
                       intlLocs.forEach(l => allSelected ? nextLocs.delete(l.id) : nextLocs.add(l.id));
                       setSelectedLocs(nextLocs);
                       if (!allSelected && selectedDirs.size === 0) {
-                        const nextDirs = new Set<number>();
+                        const nextDirs = new Set<string>();
                         directories.filter(d => d.enabled && (d.region === "intl" || d.region === "global")).forEach(d => nextDirs.add(d.id));
                         setSelectedDirs(nextDirs);
                       }
@@ -636,9 +647,9 @@ export default function HivePage() {
 
             {selectedLocs.size > 0 && (() => {
               const selLocArr = locations.filter(l => selectedLocs.has(l.id));
+              const isLocUS = (l: typeof selLocArr[0]) => l.tag !== "intl" && US_STATES.includes(l.state);
               const compatDirCount = directories.filter(d => d.enabled && selLocArr.some(l => {
-                const locIntl = l.tag === "intl";
-                return d.region === "global" || (d.region === "us" && !locIntl) || (d.region === "intl" && locIntl);
+                return d.region === "global" || (d.region === "us" && isLocUS(l)) || (d.region === "intl" && !isLocUS(l));
               })).length;
               return (
                 <div className="text-[10px] text-gray-500" data-testid="text-compatible-dirs">
@@ -651,11 +662,11 @@ export default function HivePage() {
               const selDirArr = directories.filter(d => selectedDirs.has(d.id));
               const selLocArr = locations.filter(l => selectedLocs.has(l.id));
               if (selDirArr.length === 0 || selLocArr.length === 0) return null;
+              const isLocUS2 = (l: typeof selLocArr[0]) => l.tag !== "intl" && US_STATES.includes(l.state);
               let compatiblePairs = 0;
               for (const d of selDirArr) {
                 for (const l of selLocArr) {
-                  const locIntl = l.tag === "intl";
-                  if (d.region === "global" || (d.region === "us" && !locIntl) || (d.region === "intl" && locIntl)) {
+                  if (d.region === "global" || (d.region === "us" && isLocUS2(l)) || (d.region === "intl" && !isLocUS2(l))) {
                     compatiblePairs++;
                   }
                 }
