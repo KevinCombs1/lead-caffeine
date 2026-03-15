@@ -697,6 +697,15 @@ export interface FetchPageMeta {
   redirected: boolean;
 }
 
+class FetchError extends Error {
+  meta: Partial<FetchPageMeta>;
+  constructor(message: string, meta: Partial<FetchPageMeta>) {
+    super(message);
+    this.name = "FetchError";
+    this.meta = meta;
+  }
+}
+
 async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
   if (globalStopSignal) throw new Error("Stop signal received");
   const RETRYABLE = new Set([403, 429, 503]);
@@ -730,14 +739,15 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
         let errBodyLen = 0;
         try { errBodyLen = (await response.text()).length; } catch {}
         const server = respHeaders["server"] || "unknown";
+        const errMeta: Partial<FetchPageMeta> = { status: response.status, headers: respHeaders, bodyLength: errBodyLen, redirected: response.redirected };
         if (response.status === 403 || response.status === 429) {
-          throw new Error(`HTTP ${response.status} — Access blocked (${errBodyLen} bytes, server: ${server})`);
+          throw new FetchError(`HTTP ${response.status} — Access blocked (${errBodyLen} bytes, server: ${server})`, errMeta);
         } else if (response.status === 404) {
-          throw new Error(`HTTP 404 — Page not found (${errBodyLen} bytes, server: ${server})`);
+          throw new FetchError(`HTTP 404 — Page not found (${errBodyLen} bytes, server: ${server})`, errMeta);
         } else if (response.status >= 300 && response.status < 400) {
-          throw new Error(`HTTP ${response.status} — Redirect (location: ${respHeaders["location"] || "?"}, ${errBodyLen} bytes)`);
+          throw new FetchError(`HTTP ${response.status} — Redirect (location: ${respHeaders["location"] || "?"}, ${errBodyLen} bytes)`, errMeta);
         }
-        throw new Error(`HTTP ${response.status}: ${response.statusText} (${errBodyLen} bytes, server: ${server})`);
+        throw new FetchError(`HTTP ${response.status}: ${response.statusText} (${errBodyLen} bytes, server: ${server})`, errMeta);
       }
 
       const html = await response.text();
@@ -768,25 +778,27 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
           }
           continue;
         }
-        throw new Error(`Request timed out after 30s — site too slow or blocking`);
+        throw new FetchError(`Request timed out after 30s — site too slow or blocking`, { status: 0, headers: {}, bodyLength: 0, redirected: false });
       }
+      if (err instanceof FetchError) throw err;
+      const netMeta: Partial<FetchPageMeta> = { status: 0, headers: {}, bodyLength: 0, redirected: false };
       if (err?.code === "ENOTFOUND" || err?.message?.includes("ENOTFOUND")) {
-        throw new Error(`DNS failure — domain not found: ${err.message}`);
+        throw new FetchError(`DNS failure — domain not found: ${err.message}`, netMeta);
       }
       if (err?.code === "ECONNREFUSED" || err?.message?.includes("ECONNREFUSED")) {
-        throw new Error(`Network error: connection refused — ${url}`);
+        throw new FetchError(`Network error: connection refused — ${url}`, netMeta);
       }
       if (err?.code === "ECONNRESET" || err?.message?.includes("ECONNRESET")) {
-        throw new Error(`Network error: connection reset — ${url}`);
+        throw new FetchError(`Network error: connection reset — ${url}`, netMeta);
       }
       if (err?.code === "ERR_TLS" || err?.message?.includes("certificate") || err?.message?.includes("SSL")) {
-        throw new Error(`Network error: TLS/SSL failure — ${url}`);
+        throw new FetchError(`Network error: TLS/SSL failure — ${url}`, netMeta);
       }
       if (err?.message?.includes("redirect") && err?.message?.includes("loop")) {
-        throw new Error(`Redirect loop detected — ${url}`);
+        throw new FetchError(`Redirect loop detected — ${url}`, netMeta);
       }
       if (err?.code?.startsWith?.("E") && !err?.message?.includes("HTTP")) {
-        throw new Error(`Network error: ${err.code} — ${err.message}`);
+        throw new FetchError(`Network error: ${err.code} — ${err.message}`, netMeta);
       }
       throw err;
     } finally {
@@ -796,21 +808,15 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
   throw new Error("fetchPage: max retries reached");
 }
 
-let _lastFetchMeta: FetchPageMeta | null = null;
+let _testMetaCollector: FetchPageMeta[] | null = null;
 
 async function fetchPage(url: string, log?: string[]): Promise<string> {
   const meta = await fetchPageWithMeta(url);
-  _lastFetchMeta = meta;
+  if (_testMetaCollector) _testMetaCollector.push(meta);
   if (log) {
     log.push(`[fetch] ${url} → ${meta.status} | ${meta.bodyLength} bytes | server: ${meta.headers["server"] || "n/a"}${meta.redirected ? " | redirected" : ""}`);
   }
   return meta.html;
-}
-
-function getAndClearLastFetchMeta(): FetchPageMeta | null {
-  const m = _lastFetchMeta;
-  _lastFetchMeta = null;
-  return m;
 }
 
 export interface TestScraperResult {
@@ -862,21 +868,23 @@ export async function testScraper(
   const location: ScraperLocation = { city, state };
   const oldStop = globalStopSignal;
   globalStopSignal = false;
-  _lastFetchMeta = null;
+  const collected: FetchPageMeta[] = [];
+  _testMetaCollector = collected;
 
   try {
     const response = await scraper([searchTerm], location);
     globalStopSignal = oldStop;
+    _testMetaCollector = null;
 
     const results = response.results;
-    const meta = _lastFetchMeta;
+    const firstMeta = collected[0];
     return {
       scraperKey,
       url: results[0]?.sourceUrl || "",
-      httpStatus: meta?.status || (results.length > 0 ? 200 : 0),
-      bodyLength: meta?.bodyLength || 0,
-      redirected: meta?.redirected || false,
-      headers: meta?.headers || {},
+      httpStatus: firstMeta?.status || (results.length > 0 ? 200 : 0),
+      bodyLength: firstMeta?.bodyLength || 0,
+      redirected: firstMeta?.redirected || false,
+      headers: firstMeta?.headers || {},
       totalResults: results.length,
       withName: results.filter(r => r.name && r.name.length > 0).length,
       withPhone: results.filter(r => r.phone).length,
@@ -888,14 +896,16 @@ export async function testScraper(
     };
   } catch (err: any) {
     globalStopSignal = oldStop;
-    const meta = _lastFetchMeta;
+    _testMetaCollector = null;
+    const fetchErr = err instanceof FetchError ? err.meta : null;
+    const firstMeta = collected[0] || fetchErr;
     return {
       scraperKey,
       url: "",
-      httpStatus: meta?.status || 0,
-      bodyLength: meta?.bodyLength || 0,
-      redirected: meta?.redirected || false,
-      headers: meta?.headers || {},
+      httpStatus: firstMeta?.status || 0,
+      bodyLength: firstMeta?.bodyLength || 0,
+      redirected: firstMeta?.redirected || false,
+      headers: firstMeta?.headers || {},
       totalResults: 0,
       withName: 0,
       withPhone: 0,
