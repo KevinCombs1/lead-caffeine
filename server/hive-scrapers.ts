@@ -163,6 +163,13 @@ const COMMERCIAL_TLDS = [
   ".au", ".nz", ".za", ".ae", ".sa", ".qa", ".eg", ".ke", ".ng", ".gh", ".tz", ".ma",
   ".br", ".mx", ".ar", ".cl", ".co", ".pe", ".pa", ".cr",
   ".uk", ".eu", ".asia",
+  ".agency", ".law", ".legal", ".consulting", ".group", ".global", ".pro", ".ltd", ".inc",
+  ".gmbh", ".company", ".business", ".enterprises", ".solutions", ".services", ".systems",
+  ".works", ".studio", ".design", ".digital", ".media", ".marketing", ".expert", ".coach",
+  ".tax", ".accountant", ".insurance", ".clinic", ".dental", ".health", ".engineering",
+  ".construction", ".energy", ".solar", ".realty", ".properties", ".ventures", ".capital",
+  ".finance", ".fund", ".trading", ".supply", ".logistics", ".travel", ".restaurant",
+  ".cafe", ".pub", ".bar", ".salon", ".fitness",
 ];
 
 function isCommercialDomain(url: string): boolean {
@@ -359,17 +366,68 @@ export function isParkedDomain(url: string): boolean {
   );
 }
 
-const GOV_NONPROFIT_KEYWORDS = [
-  "government", "federal", "county", "state of", "district", "bureau", "branch",
-  "secretary", "office of", "department of", "authority", "commission", "board of",
-  "city of", "town of", "township", "municipal", "public", "nonprofit", "foundation",
-  "association", "society", "institute", "university", "college", "school", "church",
-  "ministry", "temple", "mosque", "synagogue",
+const GOV_NONPROFIT_SUBSTRING_KEYWORDS = [
+  "government", "federal", "nonprofit", "non-profit",
+  "church", "ministry", "temple", "mosque", "synagogue", "university",
 ];
+
+const GOV_NONPROFIT_PHRASE_KEYWORDS = [
+  "state of", "county of", "bureau", "secretary",
+  "office of", "department of", "board of",
+  "city of", "town of", "township", "municipal",
+];
+
+const GOV_NONPROFIT_WORD_BOUNDARY_KEYWORDS = [
+  "public", "foundation", "association", "society", "institute",
+  "college", "school", "district", "branch", "authority", "commission", "county",
+];
+
+const FILLER_WORDS = new Set(["the", "a", "an", "of", "for", "and", "in", "at", "by", "to"]);
+
+function countMatchedBoundaryKeywords(lower: string): string[] {
+  const matched: string[] = [];
+  for (const kw of GOV_NONPROFIT_WORD_BOUNDARY_KEYWORDS) {
+    const regex = new RegExp(`\\b${kw}\\b`, "i");
+    if (regex.test(lower)) matched.push(kw);
+  }
+  return matched;
+}
 
 function isGovNonprofit(name: string): boolean {
   const lower = name.toLowerCase();
-  return GOV_NONPROFIT_KEYWORDS.some((kw) => lower.includes(kw));
+  if (GOV_NONPROFIT_SUBSTRING_KEYWORDS.some((kw) => lower.includes(kw))) {
+    return true;
+  }
+  if (GOV_NONPROFIT_PHRASE_KEYWORDS.some((kw) => lower.includes(kw))) {
+    return true;
+  }
+  const matchedKeywords = countMatchedBoundaryKeywords(lower);
+  if (matchedKeywords.length === 0) return false;
+
+  const GOV_COMBO_KEYWORDS = new Set(["school", "district", "county", "public", "authority", "commission", "branch"]);
+  const matchedGovCombos = matchedKeywords.filter(kw => GOV_COMBO_KEYWORDS.has(kw));
+  if (matchedGovCombos.length >= 2) return true;
+
+  for (const kw of matchedKeywords) {
+    const words = lower.split(/\s+/);
+    const kwWords = kw.split(/\s+/);
+    const nonKeywordWords = words.filter(w => !kwWords.includes(w) && !FILLER_WORDS.has(w));
+    if (nonKeywordWords.length === 0) return true;
+
+    const contextTerms = ["city", "state", "county", "town", "municipal", "federal", "government", "board", "department", "office"]
+      .filter(c => c !== kw);
+    const contextPattern = new RegExp(`\\b(${contextTerms.join("|")})\\b`, "i");
+    if (contextPattern.test(lower)) return true;
+
+    if (kw === "school" && !/(repair|auto|driving school|school of rock|school of|old school)/i.test(lower)) {
+      if (/\b(elementary|middle|high|primary|secondary|charter|preparatory|prep)\b/i.test(lower)) return true;
+    }
+    if (kw === "foundation" && /(charitable|nonprofit|non-profit|charity|relief|humanitarian|red cross|salvation|united way|habitat|goodwill)/i.test(lower)) return true;
+    if (kw === "commission" && /\b(planning|zoning|regulatory)\b/i.test(lower)) return true;
+    if (kw === "authority" && /\b(housing|transit|port|water|power|regional)\b/i.test(lower)) return true;
+  }
+
+  return false;
 }
 
 const FRANCHISE_BRANDS = [
@@ -497,14 +555,49 @@ const FRANCHISE_BRANDS = [
   "TNT Express", "FedEx", "UPS", "Aramex", "SF Express",
 ];
 
-const FRANCHISE_BRANDS_LOWER = FRANCHISE_BRANDS.map((b) => b.toLowerCase());
+const SHORT_BRAND_MAX_LENGTH = 3;
+
+const FRANCHISE_BRANDS_MATCHERS = FRANCHISE_BRANDS.map((brand) => {
+  const lower = brand.toLowerCase();
+  const escaped = lower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (lower.length <= SHORT_BRAND_MAX_LENGTH) {
+    return { lower, regex: null, isShort: true };
+  }
+  const regex = new RegExp(`(?:^|\\b)${escaped}(?:\\b|$)`, "i");
+  return { lower, regex, isShort: false };
+});
 
 const FRANCHISE_PATTERN = /(.+?)[\s]*[#\-–—]\s*\d+/i;
 
+const FRANCHISE_EXTRA_WORDS = new Set([
+  "store", "stores", "location", "center", "outlet", "plaza", "square",
+  "shop", "inc", "llc", "ltd", "corp", "co", "supply", "supplies",
+  "plus", "express", "super", "hub", "depot", "zone", "mart", "world",
+  "land", "pro", "the", "a", "an", "of", "and", "&", "at", "no", "on",
+  "restaurant", "cafe", "grill", "bar", "lounge", "inn", "hotel",
+  "pharmacy", "clinic", "dental", "optical", "auto", "tire", "tires",
+  "north", "south", "east", "west", "downtown", "uptown", "midtown",
+  "main", "street", "st", "ave", "avenue", "blvd", "boulevard", "rd",
+  "road", "drive", "dr", "lane", "ln", "way", "place", "ct", "court",
+  "parkway", "pkwy", "highway", "hwy", "suite", "ste", "unit", "floor",
+]);
+
 function detectFranchise(name: string): boolean {
-  const lower = name.toLowerCase();
-  if (FRANCHISE_BRANDS_LOWER.some((brand) => lower.includes(brand))) {
-    return true;
+  const lower = name.toLowerCase().trim();
+  for (const matcher of FRANCHISE_BRANDS_MATCHERS) {
+    if (matcher.isShort) {
+      if (lower === matcher.lower) return true;
+      continue;
+    }
+    if (matcher.regex && matcher.regex.test(lower)) {
+      if (lower === matcher.lower) return true;
+      const remaining = lower.replace(matcher.regex, "").trim();
+      if (remaining.length === 0) return true;
+      const extraWords = remaining.split(/\s+/).filter(w => w.length > 0);
+      if (extraWords.every(w => FRANCHISE_EXTRA_WORDS.has(w) || /^#?\d+$/.test(w))) {
+        return true;
+      }
+    }
   }
   if (FRANCHISE_PATTERN.test(name)) {
     return true;
