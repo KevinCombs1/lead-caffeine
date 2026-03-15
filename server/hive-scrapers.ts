@@ -811,12 +811,24 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
 let _testMetaCollector: FetchPageMeta[] | null = null;
 
 async function fetchPage(url: string, log?: string[]): Promise<string> {
-  const meta = await fetchPageWithMeta(url);
-  if (_testMetaCollector) _testMetaCollector.push(meta);
-  if (log) {
-    log.push(`[fetch] ${url} → ${meta.status} | ${meta.bodyLength} bytes | server: ${meta.headers["server"] || "n/a"}${meta.redirected ? " | redirected" : ""}`);
+  try {
+    const meta = await fetchPageWithMeta(url);
+    if (_testMetaCollector) _testMetaCollector.push(meta);
+    if (log) {
+      log.push(`[fetch] ${url} → ${meta.status} | ${meta.bodyLength} bytes | server: ${meta.headers["server"] || "n/a"}${meta.redirected ? " | redirected" : ""}`);
+    }
+    return meta.html;
+  } catch (err: any) {
+    if (err instanceof FetchError && err.meta) {
+      if (_testMetaCollector) _testMetaCollector.push(err.meta as FetchPageMeta);
+      if (log) {
+        log.push(`[fetch] ${url} → ${err.meta.status || "ERR"} | ${err.meta.bodyLength || 0} bytes | ${err.message}`);
+      }
+    } else if (log) {
+      log.push(`[fetch] ${url} → ERR | ${err.message || err}`);
+    }
+    throw err;
   }
-  return meta.html;
 }
 
 export interface TestScraperResult {
