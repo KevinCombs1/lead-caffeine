@@ -754,10 +754,10 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
       const bodyLength = html.length;
 
       if (bodyLength === 0) {
-        throw new Error("Empty response body — site may require JavaScript rendering");
+        throw new FetchError("Empty response body — site may require JavaScript rendering", { status: response.status, headers: respHeaders, bodyLength: 0, redirected: response.redirected });
       }
       if (bodyLength < 500) {
-        throw new Error(`Minimal response (${bodyLength} chars) — may be a block page or CAPTCHA`);
+        throw new FetchError(`Minimal response (${bodyLength} chars) — may be a block page or CAPTCHA`, { status: response.status, headers: respHeaders, bodyLength, redirected: response.redirected });
       }
 
       return {
@@ -890,9 +890,17 @@ export async function testScraper(
 
     const results = response.results;
     const firstMeta = collected[0];
+    let fetchedUrl = results[0]?.sourceUrl || "";
+    if (!fetchedUrl) {
+      const fetchLine = response.log.find(l => l.startsWith("[fetch] "));
+      if (fetchLine) {
+        const urlMatch = fetchLine.match(/\[fetch\] (\S+)/);
+        if (urlMatch) fetchedUrl = urlMatch[1];
+      }
+    }
     return {
       scraperKey,
-      url: results[0]?.sourceUrl || "",
+      url: fetchedUrl,
       httpStatus: firstMeta?.status || (results.length > 0 ? 200 : 0),
       bodyLength: firstMeta?.bodyLength || 0,
       redirected: firstMeta?.redirected || false,
