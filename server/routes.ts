@@ -2708,6 +2708,20 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/hive/test-scraper", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { scraperKey, searchTerm, city, state } = req.body;
+      if (!scraperKey || !searchTerm || !city || !state) {
+        return res.status(400).json({ error: "Missing required fields: scraperKey, searchTerm, city, state" });
+      }
+      const { testScraper } = await import("./hive-scrapers");
+      const result = await testScraper(scraperKey, searchTerm, city, state);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/hive/categories", requireAuth, async (_req: Request, res: Response) => {
     try {
       const cats = await storage.getHiveCategories();
