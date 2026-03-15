@@ -45,3 +45,7 @@ integrations = ["javascript_database:1.0.0", "javascript_websocket:1.0.0"]
 
 [userenv.shared]
 SCANNER_PASSWORD = "LightEngine"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 60000
