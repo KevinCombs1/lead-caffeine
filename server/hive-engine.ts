@@ -2,14 +2,10 @@ import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
 import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
 
-function isLocationIntl(loc: HiveLocation): boolean {
-  return loc.tag === "intl";
-}
-
 function isCompatible(dir: HiveDirectory, loc: HiveLocation): boolean {
-  const region = (dir as any).region || "us";
+  const region = dir.region || "us";
   if (region === "global") return true;
-  const locIntl = isLocationIntl(loc);
+  const locIntl = loc.tag === "intl";
   if (region === "us") return !locIntl;
   if (region === "intl") return locIntl;
   return true;

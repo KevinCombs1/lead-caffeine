@@ -571,10 +571,9 @@ export default function HivePage() {
                       const nextLocs = new Set(selectedLocs);
                       metroLocs.forEach(l => allSelected ? nextLocs.delete(l.id) : nextLocs.add(l.id));
                       setSelectedLocs(nextLocs);
-                      if (!allSelected) {
-                        const nextDirs = new Set(selectedDirs);
+                      if (!allSelected && selectedDirs.size === 0) {
+                        const nextDirs = new Set<number>();
                         directories.filter(d => d.enabled && (d.region === "us" || d.region === "global")).forEach(d => nextDirs.add(d.id));
-                        directories.filter(d => d.region === "intl").forEach(d => nextDirs.delete(d.id));
                         setSelectedDirs(nextDirs);
                       }
                     }}
@@ -595,10 +594,9 @@ export default function HivePage() {
                       const nextLocs = new Set(selectedLocs);
                       intlLocs.forEach(l => allSelected ? nextLocs.delete(l.id) : nextLocs.add(l.id));
                       setSelectedLocs(nextLocs);
-                      if (!allSelected) {
-                        const nextDirs = new Set(selectedDirs);
+                      if (!allSelected && selectedDirs.size === 0) {
+                        const nextDirs = new Set<number>();
                         directories.filter(d => d.enabled && (d.region === "intl" || d.region === "global")).forEach(d => nextDirs.add(d.id));
-                        directories.filter(d => d.region === "us").forEach(d => nextDirs.delete(d.id));
                         setSelectedDirs(nextDirs);
                       }
                     }}
@@ -636,22 +634,47 @@ export default function HivePage() {
               </div>
             </div>
 
+            {selectedLocs.size > 0 && (() => {
+              const selLocArr = locations.filter(l => selectedLocs.has(l.id));
+              const compatDirCount = directories.filter(d => d.enabled && selLocArr.some(l => {
+                const locIntl = l.tag === "intl";
+                return d.region === "global" || (d.region === "us" && !locIntl) || (d.region === "intl" && locIntl);
+              })).length;
+              return (
+                <div className="text-[10px] text-gray-500" data-testid="text-compatible-dirs">
+                  {compatDirCount} directories compatible with selected locations
+                </div>
+              );
+            })()}
+
             {(() => {
               const selDirArr = directories.filter(d => selectedDirs.has(d.id));
               const selLocArr = locations.filter(l => selectedLocs.has(l.id));
-              const hasUSOnly = selDirArr.some(d => d.region === "us");
-              const hasIntlOnly = selDirArr.some(d => d.region === "intl");
-              const hasIntlLocs = selLocArr.some(l => l.tag === "intl");
-              const hasUSLocs = selLocArr.some(l => l.tag !== "intl");
-              const mismatch = (hasUSOnly && hasIntlLocs && !hasUSLocs) || (hasIntlOnly && hasUSLocs && !hasIntlLocs);
-              if (!mismatch) return null;
-              const msg = hasUSOnly && hasIntlLocs
-                ? "us-only directories selected with international locations — those combos will be skipped by the engine"
-                : "intl-only directories selected with us locations — those combos will be skipped by the engine";
+              if (selDirArr.length === 0 || selLocArr.length === 0) return null;
+              let compatiblePairs = 0;
+              for (const d of selDirArr) {
+                for (const l of selLocArr) {
+                  const locIntl = l.tag === "intl";
+                  if (d.region === "global" || (d.region === "us" && !locIntl) || (d.region === "intl" && locIntl)) {
+                    compatiblePairs++;
+                  }
+                }
+              }
+              const totalPairs = selDirArr.length * selLocArr.length;
+              if (compatiblePairs === totalPairs) return null;
+              if (compatiblePairs === 0) {
+                return (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-red-900/30 border border-red-700/50 rounded text-red-300 text-xs" data-testid="warning-region-mismatch">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                    <span>no compatible directory+location pairs — the engine will have nothing to crawl</span>
+                  </div>
+                );
+              }
+              const skipped = totalPairs - compatiblePairs;
               return (
                 <div className="flex items-center gap-2 px-3 py-2 bg-amber-900/30 border border-amber-700/50 rounded text-amber-300 text-xs" data-testid="warning-region-mismatch">
                   <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                  <span>{msg}</span>
+                  <span>{skipped} incompatible directory+location combos will be skipped by the engine ({compatiblePairs} compatible)</span>
                 </div>
               );
             })()}
