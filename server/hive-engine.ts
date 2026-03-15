@@ -2,6 +2,19 @@ import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
 import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
 
+function isLocationIntl(loc: HiveLocation): boolean {
+  return loc.tag === "intl";
+}
+
+function isCompatible(dir: HiveDirectory, loc: HiveLocation): boolean {
+  const region = (dir as any).region || "us";
+  if (region === "global") return true;
+  const locIntl = isLocationIntl(loc);
+  if (region === "us") return !locIntl;
+  if (region === "intl") return locIntl;
+  return true;
+}
+
 let activeEngine: RayOfGraceEngine | null = null;
 
 export function getActiveEngine(): RayOfGraceEngine | null {
@@ -55,12 +68,20 @@ export class RayOfGraceEngine {
 
     this.maxResults = (maxResults && maxResults > 0) ? maxResults : null;
     const allCombos: CrawlCombo[] = [];
+    let incompatibleSkipped = 0;
     for (const dir of directories) {
       for (const cat of categories) {
         for (const loc of locations) {
+          if (!isCompatible(dir, loc)) {
+            incompatibleSkipped++;
+            continue;
+          }
           allCombos.push({ directory: dir, category: cat, location: loc });
         }
       }
+    }
+    if (incompatibleSkipped > 0) {
+      this.log(`[engine] Filtered out ${incompatibleSkipped} incompatible directory+location combos`);
     }
 
     this.combos = [];

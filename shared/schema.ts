@@ -1148,6 +1148,7 @@ export const hiveDirectories = pgTable("hive_directories", {
   scraperKey: text("scraper_key").notNull().unique(),
   enabled: boolean("enabled").notNull().default(true),
   status: text("status").notNull().default("untested"),
+  region: text("region").notNull().default("us"),
 });
 
 export const insertHiveDirectorySchema = createInsertSchema(hiveDirectories).omit({ id: true });

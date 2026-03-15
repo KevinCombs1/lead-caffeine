@@ -16,6 +16,7 @@ interface HiveDirectory {
   scraperKey: string;
   enabled: boolean;
   status: string;
+  region: string;
 }
 
 interface HiveCategory {
@@ -417,6 +418,9 @@ export default function HivePage() {
                         disabled={!d.enabled}
                       />
                       <span className={d.enabled ? "text-gray-200" : "text-gray-600 line-through"}>{d.name}</span>
+                      {d.region === "us" && <span className="text-blue-400 text-[10px] font-mono" data-testid={`badge-region-${d.scraperKey}`}>us</span>}
+                      {d.region === "intl" && <span className="text-emerald-400 text-[10px] font-mono" data-testid={`badge-region-${d.scraperKey}`}>intl</span>}
+                      {d.region === "global" && <span className="text-amber-400 text-[10px] font-mono" data-testid={`badge-region-${d.scraperKey}`}>global</span>}
                       {d.status === "working" && <span className="text-green-500 text-[10px]">OK</span>}
                       {d.status === "blocked" && <span className="text-red-500 text-[10px]">BLOCKED</span>}
                     </label>
@@ -564,9 +568,15 @@ export default function HivePage() {
                     onClick={() => {
                       const metroLocs = locations.filter(l => !l.tag);
                       const allSelected = metroLocs.every(l => selectedLocs.has(l.id));
-                      const next = new Set(selectedLocs);
-                      metroLocs.forEach(l => allSelected ? next.delete(l.id) : next.add(l.id));
-                      setSelectedLocs(next);
+                      const nextLocs = new Set(selectedLocs);
+                      metroLocs.forEach(l => allSelected ? nextLocs.delete(l.id) : nextLocs.add(l.id));
+                      setSelectedLocs(nextLocs);
+                      if (!allSelected) {
+                        const nextDirs = new Set(selectedDirs);
+                        directories.filter(d => d.enabled && (d.region === "us" || d.region === "global")).forEach(d => nextDirs.add(d.id));
+                        directories.filter(d => d.region === "intl").forEach(d => nextDirs.delete(d.id));
+                        setSelectedDirs(nextDirs);
+                      }
                     }}
                     className={`text-[10px] px-2 py-0.5 rounded border ${
                       locations.filter(l => !l.tag).length > 0 &&
@@ -580,21 +590,27 @@ export default function HivePage() {
                   </button>
                   <button
                     onClick={() => {
-                      const intlLocs = locations.filter(l => INTL_COUNTRIES.includes(l.state));
+                      const intlLocs = locations.filter(l => l.tag === "intl");
                       const allSelected = intlLocs.every(l => selectedLocs.has(l.id));
-                      const next = new Set(selectedLocs);
-                      intlLocs.forEach(l => allSelected ? next.delete(l.id) : next.add(l.id));
-                      setSelectedLocs(next);
+                      const nextLocs = new Set(selectedLocs);
+                      intlLocs.forEach(l => allSelected ? nextLocs.delete(l.id) : nextLocs.add(l.id));
+                      setSelectedLocs(nextLocs);
+                      if (!allSelected) {
+                        const nextDirs = new Set(selectedDirs);
+                        directories.filter(d => d.enabled && (d.region === "intl" || d.region === "global")).forEach(d => nextDirs.add(d.id));
+                        directories.filter(d => d.region === "us").forEach(d => nextDirs.delete(d.id));
+                        setSelectedDirs(nextDirs);
+                      }
                     }}
                     className={`text-[10px] px-2 py-0.5 rounded border ${
-                      locations.filter(l => INTL_COUNTRIES.includes(l.state)).length > 0 &&
-                      locations.filter(l => INTL_COUNTRIES.includes(l.state)).every(l => selectedLocs.has(l.id))
+                      locations.filter(l => l.tag === "intl").length > 0 &&
+                      locations.filter(l => l.tag === "intl").every(l => selectedLocs.has(l.id))
                         ? "border-emerald-500 bg-emerald-500/20 text-emerald-300"
                         : "border-gray-700 text-gray-400 hover:text-gray-200"
                     }`}
                     data-testid="button-tag-international"
                   >
-                    <Globe className="w-3 h-3 inline mr-0.5" />International ({locations.filter(l => INTL_COUNTRIES.includes(l.state)).length})
+                    <Globe className="w-3 h-3 inline mr-0.5" />International ({locations.filter(l => l.tag === "intl").length})
                   </button>
                 </div>
                 <div className="space-y-0.5 max-h-52 overflow-y-auto border border-gray-800 rounded p-2 bg-gray-900/50">
@@ -611,7 +627,7 @@ export default function HivePage() {
                         className="rounded"
                       />
                       <span className="text-gray-200">{l.city}, {l.state}</span>
-                      {INTL_COUNTRIES.includes(l.state) && <Globe className="w-3 h-3 text-emerald-500 inline" />}
+                      {l.tag === "intl" && <Globe className="w-3 h-3 text-emerald-500 inline" />}
                       {l.tag === "travel" && <Plane className="w-3 h-3 text-amber-500 inline" data-testid={`icon-travel-${l.slug}`} />}
                       <span className="text-gray-600 text-[10px]">{l.population.toLocaleString()}</span>
                     </label>
@@ -619,6 +635,26 @@ export default function HivePage() {
                 </div>
               </div>
             </div>
+
+            {(() => {
+              const selDirArr = directories.filter(d => selectedDirs.has(d.id));
+              const selLocArr = locations.filter(l => selectedLocs.has(l.id));
+              const hasUSOnly = selDirArr.some(d => d.region === "us");
+              const hasIntlOnly = selDirArr.some(d => d.region === "intl");
+              const hasIntlLocs = selLocArr.some(l => l.tag === "intl");
+              const hasUSLocs = selLocArr.some(l => l.tag !== "intl");
+              const mismatch = (hasUSOnly && hasIntlLocs && !hasUSLocs) || (hasIntlOnly && hasUSLocs && !hasIntlLocs);
+              if (!mismatch) return null;
+              const msg = hasUSOnly && hasIntlLocs
+                ? "us-only directories selected with international locations — those combos will be skipped by the engine"
+                : "intl-only directories selected with us locations — those combos will be skipped by the engine";
+              return (
+                <div className="flex items-center gap-2 px-3 py-2 bg-amber-900/30 border border-amber-700/50 rounded text-amber-300 text-xs" data-testid="warning-region-mismatch">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>{msg}</span>
+                </div>
+              );
+            })()}
 
             <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
               {!crawlStatus?.active ? (
