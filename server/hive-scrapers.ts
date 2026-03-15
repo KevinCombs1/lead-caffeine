@@ -779,8 +779,11 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
   throw new Error("fetchPage: max retries reached");
 }
 
-async function fetchPage(url: string): Promise<string> {
+async function fetchPage(url: string, log?: string[]): Promise<string> {
   const meta = await fetchPageWithMeta(url);
+  if (log) {
+    log.push(`[fetch] ${url} → ${meta.status} | ${meta.bodyLength} bytes | server: ${meta.headers["server"] || "n/a"}${meta.redirected ? " | redirected" : ""}`);
+  }
   return meta.html;
 }
 
@@ -796,6 +799,7 @@ export interface TestScraperResult {
   withPhone: number;
   withWebsite: number;
   withAddress: number;
+  results: ScraperResult[];
   sample: ScraperResult[];
   log: string[];
   error?: string;
@@ -833,6 +837,7 @@ export async function testScraper(
       withPhone: 0,
       withWebsite: 0,
       withAddress: 0,
+      results: [],
       sample: [],
       log: [`Unknown scraper key: ${scraperKey}`],
       error: `Unknown scraper key: ${scraperKey}`,
@@ -883,7 +888,8 @@ export async function testScraper(
       withPhone: results.filter(r => r.phone).length,
       withWebsite: results.filter(r => r.website).length,
       withAddress: results.filter(r => r.address).length,
-      sample: results.slice(0, 5),
+      results,
+      sample: results.slice(0, 3),
       log: response.log,
     };
   } catch (err: any) {
@@ -900,6 +906,7 @@ export async function testScraper(
       withPhone: 0,
       withWebsite: 0,
       withAddress: 0,
+      results: [],
       sample: [],
       log: [`Test failed: ${err.message || err}`],
       error: err.message || String(err),
@@ -971,7 +978,7 @@ export async function scrapeYellowPages(
       if (globalStopSignal) break;
       try {
         const url = `https://www.yellowpages.com/search?search_terms=${encodedTerm}&geo_location_terms=${encodedLocation}&page=${page}`;
-        const html = await fetchPage(url);
+        const html = await fetchPage(url, log);
 
         const namePattern = /<a[^>]*class="[^"]*business-name[^"]*"[^>]*>(?:<span[^>]*>)?([^<]+)/g;
         const phonePattern = /class="[^"]*phones?\s[^"]*"[^>]*>([^<]+)/g;
@@ -1095,7 +1102,7 @@ export async function scrapeSuperpages(
       if (globalStopSignal) break;
       try {
         const url = `https://www.superpages.com/search?search_terms=${encodedTerm}&geo_location_terms=${encodedLocation}&page=${page}`;
-        const html = await fetchPage(url);
+        const html = await fetchPage(url, log);
 
         const businessNameRegex = /<a[^>]*class="[^"]*business-name[^"]*"[^>]*>(?:<span[^>]*>)?([^<]+)/g;
         const phoneRegex = /class="[^"]*phones?\s[^"]*"[^>]*href="tel:([^"]+)"/g;
@@ -1172,7 +1179,7 @@ export async function scrapeMapQuest(
     try {
       const encodedTerm = encodeURIComponent(`${term} ${location.city} ${location.state}`);
       const url = `https://www.mapquest.com/search/results?query=${encodedTerm}&boundingBox=&page=0`;
-      const html = await fetchPage(url);
+      const html = await fetchPage(url, log);
       let termCount = 0;
 
       const jsonLdRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
@@ -1248,7 +1255,7 @@ export async function scrapeHotfrog(
     try {
       const termSlug = term.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
       const url = `https://www.hotfrog.com/search/${stateSlug}/${citySlug}/${termSlug}`;
-      const html = await fetchPage(url);
+      const html = await fetchPage(url, log);
 
       const listingBlocks = extractAllBetween(html, '<div class="ser-card', '</div>');
       let blocks = listingBlocks;
@@ -1338,7 +1345,7 @@ export async function scrapeEZLocal(
     try {
       const termSlug = term.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
       const url = `https://ezlocal.com/${stateSlug}/${citySlug}/${termSlug}`;
-      const html = await fetchPage(url);
+      const html = await fetchPage(url, log);
 
       const nameRegex = /<h3[^>]*class="[^"]*fn org[^"]*"[^>]*>\d+\.\s*<a[^>]*>([^<]+)/g;
       const phoneRegex = /class="[^"]*tel[^"]*"[^>]*>([^<]+)/g;
@@ -1408,7 +1415,7 @@ export async function scrapeN49(
     try {
       const termSlug = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
       const url = `https://www.n49.com/biz/${countrySlug}/${stateSlug}/${citySlug}/${termSlug}/`;
-      const html = await fetchPage(url);
+      const html = await fetchPage(url, log);
 
       const jsonLdRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
       let match;
@@ -1524,7 +1531,7 @@ export async function scrapeEuropages(
       for (let page = 1; page <= maxPages; page++) {
         if (globalStopSignal) break;
         const url = `https://www.europages.co.uk/companies/pg-${page}/${encodeURIComponent(slug)}.html`;
-        const html = await fetchPage(url);
+        const html = await fetchPage(url, log);
 
         const pageResults = parseCompanyTiles(html, url, location);
         if (pageResults.length === 0) {
@@ -1581,7 +1588,7 @@ export async function scrapeWLW(
       for (let page = 1; page <= maxPages; page++) {
         if (globalStopSignal) break;
         const url = `https://www.wlw.de/en/search?q=${encodeURIComponent(term)}&page=${page}`;
-        const html = await fetchPage(url);
+        const html = await fetchPage(url, log);
 
         const pageResults = parseCompanyTiles(html, url, location);
         if (pageResults.length === 0) {

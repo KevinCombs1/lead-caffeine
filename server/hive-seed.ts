@@ -31,7 +31,7 @@ const DIRECTORIES: DirectorySeed[] = [
   { name: "YellowPages", baseUrl: "https://www.yellowpages.com", scraperKey: "yellowpages", enabled: true, status: "working", region: "us" },
   { name: "Superpages", baseUrl: "https://www.superpages.com", scraperKey: "superpages", enabled: true, status: "working", region: "us" },
   { name: "MapQuest", baseUrl: "https://www.mapquest.com", scraperKey: "mapquest", enabled: true, status: "working", region: "us" },
-  { name: "Hotfrog", baseUrl: "https://www.hotfrog.com", scraperKey: "hotfrog", enabled: true, status: "working", region: "global" },
+  { name: "Hotfrog", baseUrl: "https://www.hotfrog.com", scraperKey: "hotfrog", enabled: true, status: "working", region: "us" },
   { name: "EZLocal", baseUrl: "https://www.ezlocal.com", scraperKey: "ezlocal", enabled: true, status: "working", region: "us" },
   { name: "n49", baseUrl: "https://www.n49.com", scraperKey: "n49", enabled: false, status: "blocked", region: "global" },
   { name: "Yelp", baseUrl: "https://www.yelp.com", scraperKey: "yelp", enabled: false, status: "blocked", region: "global" },
