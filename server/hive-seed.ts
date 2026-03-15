@@ -2121,10 +2121,10 @@ export async function seedHiveData(): Promise<void> {
 
     for (const dirSeed of DIRECTORIES) {
       await db.update(hiveDirectories)
-        .set({ region: dirSeed.region })
+        .set({ region: dirSeed.region, enabled: dirSeed.enabled, status: dirSeed.status })
         .where(sql`${hiveDirectories.scraperKey} = ${dirSeed.scraperKey}`);
     }
-    console.log(`[hive-seed] Updated region for ${DIRECTORIES.length} directories.`);
+    console.log(`[hive-seed] Synced region/enabled/status for ${DIRECTORIES.length} directories.`);
 
     console.log("[hive-seed] Incremental seed complete.");
     return;

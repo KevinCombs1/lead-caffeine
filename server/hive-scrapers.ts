@@ -801,13 +801,25 @@ export interface TestScraperResult {
   error?: string;
 }
 
+const SCRAPER_PROBE_URLS: Record<string, (term: string, city: string, state: string) => string> = {
+  yellowpages: (t, c, s) => `https://www.yellowpages.com/search?search_terms=${encodeURIComponent(t)}&geo_location_terms=${encodeURIComponent(c + ", " + s)}`,
+  superpages: (t, c, s) => `https://www.superpages.com/search?search_terms=${encodeURIComponent(t)}&geo_location_terms=${encodeURIComponent(c + ", " + s)}`,
+  hotfrog: (t, c, s) => `https://www.hotfrog.com/search/${s.toLowerCase()}/${c.toLowerCase().replace(/\s+/g, "-")}/${t.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}`,
+  europages: (t) => `https://www.europages.co.uk/companies/pg-1/${t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}.html`,
+  wlw: (t) => `https://www.wlw.de/en/search?q=${encodeURIComponent(t)}`,
+  n49: (t, c, s) => `https://www.n49.com/biz/us/${s.toLowerCase()}/${c.toLowerCase().replace(/\s+/g, "-")}/${t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}/`,
+  kompass: (t, c) => `https://www.kompass.com/searchCompanies?text=${encodeURIComponent(t)}&localisationLabel=${encodeURIComponent(c)}`,
+  yell: (t, c) => `https://www.yell.com/ucs/UcsSearchAction.do?keywords=${encodeURIComponent(t)}&location=${encodeURIComponent(c)}`,
+};
+
 export async function testScraper(
   scraperKey: string,
   searchTerm: string,
   city: string,
   state: string
 ): Promise<TestScraperResult> {
-  const scraper = SCRAPERS[scraperKey.toLowerCase()];
+  const key = scraperKey.toLowerCase();
+  const scraper = SCRAPERS[key];
   if (!scraper) {
     return {
       scraperKey,
@@ -831,18 +843,41 @@ export async function testScraper(
   const oldStop = globalStopSignal;
   globalStopSignal = false;
 
+  let probeStatus = 0;
+  let probeBodyLength = 0;
+  let probeHeaders: Record<string, string> = {};
+  let probeRedirected = false;
+  let probeUrl = "";
+
+  const urlBuilder = SCRAPER_PROBE_URLS[key];
+  if (urlBuilder) {
+    probeUrl = urlBuilder(searchTerm, city, state);
+    try {
+      const meta = await fetchPageWithMeta(probeUrl);
+      probeStatus = meta.status;
+      probeBodyLength = meta.bodyLength;
+      probeHeaders = meta.headers;
+      probeRedirected = meta.redirected;
+    } catch (err: any) {
+      const statusMatch = err.message?.match(/HTTP (\d+)/);
+      probeStatus = statusMatch ? parseInt(statusMatch[1]) : 0;
+      probeHeaders = {};
+    }
+  }
+
   try {
     const response = await scraper([searchTerm], location);
     globalStopSignal = oldStop;
 
     const results = response.results;
+    const firstUrl = results[0]?.sourceUrl || probeUrl;
     return {
       scraperKey,
-      url: results[0]?.sourceUrl || "",
-      httpStatus: 200,
-      bodyLength: 0,
-      redirected: false,
-      headers: {},
+      url: firstUrl,
+      httpStatus: probeStatus || (results.length > 0 ? 200 : 0),
+      bodyLength: probeBodyLength,
+      redirected: probeRedirected,
+      headers: probeHeaders,
       totalResults: results.length,
       withName: results.filter(r => r.name && r.name.length > 0).length,
       withPhone: results.filter(r => r.phone).length,
@@ -855,11 +890,11 @@ export async function testScraper(
     globalStopSignal = oldStop;
     return {
       scraperKey,
-      url: "",
-      httpStatus: 0,
-      bodyLength: 0,
-      redirected: false,
-      headers: {},
+      url: probeUrl,
+      httpStatus: probeStatus,
+      bodyLength: probeBodyLength,
+      redirected: probeRedirected,
+      headers: probeHeaders,
       totalResults: 0,
       withName: 0,
       withPhone: 0,
