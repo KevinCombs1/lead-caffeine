@@ -771,6 +771,21 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
       if (err?.code === "ENOTFOUND" || err?.message?.includes("ENOTFOUND")) {
         throw new Error(`DNS failure — domain not found: ${err.message}`);
       }
+      if (err?.code === "ECONNREFUSED" || err?.message?.includes("ECONNREFUSED")) {
+        throw new Error(`Network error: connection refused — ${url}`);
+      }
+      if (err?.code === "ECONNRESET" || err?.message?.includes("ECONNRESET")) {
+        throw new Error(`Network error: connection reset — ${url}`);
+      }
+      if (err?.code === "ERR_TLS" || err?.message?.includes("certificate") || err?.message?.includes("SSL")) {
+        throw new Error(`Network error: TLS/SSL failure — ${url}`);
+      }
+      if (err?.message?.includes("redirect") && err?.message?.includes("loop")) {
+        throw new Error(`Redirect loop detected — ${url}`);
+      }
+      if (err?.code?.startsWith?.("E") && !err?.message?.includes("HTTP")) {
+        throw new Error(`Network error: ${err.code} — ${err.message}`);
+      }
       throw err;
     } finally {
       clearTimeout(timeout);
@@ -805,16 +820,34 @@ export interface TestScraperResult {
   error?: string;
 }
 
-const SCRAPER_PROBE_URLS: Record<string, (term: string, city: string, state: string) => string> = {
-  yellowpages: (t, c, s) => `https://www.yellowpages.com/search?search_terms=${encodeURIComponent(t)}&geo_location_terms=${encodeURIComponent(c + ", " + s)}`,
-  superpages: (t, c, s) => `https://www.superpages.com/search?search_terms=${encodeURIComponent(t)}&geo_location_terms=${encodeURIComponent(c + ", " + s)}`,
-  hotfrog: (t, c, s) => `https://www.hotfrog.com/search/${s.toLowerCase()}/${c.toLowerCase().replace(/\s+/g, "-")}/${t.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}`,
-  europages: (t) => `https://www.europages.co.uk/companies/pg-1/${t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}.html`,
-  wlw: (t) => `https://www.wlw.de/en/search?q=${encodeURIComponent(t)}`,
-  n49: (t, c, s) => `https://www.n49.com/biz/us/${s.toLowerCase()}/${c.toLowerCase().replace(/\s+/g, "-")}/${t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}/`,
-  kompass: (t, c) => `https://www.kompass.com/searchCompanies?text=${encodeURIComponent(t)}&localisationLabel=${encodeURIComponent(c)}`,
-  yell: (t, c) => `https://www.yell.com/ucs/UcsSearchAction.do?keywords=${encodeURIComponent(t)}&location=${encodeURIComponent(c)}`,
-};
+function extractFetchDiagnostics(log: string[]): { httpStatus: number; bodyLength: number; redirected: boolean; headers: Record<string, string> } {
+  let httpStatus = 0;
+  let bodyLength = 0;
+  let redirected = false;
+  const headers: Record<string, string> = {};
+
+  for (const line of log) {
+    const fetchMatch = line.match(/\[fetch\] .+ → (\d+) \| (\d+) bytes \| server: ([^\s|]+)(.*)/);
+    if (fetchMatch) {
+      httpStatus = parseInt(fetchMatch[1]);
+      bodyLength = parseInt(fetchMatch[2]);
+      headers["server"] = fetchMatch[3] === "n/a" ? "" : fetchMatch[3];
+      if (fetchMatch[4]?.includes("redirected")) redirected = true;
+      break;
+    }
+    const errMatch = line.match(/HTTP (\d+)/);
+    if (errMatch && httpStatus === 0) {
+      httpStatus = parseInt(errMatch[1]);
+    }
+    if (line.includes("DNS failure")) {
+      headers["error"] = "DNS_FAILURE";
+    }
+    if (line.includes("timed out")) {
+      headers["error"] = "TIMEOUT";
+    }
+  }
+  return { httpStatus, bodyLength, redirected, headers };
+}
 
 export async function testScraper(
   scraperKey: string,
@@ -848,41 +881,20 @@ export async function testScraper(
   const oldStop = globalStopSignal;
   globalStopSignal = false;
 
-  let probeStatus = 0;
-  let probeBodyLength = 0;
-  let probeHeaders: Record<string, string> = {};
-  let probeRedirected = false;
-  let probeUrl = "";
-
-  const urlBuilder = SCRAPER_PROBE_URLS[key];
-  if (urlBuilder) {
-    probeUrl = urlBuilder(searchTerm, city, state);
-    try {
-      const meta = await fetchPageWithMeta(probeUrl);
-      probeStatus = meta.status;
-      probeBodyLength = meta.bodyLength;
-      probeHeaders = meta.headers;
-      probeRedirected = meta.redirected;
-    } catch (err: any) {
-      const statusMatch = err.message?.match(/HTTP (\d+)/);
-      probeStatus = statusMatch ? parseInt(statusMatch[1]) : 0;
-      probeHeaders = {};
-    }
-  }
-
   try {
     const response = await scraper([searchTerm], location);
     globalStopSignal = oldStop;
 
     const results = response.results;
-    const firstUrl = results[0]?.sourceUrl || probeUrl;
+    const diag = extractFetchDiagnostics(response.log);
+    const firstUrl = results[0]?.sourceUrl || "";
     return {
       scraperKey,
       url: firstUrl,
-      httpStatus: probeStatus || (results.length > 0 ? 200 : 0),
-      bodyLength: probeBodyLength,
-      redirected: probeRedirected,
-      headers: probeHeaders,
+      httpStatus: diag.httpStatus || (results.length > 0 ? 200 : 0),
+      bodyLength: diag.bodyLength,
+      redirected: diag.redirected,
+      headers: diag.headers,
       totalResults: results.length,
       withName: results.filter(r => r.name && r.name.length > 0).length,
       withPhone: results.filter(r => r.phone).length,
@@ -896,11 +908,11 @@ export async function testScraper(
     globalStopSignal = oldStop;
     return {
       scraperKey,
-      url: probeUrl,
-      httpStatus: probeStatus,
-      bodyLength: probeBodyLength,
-      redirected: probeRedirected,
-      headers: probeHeaders,
+      url: "",
+      httpStatus: 0,
+      bodyLength: 0,
+      redirected: false,
+      headers: {},
       totalResults: 0,
       withName: 0,
       withPhone: 0,
@@ -1165,79 +1177,7 @@ export async function scrapeSuperpages(
   return { results, log };
 }
 
-export async function scrapeMapQuest(
-  searchTerms: string[],
-  location: ScraperLocation
-): Promise<ScraperResponse> {
-  const results: ScraperResult[] = [];
-  const log: string[] = [];
-  const locationStr = `${location.city}+${location.state}`;
-
-  for (const term of searchTerms) {
-    if (globalStopSignal) break;
-    log.push(`Searching "${term}" in ${location.city}, ${location.state}...`);
-    try {
-      const encodedTerm = encodeURIComponent(`${term} ${location.city} ${location.state}`);
-      const url = `https://www.mapquest.com/search/results?query=${encodedTerm}&boundingBox=&page=0`;
-      const html = await fetchPage(url, log);
-      let termCount = 0;
-
-      const jsonLdRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
-      let match;
-      while ((match = jsonLdRegex.exec(html)) !== null) {
-        try {
-          const data = JSON.parse(match[1]);
-          const items = Array.isArray(data) ? data : [data];
-          for (const item of items) {
-            if (item["@type"] === "LocalBusiness" || item["@type"] === "Organization") {
-              const entry: ScraperResult = {
-                name: item.name || "",
-                phone: item.telephone,
-                website: item.url,
-                city: item.address?.addressLocality || location.city,
-                state: item.address?.addressRegion || location.state,
-                address: item.address?.streetAddress,
-                sourceUrl: url,
-              };
-              if (entry.name) {
-                results.push(entry);
-                termCount++;
-              }
-            }
-          }
-        } catch {
-        }
-      }
-
-      const cardRegex = /<div[^>]*class="[^"]*search-result[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/g;
-      while ((match = cardRegex.exec(html)) !== null) {
-        const block = match[1];
-        const nameMatch = block.match(/<h[2-6][^>]*>([^<]+)/);
-        const phoneMatch = block.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
-        const linkMatch = block.match(/href="(https?:\/\/[^"]+)"/);
-        if (nameMatch) {
-          results.push({
-            name: stripTags(nameMatch[1]),
-            phone: phoneMatch ? phoneMatch[0] : undefined,
-            website: linkMatch ? linkMatch[1] : undefined,
-            city: location.city,
-            state: location.state,
-            sourceUrl: url,
-          });
-          termCount++;
-        }
-      }
-
-      log.push(`Completed "${term}": ${termCount} results`);
-      await randomDelay();
-    } catch (err: any) {
-      log.push(`Error for "${term}": ${err.message || err}`);
-    }
-  }
-
-  log.push(`Total: ${results.length} results`);
-  return { results, log };
-}
+export const scrapeMapQuest: ScraperFn = () => blockedScraper("MapQuest", "Degraded — JS-rendered search results, JSON-LD returns site metadata not listings");
 
 export async function scrapeHotfrog(
   searchTerms: string[],
@@ -1403,8 +1343,9 @@ export async function scrapeN49(
   const results: ScraperResult[] = [];
   const log: string[] = [];
 
-  const isUS = /^[A-Z]{2}$/.test(location.state);
-  const countrySlug = isUS ? "us" : "ca";
+  const CA_PROVINCES = new Set(["AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT"]);
+  const isCA = CA_PROVINCES.has(location.state.toUpperCase());
+  const countrySlug = isCA ? "ca" : "us";
   const stateSlug = location.state.toLowerCase();
   const citySlug = location.city.toLowerCase().replace(/\s+/g, "-");
 
