@@ -727,15 +727,17 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
           }
           continue;
         }
+        let errBodyLen = 0;
+        try { errBodyLen = (await response.text()).length; } catch {}
         const server = respHeaders["server"] || "unknown";
         if (response.status === 403 || response.status === 429) {
-          throw new Error(`HTTP ${response.status} — Access blocked (server: ${server})`);
+          throw new Error(`HTTP ${response.status} — Access blocked (${errBodyLen} bytes, server: ${server})`);
         } else if (response.status === 404) {
-          throw new Error(`HTTP 404 — Page not found, URL pattern may be wrong`);
+          throw new Error(`HTTP 404 — Page not found (${errBodyLen} bytes, server: ${server})`);
         } else if (response.status >= 300 && response.status < 400) {
-          throw new Error(`HTTP ${response.status} — Redirect (location: ${respHeaders["location"] || "?"})`);
+          throw new Error(`HTTP ${response.status} — Redirect (location: ${respHeaders["location"] || "?"}, ${errBodyLen} bytes)`);
         }
-        throw new Error(`HTTP ${response.status}: ${response.statusText} (server: ${server})`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText} (${errBodyLen} bytes, server: ${server})`);
       }
 
       const html = await response.text();
@@ -794,12 +796,21 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
   throw new Error("fetchPage: max retries reached");
 }
 
+let _lastFetchMeta: FetchPageMeta | null = null;
+
 async function fetchPage(url: string, log?: string[]): Promise<string> {
   const meta = await fetchPageWithMeta(url);
+  _lastFetchMeta = meta;
   if (log) {
     log.push(`[fetch] ${url} → ${meta.status} | ${meta.bodyLength} bytes | server: ${meta.headers["server"] || "n/a"}${meta.redirected ? " | redirected" : ""}`);
   }
   return meta.html;
+}
+
+function getAndClearLastFetchMeta(): FetchPageMeta | null {
+  const m = _lastFetchMeta;
+  _lastFetchMeta = null;
+  return m;
 }
 
 export interface TestScraperResult {
@@ -818,35 +829,6 @@ export interface TestScraperResult {
   sample: ScraperResult[];
   log: string[];
   error?: string;
-}
-
-function extractFetchDiagnostics(log: string[]): { httpStatus: number; bodyLength: number; redirected: boolean; headers: Record<string, string> } {
-  let httpStatus = 0;
-  let bodyLength = 0;
-  let redirected = false;
-  const headers: Record<string, string> = {};
-
-  for (const line of log) {
-    const fetchMatch = line.match(/\[fetch\] .+ → (\d+) \| (\d+) bytes \| server: ([^\s|]+)(.*)/);
-    if (fetchMatch) {
-      httpStatus = parseInt(fetchMatch[1]);
-      bodyLength = parseInt(fetchMatch[2]);
-      headers["server"] = fetchMatch[3] === "n/a" ? "" : fetchMatch[3];
-      if (fetchMatch[4]?.includes("redirected")) redirected = true;
-      break;
-    }
-    const errMatch = line.match(/HTTP (\d+)/);
-    if (errMatch && httpStatus === 0) {
-      httpStatus = parseInt(errMatch[1]);
-    }
-    if (line.includes("DNS failure")) {
-      headers["error"] = "DNS_FAILURE";
-    }
-    if (line.includes("timed out")) {
-      headers["error"] = "TIMEOUT";
-    }
-  }
-  return { httpStatus, bodyLength, redirected, headers };
 }
 
 export async function testScraper(
@@ -880,21 +862,21 @@ export async function testScraper(
   const location: ScraperLocation = { city, state };
   const oldStop = globalStopSignal;
   globalStopSignal = false;
+  _lastFetchMeta = null;
 
   try {
     const response = await scraper([searchTerm], location);
     globalStopSignal = oldStop;
 
     const results = response.results;
-    const diag = extractFetchDiagnostics(response.log);
-    const firstUrl = results[0]?.sourceUrl || "";
+    const meta = _lastFetchMeta;
     return {
       scraperKey,
-      url: firstUrl,
-      httpStatus: diag.httpStatus || (results.length > 0 ? 200 : 0),
-      bodyLength: diag.bodyLength,
-      redirected: diag.redirected,
-      headers: diag.headers,
+      url: results[0]?.sourceUrl || "",
+      httpStatus: meta?.status || (results.length > 0 ? 200 : 0),
+      bodyLength: meta?.bodyLength || 0,
+      redirected: meta?.redirected || false,
+      headers: meta?.headers || {},
       totalResults: results.length,
       withName: results.filter(r => r.name && r.name.length > 0).length,
       withPhone: results.filter(r => r.phone).length,
@@ -906,13 +888,14 @@ export async function testScraper(
     };
   } catch (err: any) {
     globalStopSignal = oldStop;
+    const meta = _lastFetchMeta;
     return {
       scraperKey,
       url: "",
-      httpStatus: 0,
-      bodyLength: 0,
-      redirected: false,
-      headers: {},
+      httpStatus: meta?.status || 0,
+      bodyLength: meta?.bodyLength || 0,
+      redirected: meta?.redirected || false,
+      headers: meta?.headers || {},
       totalResults: 0,
       withName: 0,
       withPhone: 0,
@@ -1177,7 +1160,7 @@ export async function scrapeSuperpages(
   return { results, log };
 }
 
-export const scrapeMapQuest: ScraperFn = () => blockedScraper("MapQuest", "Degraded — JS-rendered search results, JSON-LD returns site metadata not listings");
+export const scrapeMapQuest: ScraperFn = () => blockedScraper("MapQuest", "Requires JS — search results are JS-rendered, server HTML contains only site metadata");
 
 export async function scrapeHotfrog(
   searchTerms: string[],
