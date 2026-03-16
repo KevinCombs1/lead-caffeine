@@ -42,6 +42,217 @@ interface CrawlCombo {
   location: HiveLocation;
 }
 
+function interleaveByDirectory(combos: CrawlCombo[]): CrawlCombo[] {
+  const buckets = new Map<string, CrawlCombo[]>();
+  for (const c of combos) {
+    const key = c.directory.scraperKey;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(c);
+  }
+  const result: CrawlCombo[] = [];
+  const keys = Array.from(buckets.keys());
+  let exhausted = 0;
+  let idx = 0;
+  while (exhausted < keys.length) {
+    const key = keys[idx % keys.length];
+    const bucket = buckets.get(key)!;
+    if (bucket.length > 0) {
+      result.push(bucket.shift()!);
+      if (bucket.length === 0) exhausted++;
+    }
+    idx++;
+  }
+  return result;
+}
+
+interface DomainSlot {
+  active: number;
+  lastRequestTime: number;
+  queue: Array<{ resolve: () => void }>;
+}
+
+class DomainGate {
+  private slots = new Map<string, DomainSlot>();
+  private maxConcurrent: number;
+  private minGapMs: number;
+
+  constructor(maxConcurrent = 2, minGapMs = 12000) {
+    this.maxConcurrent = maxConcurrent;
+    this.minGapMs = minGapMs;
+  }
+
+  async acquire(scraperKey: string): Promise<void> {
+    if (!this.slots.has(scraperKey)) {
+      this.slots.set(scraperKey, { active: 0, lastRequestTime: 0, queue: [] });
+    }
+    const slot = this.slots.get(scraperKey)!;
+
+    while (slot.active >= this.maxConcurrent) {
+      await new Promise<void>(resolve => {
+        slot.queue.push({ resolve });
+      });
+    }
+
+    slot.active++;
+
+    const now = Date.now();
+    const elapsed = now - slot.lastRequestTime;
+    if (elapsed < this.minGapMs && slot.lastRequestTime > 0) {
+      const wait = this.minGapMs - elapsed;
+      await new Promise<void>(r => setTimeout(r, wait));
+    }
+
+    slot.lastRequestTime = Date.now();
+  }
+
+  release(scraperKey: string): void {
+    const slot = this.slots.get(scraperKey);
+    if (!slot) return;
+    slot.active = Math.max(0, slot.active - 1);
+    if (slot.queue.length > 0) {
+      const next = slot.queue.shift()!;
+      next.resolve();
+    }
+  }
+}
+
+interface DirectoryHealth {
+  consecutiveFailures: number;
+  suspendedUntil: number;
+  totalSuspensions: number;
+}
+
+class DirectoryTracker {
+  private health = new Map<string, DirectoryHealth>();
+  private failThreshold: number;
+  private cooldownMs: number;
+
+  constructor(failThreshold = 5, cooldownMs = 180000) {
+    this.failThreshold = failThreshold;
+    this.cooldownMs = cooldownMs;
+  }
+
+  recordSuccess(scraperKey: string): void {
+    const h = this.getOrCreate(scraperKey);
+    h.consecutiveFailures = 0;
+  }
+
+  recordFailure(scraperKey: string): boolean {
+    const h = this.getOrCreate(scraperKey);
+    h.consecutiveFailures++;
+    if (h.consecutiveFailures >= this.failThreshold) {
+      h.suspendedUntil = Date.now() + this.cooldownMs;
+      h.totalSuspensions++;
+      h.consecutiveFailures = 0;
+      return true;
+    }
+    return false;
+  }
+
+  isSuspended(scraperKey: string): boolean {
+    const h = this.health.get(scraperKey);
+    if (!h) return false;
+    if (h.suspendedUntil === 0) return false;
+    if (Date.now() >= h.suspendedUntil) {
+      h.suspendedUntil = 0;
+      return false;
+    }
+    return true;
+  }
+
+  getSuspendedUntil(scraperKey: string): number {
+    return this.health.get(scraperKey)?.suspendedUntil || 0;
+  }
+
+  getHealth(): Map<string, DirectoryHealth> {
+    return new Map(this.health);
+  }
+
+  private getOrCreate(scraperKey: string): DirectoryHealth {
+    if (!this.health.has(scraperKey)) {
+      this.health.set(scraperKey, { consecutiveFailures: 0, suspendedUntil: 0, totalSuspensions: 0 });
+    }
+    return this.health.get(scraperKey)!;
+  }
+}
+
+interface DirectoryMetrics {
+  combosAttempted: number;
+  combosWithResults: number;
+  combosSkippedSuspended: number;
+  flowers: number;
+  pollen: number;
+  errors: number;
+  errorsByType: Map<string, number>;
+  suspensions: number;
+}
+
+class MetricsCollector {
+  private metrics = new Map<string, DirectoryMetrics>();
+
+  private getOrCreate(scraperKey: string): DirectoryMetrics {
+    if (!this.metrics.has(scraperKey)) {
+      this.metrics.set(scraperKey, {
+        combosAttempted: 0,
+        combosWithResults: 0,
+        combosSkippedSuspended: 0,
+        flowers: 0,
+        pollen: 0,
+        errors: 0,
+        errorsByType: new Map(),
+        suspensions: 0,
+      });
+    }
+    return this.metrics.get(scraperKey)!;
+  }
+
+  recordComboAttempt(scraperKey: string): void {
+    this.getOrCreate(scraperKey).combosAttempted++;
+  }
+
+  recordComboResults(scraperKey: string, flowers: number, pollen: number): void {
+    const m = this.getOrCreate(scraperKey);
+    if (flowers > 0 || pollen > 0) m.combosWithResults++;
+    m.flowers += flowers;
+    m.pollen += pollen;
+  }
+
+  recordError(scraperKey: string, errorType: string): void {
+    const m = this.getOrCreate(scraperKey);
+    m.errors++;
+    m.errorsByType.set(errorType, (m.errorsByType.get(errorType) || 0) + 1);
+  }
+
+  recordSuspension(scraperKey: string): void {
+    this.getOrCreate(scraperKey).suspensions++;
+  }
+
+  recordSkippedSuspended(scraperKey: string): void {
+    this.getOrCreate(scraperKey).combosSkippedSuspended++;
+  }
+
+  getSummaryLines(): string[] {
+    const lines: string[] = [];
+    lines.push("=== per-directory crawl metrics ===");
+    const sorted = Array.from(this.metrics.entries()).sort((a, b) => b[1].flowers - a[1].flowers);
+    for (const [key, m] of sorted) {
+      const hitRate = m.combosAttempted > 0 ? Math.round((m.combosWithResults / m.combosAttempted) * 100) : 0;
+      lines.push(`  ${key}: ${m.combosAttempted} combos (${hitRate}% hit), ${m.flowers}f/${m.pollen}p, ${m.errors} errors, ${m.suspensions} suspensions, ${m.combosSkippedSuspended} skipped`);
+      if (m.errorsByType.size > 0) {
+        const errParts: string[] = [];
+        for (const [type, count] of m.errorsByType) {
+          errParts.push(`${type}:${count}`);
+        }
+        lines.push(`    errors: ${errParts.join(", ")}`);
+      }
+    }
+    lines.push("=== end metrics ===");
+    return lines;
+  }
+}
+
+const COMBO_TIMEOUT_MS = 300000;
+
 export class RayOfGraceEngine {
   private jobId: string = "";
   private stopped = false;
@@ -55,6 +266,9 @@ export class RayOfGraceEngine {
   private logBuffer: string[] = [];
   private logFlushLock = false;
   private static readonly MAX_LOG_BUFFER = 500;
+  private domainGate = new DomainGate(2, 12000);
+  private dirTracker = new DirectoryTracker(5, 180000);
+  private metrics = new MetricsCollector();
 
   isStopped(): boolean {
     return this.stopped;
@@ -92,9 +306,11 @@ export class RayOfGraceEngine {
       this.log(`[engine] Filtered out ${incompatibleSkipped} incompatible directory+location combos`);
     }
 
+    const interleaved = interleaveByDirectory(allCombos);
+
     this.combos = [];
     let skippedCount = 0;
-    for (const combo of allCombos) {
+    for (const combo of interleaved) {
       const done = await storage.isComboCompleted(combo.directory.id, combo.category.id, combo.location.id);
       if (done) {
         skippedCount++;
@@ -123,11 +339,16 @@ export class RayOfGraceEngine {
     this.totalFlowers = 0;
     this.totalPollen = 0;
     this.completedCombos = 0;
+    this.domainGate = new DomainGate(2, 12000);
+    this.dirTracker = new DirectoryTracker(5, 180000);
+    this.metrics = new MetricsCollector();
     activeEngine = this;
 
     const limitMsg = this.maxResults ? ` (limit: ${this.maxResults} flowers)` : " (unlimited)";
     const skipMsg = skippedCount > 0 ? `, skipping ${skippedCount} already-scanned` : "";
     this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${allCombos.length} combos${skipMsg}, ${this.combos.length} remaining${limitMsg}`);
+    this.log(`[engine] Combo queue interleaved across ${directories.length} directories (round-robin)`);
+    this.log(`[engine] Per-domain gate: max 2 concurrent, 12s min gap | Suspension: 5 consecutive failures → 3min cooldown`);
     await this.flushLogs();
 
     if (this.combos.length === 0) {
@@ -194,6 +415,11 @@ export class RayOfGraceEngine {
 
     await Promise.all(workers);
 
+    const summaryLines = this.metrics.getSummaryLines();
+    for (const line of summaryLines) {
+      this.log(line);
+    }
+
     const finalStatus = this.stopped ? "stopped" : "completed";
     await storage.updateHiveCrawlJob(this.jobId, {
       status: finalStatus,
@@ -221,20 +447,83 @@ export class RayOfGraceEngine {
       const combo = this.getNextCombo();
       if (!combo) break;
 
+      const scraperKey = combo.directory.scraperKey;
+
+      if (this.dirTracker.isSuspended(scraperKey)) {
+        const resumeAt = this.dirTracker.getSuspendedUntil(scraperKey);
+        const secsLeft = Math.ceil((resumeAt - Date.now()) / 1000);
+        this.log(`[W${workerId}] ${combo.directory.name} suspended (${secsLeft}s remaining), skipping ${combo.location.city},${combo.location.state}`);
+        this.metrics.recordSkippedSuspended(scraperKey);
+        this.completedCombos++;
+        continue;
+      }
+
+      await this.domainGate.acquire(scraperKey);
+
       let comboFlowers = 0;
       let comboPollen = 0;
+      const cancelFlag = { cancelled: false };
       try {
-        const before = { f: this.totalFlowers, p: this.totalPollen };
-        await this.processCombo(combo, workerId);
-        comboFlowers = this.totalFlowers - before.f;
-        comboPollen = this.totalPollen - before.p;
-        if (!this.stopped) {
-          await storage.markComboCompleted(combo.directory.id, combo.category.id, combo.location.id, comboFlowers, comboPollen);
+        this.metrics.recordComboAttempt(scraperKey);
+
+        const comboPromise = this.processCombo(combo, workerId, cancelFlag);
+        const timeoutPromise = new Promise<"timeout">((resolve) =>
+          setTimeout(() => resolve("timeout"), COMBO_TIMEOUT_MS)
+        );
+
+        const raceResult = await Promise.race([comboPromise.then((r) => ({ tag: "done" as const, result: r })), timeoutPromise]);
+
+        if (raceResult === "timeout") {
+          cancelFlag.cancelled = true;
+          this.log(`[W${workerId}] Combo timeout (${COMBO_TIMEOUT_MS / 1000}s): ${combo.directory.name}/${combo.category.name}/${combo.location.city}`);
+          this.metrics.recordError(scraperKey, "timeout");
+          const suspended = this.dirTracker.recordFailure(scraperKey);
+          if (suspended) {
+            this.log(`[W${workerId}] *** ${combo.directory.name} SUSPENDED for 3min after consecutive timeouts ***`);
+            this.metrics.recordSuspension(scraperKey);
+          }
+        } else {
+          const outcome = raceResult.result;
+          comboFlowers = outcome.flowers;
+          comboPollen = outcome.pollen;
+
+          this.metrics.recordComboResults(scraperKey, comboFlowers, comboPollen);
+
+          if (outcome.hadResults) {
+            this.dirTracker.recordSuccess(scraperKey);
+          }
+          if (outcome.hadErrors) {
+            this.metrics.recordError(scraperKey, outcome.errorType || "scraper-error");
+            if (!outcome.hadResults) {
+              const suspended = this.dirTracker.recordFailure(scraperKey);
+              if (suspended) {
+                this.log(`[W${workerId}] *** ${combo.directory.name} SUSPENDED for 3min after 5 consecutive failures ***`);
+                this.metrics.recordSuspension(scraperKey);
+              }
+            } else {
+              this.dirTracker.recordSuccess(scraperKey);
+            }
+          }
+
+          if (!this.stopped) {
+            await storage.markComboCompleted(combo.directory.id, combo.category.id, combo.location.id, comboFlowers, comboPollen);
+          }
         }
       } catch (err: any) {
         if (!this.stopped) {
-          this.log(`[W${workerId}] Error: ${combo.directory.name}/${combo.category.name}/${combo.location.city} — ${err.message}`);
+          const errType = this.classifyError(err);
+          this.metrics.recordError(scraperKey, errType);
+
+          const suspended = this.dirTracker.recordFailure(scraperKey);
+          if (suspended) {
+            this.log(`[W${workerId}] *** ${combo.directory.name} SUSPENDED for 3min after 5 consecutive failures ***`);
+            this.metrics.recordSuspension(scraperKey);
+          }
+
+          this.log(`[W${workerId}] Error: ${combo.directory.name}/${combo.category.name}/${combo.location.city} — [${errType}] ${err.message}`);
         }
+      } finally {
+        this.domainGate.release(scraperKey);
       }
 
       this.completedCombos++;
@@ -257,7 +546,28 @@ export class RayOfGraceEngine {
           }
         } catch {}
       }
+
+      if (this.completedCombos % 200 === 0) {
+        const periodicLines = this.metrics.getSummaryLines();
+        for (const line of periodicLines) {
+          this.log(line);
+        }
+        await this.flushLogs();
+      }
     }
+  }
+
+  private classifyError(err: any): string {
+    const msg = (err?.message || "").toLowerCase();
+    if (msg.includes("403") || msg.includes("access blocked")) return "blocked-403";
+    if (msg.includes("429")) return "rate-limited-429";
+    if (msg.includes("timeout") || msg.includes("abort")) return "timeout";
+    if (msg.includes("empty response")) return "empty";
+    if (msg.includes("minimal response") || msg.includes("captcha")) return "captcha";
+    if (msg.includes("dns") || msg.includes("enotfound")) return "dns";
+    if (msg.includes("econnrefused") || msg.includes("econnreset")) return "network";
+    if (msg.includes("tls") || msg.includes("ssl") || msg.includes("certificate")) return "tls";
+    return "other";
   }
 
   private getNextCombo(): CrawlCombo | null {
@@ -265,13 +575,13 @@ export class RayOfGraceEngine {
     return this.combos[this.comboIndex++];
   }
 
-  private async processCombo(combo: CrawlCombo, workerId: number): Promise<void> {
+  private async processCombo(combo: CrawlCombo, workerId: number, cancelFlag: { cancelled: boolean }): Promise<{ hadResults: boolean; hadErrors: boolean; errorType?: string; flowers: number; pollen: number }> {
     const { directory, category, location } = combo;
     const scraperFn = SCRAPERS[directory.scraperKey];
 
     if (!scraperFn) {
       this.log(`[W${workerId}] No scraper for ${directory.scraperKey}, skipping`);
-      return;
+      return { hadResults: false, hadErrors: false, flowers: 0, pollen: 0 };
     }
 
     const searchTerms = (category.searchAliases && Array.isArray(category.searchAliases) && category.searchAliases.length > 0)
@@ -279,9 +589,14 @@ export class RayOfGraceEngine {
       : [category.name];
 
     const loc: ScraperLocation = { city: location.city, state: location.state };
+    let hadResults = false;
+    let hadErrors = false;
+    let lastErrorType = "";
+    let localFlowers = 0;
+    let localPollen = 0;
 
     for (let ai = 0; ai < searchTerms.length; ai++) {
-      if (this.stopped) break;
+      if (this.stopped || cancelFlag.cancelled) break;
 
       const alias = searchTerms[ai];
 
@@ -289,10 +604,14 @@ export class RayOfGraceEngine {
       try {
         output = await scraperFn([alias], loc);
       } catch (scraperErr: any) {
+        if (cancelFlag.cancelled) break;
         this.log(`[W${workerId}] ${directory.name}: Scraper threw on "${alias}": ${scraperErr.message || scraperErr}`);
+        hadErrors = true;
+        lastErrorType = this.classifyError(scraperErr);
         continue;
       }
 
+      if (cancelFlag.cancelled) break;
       if (!output || !output.results) continue;
 
       if (output.log && output.log.length > 0) {
@@ -313,6 +632,8 @@ export class RayOfGraceEngine {
         this.log(`[W${workerId}] ${directory.name}: Classification error on "${alias}": ${classifyErr.message || classifyErr}`);
         continue;
       }
+
+      if (cancelFlag.cancelled) break;
 
       const { flowers, pollen } = classified;
 
@@ -349,11 +670,16 @@ export class RayOfGraceEngine {
 
       this.totalFlowers += insertedFlowers;
       this.totalPollen += insertedPollen;
+      localFlowers += insertedFlowers;
+      localPollen += insertedPollen;
 
       if (insertedFlowers > 0 || insertedPollen > 0) {
+        hadResults = true;
         this.log(`[W${workerId}] ${directory.name}/${category.name}/${location.city} [${ai + 1}/${searchTerms.length}]: +${insertedFlowers} flowers, +${insertedPollen} pollen`);
       }
     }
+
+    return { hadResults, hadErrors, errorType: lastErrorType || undefined, flowers: localFlowers, pollen: localPollen };
   }
 
   private log(message: string): void {
