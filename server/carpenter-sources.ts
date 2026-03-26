@@ -1,5 +1,5 @@
 import { storage } from "./storage";
-import { proxyFetch, getProxyCount } from "./carpenter-proxy";
+import { proxyFetch, getProxyCount, type ProxyLane } from "./carpenter-proxy";
 
 export interface SourceResult {
   source: string;
@@ -185,7 +185,7 @@ export async function sourceTwilioLineType(phone: string, proxyIndex?: number): 
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=line_type_intelligence`;
     const resp = await withTimeout(proxyFetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    }, proxyIndex), SOURCE_TIMEOUT_MS, "twilio_line_type");
+    }, proxyIndex, "twilio"), SOURCE_TIMEOUT_MS, "twilio_line_type");
     if (!resp.ok) return { source: "twilio_line_type", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const lti = data.line_type_intelligence;
@@ -285,7 +285,7 @@ export async function sourceIpqsLineType(phone: string, proxyIndex?: number): Pr
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `1${normalized}` : phone.replace(/\D/g, "");
-    const resp = await withTimeout(proxyFetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}`, {}, proxyIndex), SOURCE_TIMEOUT_MS, "ipqs_line_type");
+    const resp = await withTimeout(proxyFetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}`, {}, proxyIndex, "ipqs"), SOURCE_TIMEOUT_MS, "ipqs_line_type");
     const data = await resp.json();
 
     let lineType: SourceResult["lineType"] = "unknown";
@@ -318,7 +318,7 @@ export async function sourceIpqsActive(phone: string, proxyIndex?: number): Prom
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `1${normalized}` : phone.replace(/\D/g, "");
-    const resp = await withTimeout(proxyFetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}?strictness=1`, {}, proxyIndex), SOURCE_TIMEOUT_MS, "ipqs_active");
+    const resp = await withTimeout(proxyFetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}?strictness=1`, {}, proxyIndex, "ipqs"), SOURCE_TIMEOUT_MS, "ipqs_active");
     const data = await resp.json();
 
     return {
@@ -386,7 +386,7 @@ export async function sourceTwilioCnam(phone: string, proxyIndex?: number): Prom
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=caller_name`;
     const resp = await withTimeout(proxyFetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    }, proxyIndex), SOURCE_TIMEOUT_MS, "twilio_cnam");
+    }, proxyIndex, "twilio"), SOURCE_TIMEOUT_MS, "twilio_cnam");
     if (!resp.ok) return { source: "twilio_cnam", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
 
@@ -417,7 +417,7 @@ export async function sourceTwilioSimSwap(phone: string, proxyIndex?: number): P
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=sim_swap`;
     const resp = await withTimeout(proxyFetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    }, proxyIndex), SOURCE_TIMEOUT_MS, "twilio_sim_swap");
+    }, proxyIndex, "twilio"), SOURCE_TIMEOUT_MS, "twilio_sim_swap");
     if (!resp.ok) return { source: "twilio_sim_swap", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const simSwap = data.sim_swap;
@@ -453,7 +453,7 @@ export async function sourceTwilioLiveActivity(phone: string, proxyIndex?: numbe
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=live_activity`;
     const resp = await withTimeout(proxyFetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    }, proxyIndex), SOURCE_TIMEOUT_MS, "twilio_live_activity");
+    }, proxyIndex, "twilio"), SOURCE_TIMEOUT_MS, "twilio_live_activity");
     if (!resp.ok) return { source: "twilio_live_activity", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const la = data.live_activity;

@@ -52,13 +52,52 @@ class ProxySemaphore {
   }
   getActive(): number { return this.active; }
   getQueued(): number { return this.queue.length; }
+  getCap(): number { return this.max; }
 }
 
-const PROXY_CONCURRENCY_CAP = Math.max(1, Math.min(399, parseInt(process.env.CARPENTER_PROXY_CONCURRENCY_CAP || "50", 10) || 50));
-const proxySemaphore = new ProxySemaphore(PROXY_CONCURRENCY_CAP);
+export type ProxyLane = "twilio" | "ipqs" | "general";
 
-export function getProxyConcurrencyStats(): { active: number; queued: number; cap: number } {
-  return { active: proxySemaphore.getActive(), queued: proxySemaphore.getQueued(), cap: PROXY_CONCURRENCY_CAP };
+interface LaneConfig {
+  name: ProxyLane;
+  envVar: string;
+  defaultSlots: number;
+}
+
+const LANE_CONFIGS: LaneConfig[] = [
+  { name: "twilio", envVar: "CARPENTER_LANE_TWILIO", defaultSlots: 10 },
+  { name: "ipqs", envVar: "CARPENTER_LANE_IPQS", defaultSlots: 15 },
+  { name: "general", envVar: "CARPENTER_LANE_GENERAL", defaultSlots: 25 },
+];
+
+function parseLaneSlots(envVar: string, defaultSlots: number): number {
+  const raw = process.env[envVar];
+  if (!raw) return defaultSlots;
+  const parsed = parseInt(raw, 10);
+  if (isNaN(parsed) || parsed < 1) return defaultSlots;
+  return Math.min(parsed, 399);
+}
+
+const lanes = new Map<ProxyLane, ProxySemaphore>();
+for (const cfg of LANE_CONFIGS) {
+  lanes.set(cfg.name, new ProxySemaphore(parseLaneSlots(cfg.envVar, cfg.defaultSlots)));
+}
+
+function getLaneSemaphore(lane: ProxyLane): ProxySemaphore {
+  return lanes.get(lane) || lanes.get("general")!;
+}
+
+export interface LaneStats {
+  active: number;
+  queued: number;
+  cap: number;
+}
+
+export function getProxyConcurrencyStats(): Record<ProxyLane, LaneStats> {
+  const stats = {} as Record<ProxyLane, LaneStats>;
+  for (const [name, sem] of lanes) {
+    stats[name] = { active: sem.getActive(), queued: sem.getQueued(), cap: sem.getCap() };
+  }
+  return stats;
 }
 
 function rawProxyFetch(
@@ -144,6 +183,7 @@ export async function proxyFetch(
   url: string,
   init: RequestInit = {},
   proxyIndex?: number,
+  lane: ProxyLane = "general",
 ): Promise<Response> {
   const proxies = getProxies();
   if (proxies.length === 0 || proxyIndex === undefined) {
@@ -152,8 +192,9 @@ export async function proxyFetch(
 
   const idx = proxyIndex % proxies.length;
   const proxyUrl = proxies[idx];
+  const semaphore = getLaneSemaphore(lane);
 
-  await proxySemaphore.acquire();
+  await semaphore.acquire();
   try {
     return await rawProxyFetch(url, init, proxyUrl);
   } catch (err: any) {
@@ -167,6 +208,6 @@ export async function proxyFetch(
     }
     throw err;
   } finally {
-    proxySemaphore.release();
+    semaphore.release();
   }
 }
