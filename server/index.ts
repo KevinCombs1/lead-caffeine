@@ -120,8 +120,14 @@ app.use((req, res, next) => {
       host: "0.0.0.0",
       reusePort: true,
     },
-    () => {
+    async () => {
       log(`serving on port ${port}`);
+      try {
+        const { cleanupOrphanedRunningJobs } = await import("./carpenter-engine");
+        await cleanupOrphanedRunningJobs();
+      } catch (err: any) {
+        log(`carpenter orphan cleanup error: ${err.message}`);
+      }
     },
   );
 })();

@@ -3159,6 +3159,13 @@ export async function registerRoutes(
       const engine = getJobEngine(req.params.id);
       if (engine && engine.isRunning()) {
         engine.stop();
+        const counts = engine.getCounts();
+        await storage.updateCarpenterJob(req.params.id, {
+          status: "stopped",
+          completed: counts.completed,
+          failed: counts.failed,
+          completedAt: new Date(),
+        });
         res.json({ stopped: true });
       } else {
         res.status(404).json({ error: "No active job with that ID" });

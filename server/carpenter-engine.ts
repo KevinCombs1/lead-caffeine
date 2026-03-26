@@ -80,6 +80,27 @@ export function getJobEngine(jobId: string): CarpenterAntEngine | undefined {
   return activeJobs.get(jobId);
 }
 
+export async function cleanupOrphanedRunningJobs(): Promise<number> {
+  try {
+    const jobs = await storage.getCarpenterJobs();
+    const orphaned = jobs.filter(j => j.status === "running" && !activeJobs.has(j.id));
+    for (const job of orphaned) {
+      await storage.updateCarpenterJob(job.id, {
+        status: "stopped",
+        completedAt: new Date(),
+      });
+      console.log(`[carpenter] cleaned up orphaned running job ${job.id}`);
+    }
+    if (orphaned.length > 0) {
+      console.log(`[carpenter] cleaned up ${orphaned.length} orphaned running job(s) on startup`);
+    }
+    return orphaned.length;
+  } catch (err: any) {
+    console.error(`[carpenter] orphan job cleanup failed: ${err.message}`);
+    return 0;
+  }
+}
+
 function normalizeUSPhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 11 && digits.startsWith("1")) return digits.slice(1);
@@ -486,6 +507,10 @@ export class CarpenterAntEngine {
     this.stopped = true;
   }
 
+  getCounts(): { completed: number; failed: number } {
+    return { completed: this.completedCount, failed: this.failedCount };
+  }
+
   private async cleanupOrphanedResults() {
     try {
       const orphanStatuses = ["pending", "processing"];
@@ -666,6 +691,12 @@ export class CarpenterAntEngine {
     }
 
     await Promise.all(workers);
+
+    const job = await storage.getCarpenterJob(this.jobId);
+    if (!job || job.status === "stopped") {
+      this.emitProgress();
+      return;
+    }
 
     const finalStatus = this.stopped ? "stopped" : "completed";
     await storage.updateCarpenterJob(this.jobId, {
