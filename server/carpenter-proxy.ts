@@ -54,7 +54,7 @@ class ProxySemaphore {
   getQueued(): number { return this.queue.length; }
 }
 
-const PROXY_CONCURRENCY_CAP = 50;
+const PROXY_CONCURRENCY_CAP = Math.max(1, Math.min(399, parseInt(process.env.CARPENTER_PROXY_CONCURRENCY_CAP || "50", 10) || 50));
 const proxySemaphore = new ProxySemaphore(PROXY_CONCURRENCY_CAP);
 
 export function getProxyConcurrencyStats(): { active: number; queued: number; cap: number } {
