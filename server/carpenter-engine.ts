@@ -485,15 +485,6 @@ export class CarpenterAntEngine {
           allStepResults.push(parseResult);
           allSources.push(...parseResult.sources);
 
-          this.antProgress.set(resultId, {
-            resultId, phoneRaw: phone, currentStep: 1, totalSteps: 10, status: "processing",
-          });
-          await resilientDbUpdate(resultId, {
-            currentStep: 1,
-            stepResults: JSON.parse(JSON.stringify(allStepResults)),
-          });
-          this.emitProgress();
-
           if (this.stopped) break;
           const lineTypeResults = await Promise.all(
             LINE_TYPE_BATCH.map(runner => runner(phone, proxyIndex))
