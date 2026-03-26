@@ -129,14 +129,15 @@ function checkEarlyExit(allSources: SourceResult[]): boolean {
   const lineVerdict = computeLineTypeVerdict(allSources);
   if (lineVerdict.confidence < EARLY_EXIT_THRESHOLD) return false;
 
-  let activeSignalCount = 0;
   let activeDefinedCount = 0;
   for (const s of allSources) {
     if (!s.available || !ACTIVE_SIGNAL_SOURCES.has(s.source)) continue;
-    activeSignalCount++;
     if (s.isActive !== undefined) activeDefinedCount++;
   }
-  return activeDefinedCount >= 2;
+  if (activeDefinedCount < 2) return false;
+
+  const activeVerdict = computeActiveVerdict(allSources);
+  return activeVerdict.confidence >= EARLY_EXIT_THRESHOLD;
 }
 
 async function runStep1Parse(phone: string, _proxyIndex?: number): Promise<StepResult> {
