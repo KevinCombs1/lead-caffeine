@@ -41,7 +41,11 @@ export interface JobProgress {
 
 const activeJobs = new Map<string, CarpenterAntEngine>();
 
-export type GlobalProgressCallback = (progress: JobProgress) => void;
+interface GlobalSnapshot {
+  running: boolean;
+  activeJobs: JobProgress[];
+}
+export type GlobalProgressCallback = (snapshot: GlobalSnapshot) => void;
 const globalProgressListeners = new Set<GlobalProgressCallback>();
 
 export function onGlobalProgress(cb: GlobalProgressCallback): () => void {
@@ -49,9 +53,16 @@ export function onGlobalProgress(cb: GlobalProgressCallback): () => void {
   return () => globalProgressListeners.delete(cb);
 }
 
-function emitGlobalProgress(progress: JobProgress) {
+function emitGlobalSnapshot() {
+  const jobs = Array.from(activeJobs.values())
+    .filter(e => e.isRunning())
+    .map(e => e.getProgress());
+  const snapshot: GlobalSnapshot = {
+    running: jobs.length > 0,
+    activeJobs: jobs,
+  };
   for (const cb of globalProgressListeners) {
-    try { cb(progress); } catch {}
+    try { cb(snapshot); } catch {}
   }
 }
 
@@ -314,7 +325,7 @@ export class CarpenterAntEngine {
     for (const cb of this.progressCallbacks) {
       try { cb(progress); } catch {}
     }
-    emitGlobalProgress(progress);
+    emitGlobalSnapshot();
   }
 
   private cleanup() {
@@ -383,8 +394,9 @@ export class CarpenterAntEngine {
         });
       } catch {}
     } finally {
-      this.emitProgress();
+      this.stopped = true;
       activeJobs.delete(this.jobId);
+      emitGlobalSnapshot();
       this.cleanup();
     }
   }

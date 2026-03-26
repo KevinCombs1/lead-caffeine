@@ -11,7 +11,8 @@ function getProxies(): string[] {
   parsedProxies = raw
     .split(",")
     .map(p => p.trim())
-    .filter(p => p.length > 0);
+    .filter(p => p.length > 0)
+    .slice(0, 399);
   return parsedProxies;
 }
 

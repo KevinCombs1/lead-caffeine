@@ -3221,9 +3221,9 @@ export async function registerRoutes(
       return;
     }
 
-    const unsub = onGlobalProgress((progress) => {
+    const unsub = onGlobalProgress((snapshot) => {
       try {
-        res.write(`data: ${JSON.stringify({ running: true, ...progress })}\n\n`);
+        res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
       } catch {}
     });
 

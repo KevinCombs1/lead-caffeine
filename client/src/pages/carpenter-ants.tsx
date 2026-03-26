@@ -246,32 +246,13 @@ export default function CarpenterAntsPage() {
     es.onmessage = (event) => {
       try {
         const data: ProgressData = JSON.parse(event.data);
-        if (data.activeJobs) {
-          setActiveJobsProgress(data.activeJobs);
-          setAnyRunning(data.running);
-        } else if (data.jobId) {
-          setActiveJobsProgress(prev => {
-            const idx = prev.findIndex(p => p.jobId === data.jobId);
-            const entry: SingleJobProgress = {
-              jobId: data.jobId!,
-              total: data.total || 0,
-              completed: data.completed || 0,
-              failed: data.failed || 0,
-              currentAnts: data.currentAnts || 0,
-              results: data.results || [],
-            };
-            if (idx >= 0) {
-              const next = [...prev];
-              next[idx] = entry;
-              return next;
-            }
-            return [...prev, entry];
-          });
+        if (data.activeJobs !== undefined) {
+          setActiveJobsProgress(data.activeJobs || []);
           setAnyRunning(data.running);
         } else {
+          setAnyRunning(data.running);
           if (!data.running) {
             setActiveJobsProgress([]);
-            setAnyRunning(false);
           }
         }
       } catch {}
