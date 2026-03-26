@@ -3221,6 +3221,12 @@ export async function registerRoutes(
       return;
     }
 
+    const { getActiveJobs: getAll } = await import("./carpenter-engine");
+    const initialJobs = Array.from(getAll().values())
+      .filter(e => e.isRunning())
+      .map(e => e.getProgress());
+    res.write(`data: ${JSON.stringify({ running: initialJobs.length > 0, activeJobs: initialJobs })}\n\n`);
+
     const unsub = onGlobalProgress((snapshot) => {
       try {
         res.write(`data: ${JSON.stringify(snapshot)}\n\n`);

@@ -24,11 +24,17 @@ export function reloadProxies(): void {
   parsedProxies = null;
 }
 
-function createAgent(proxyUrl: string): http.Agent {
-  if (proxyUrl.startsWith("socks")) {
-    return new SocksProxyAgent(proxyUrl);
+const agentCache = new Map<string, http.Agent>();
+
+function getOrCreateAgent(proxyUrl: string): http.Agent {
+  let agent = agentCache.get(proxyUrl);
+  if (!agent) {
+    agent = proxyUrl.startsWith("socks")
+      ? new SocksProxyAgent(proxyUrl)
+      : new HttpsProxyAgent(proxyUrl);
+    agentCache.set(proxyUrl, agent);
   }
-  return new HttpsProxyAgent(proxyUrl);
+  return agent;
 }
 
 export async function proxyFetch(
@@ -43,7 +49,7 @@ export async function proxyFetch(
 
   const idx = proxyIndex % proxies.length;
   const proxyUrl = proxies[idx];
-  const agent = createAgent(proxyUrl);
+  const agent = getOrCreateAgent(proxyUrl);
 
   const parsedUrl = new URL(url);
   const isHttps = parsedUrl.protocol === "https:";
