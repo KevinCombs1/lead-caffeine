@@ -77,18 +77,18 @@ The application uses a dark mode default with a cyan "command center" aesthetic 
 Phone number intelligence pipeline — a standalone tab for classifying phone numbers as Cell/Landline/VoIP and Active/Inactive.
 
 ### Architecture
-- **66 concurrent worker ants** via Promise pool
+- **399 concurrent worker ants** via Promise pool
 - **10-step verification pipeline** per number: PARSE → 4× line-type rounds → 4× active rounds → IPQS deep
 - **16 independent verification sources**: libphonenumber (offline), FCC blocks (offline), NPANXX (offline), Twilio Lookup (4 calls: line_type, CNAM, SIM swap, live_activity), NumVerify, AbstractAPI, IPQualityScore (×2: line type + active), Veriphone, Brave Web Search, HubSpot CRM, phone-auth.ts heuristics, DB frequency scan
 - **Graceful degradation**: Every source independently try/caught; missing API key → `{ available: false }`. Deterministic weighted-average verdict when sources are unavailable
-- **CSV upload**: Up to 100 phone numbers per job, paste or file upload
+- **CSV upload**: Up to 50,000 phone numbers per job, paste or file upload
 
 ### DB Tables
 - `carpenter_ant_jobs`: id, status, total_numbers, completed, failed, source_filename, created_at, completed_at
 - `carpenter_ant_results`: id, job_id, phone_raw, phone_normalized, country_code, carrier, step_results (JSONB), line_type_verdict, line_type_confidence, active_verdict, active_confidence, overall_status, current_step, error_message, created_at
 
 ### Key Files
-- `server/carpenter-engine.ts`: 66-ant pool, 10-step pipeline, progress SSE streaming
+- `server/carpenter-engine.ts`: 399-ant pool, 10-step pipeline, progress SSE streaming
 - `server/carpenter-sources.ts`: All 16 source functions + availability checker
 - `server/data/fcc-blocks.json`: FCC wireless prefix allocation data
 - `server/data/npanxx.json`: Area code → state mapping + wireless-only NPA indicators

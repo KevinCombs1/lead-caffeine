@@ -10,7 +10,7 @@ import {
   type SourceResult,
 } from "./carpenter-sources";
 
-const ANT_COUNT = 66;
+const ANT_COUNT = 399;
 
 interface StepResult {
   step: number;
@@ -310,7 +310,7 @@ export class CarpenterAntEngine {
 
   async start(phones: string[], sourceFilename?: string): Promise<string> {
     if (phones.length === 0) throw new Error("No phone numbers provided");
-    if (phones.length > 100) throw new Error("Maximum 100 phone numbers per job");
+    if (phones.length > 50000) throw new Error("Maximum 50,000 phone numbers per job");
 
     const job = await storage.createCarpenterJob({
       status: "running",

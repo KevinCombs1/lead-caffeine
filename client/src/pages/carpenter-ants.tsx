@@ -218,7 +218,7 @@ export default function CarpenterAntsPage() {
         .filter(p => p.length > 0);
 
       if (phones.length === 0) throw new Error("No phone numbers found");
-      if (phones.length > 100) throw new Error("Maximum 100 phone numbers");
+      if (phones.length > 50000) throw new Error("Maximum 50,000 phone numbers");
 
       const resp = await apiRequest("POST", "/api/carpenter/jobs", { phones });
       return resp.json();
@@ -334,7 +334,7 @@ export default function CarpenterAntsPage() {
         <div className="flex items-center gap-2 mb-2">
           <Upload className="w-4 h-4 text-amber-400" />
           <span className="text-sm font-semibold text-white">Upload Phone Numbers</span>
-          <span className="text-[10px] text-gray-500">(max 100, CSV/paste)</span>
+          <span className="text-[10px] text-gray-500">(max 50,000, CSV/paste)</span>
         </div>
 
         <div className="flex gap-3">
@@ -349,7 +349,7 @@ export default function CarpenterAntsPage() {
             <div className="flex items-center justify-between mt-1">
               <span className="text-[10px] text-gray-500">
                 {phoneCount > 0 ? `${phoneCount} number${phoneCount !== 1 ? "s" : ""} detected` : "No numbers entered"}
-                {phoneCount > 100 && <span className="text-red-400 ml-2">exceeds 100 limit</span>}
+                {phoneCount > 50000 && <span className="text-red-400 ml-2">exceeds 50,000 limit</span>}
               </span>
               <div className="flex items-center gap-2">
                 <input
@@ -370,7 +370,7 @@ export default function CarpenterAntsPage() {
                 </button>
                 <button
                   onClick={() => startJob.mutate()}
-                  disabled={phoneCount === 0 || phoneCount > 100 || startJob.isPending || !!activeJob}
+                  disabled={phoneCount === 0 || phoneCount > 50000 || startJob.isPending || !!activeJob}
                   className="text-[10px] font-semibold text-black bg-amber-400 hover:bg-amber-300 disabled:bg-gray-700 disabled:text-gray-500 rounded px-3 py-1 flex items-center gap-1 transition-colors"
                   data-testid="button-start-job"
                 >

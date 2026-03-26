@@ -3103,7 +3103,7 @@ export async function registerRoutes(
       }
 
       const carpenterJobSchema = z.object({
-        phones: z.array(z.string().min(1)).min(1, "At least one phone number required").max(100, "Maximum 100 phone numbers per job"),
+        phones: z.array(z.string().min(1)).min(1, "At least one phone number required").max(50000, "Maximum 50,000 phone numbers per job"),
         filename: z.string().optional(),
       });
       const parsed = carpenterJobSchema.safeParse(req.body);
