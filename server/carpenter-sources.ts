@@ -1,5 +1,5 @@
 import { storage } from "./storage";
-import { proxyFetch, getProxyCount, type ProxyLane } from "./carpenter-proxy";
+import { proxyFetch, getProxyCount, getLaneForSource } from "./carpenter-proxy";
 
 export interface SourceResult {
   source: string;
@@ -185,7 +185,7 @@ export async function sourceTwilioLineType(phone: string, proxyIndex?: number): 
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=line_type_intelligence`;
     const resp = await withTimeout(proxyFetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    }, proxyIndex, "twilio"), SOURCE_TIMEOUT_MS, "twilio_line_type");
+    }, proxyIndex, getLaneForSource("twilio_line_type")), SOURCE_TIMEOUT_MS, "twilio_line_type");
     if (!resp.ok) return { source: "twilio_line_type", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const lti = data.line_type_intelligence;
@@ -221,7 +221,7 @@ export async function sourceNumVerify(phone: string, proxyIndex?: number): Promi
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `1${normalized}` : phone.replace(/\D/g, "");
-    const resp = await withTimeout(proxyFetch(`https://apilayer.net/api/validate?access_key=${key}&number=${number}&country_code=US&format=1`, {}, proxyIndex), SOURCE_TIMEOUT_MS, "numverify");
+    const resp = await withTimeout(proxyFetch(`https://apilayer.net/api/validate?access_key=${key}&number=${number}&country_code=US&format=1`, {}, proxyIndex, getLaneForSource("numverify")), SOURCE_TIMEOUT_MS, "numverify");
     const data = await resp.json();
 
     let lineType: SourceResult["lineType"] = "unknown";
@@ -253,7 +253,7 @@ export async function sourceAbstractAPI(phone: string, proxyIndex?: number): Pro
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `1${normalized}` : phone.replace(/\D/g, "");
-    const resp = await withTimeout(proxyFetch(`https://phonevalidation.abstractapi.com/v1/?api_key=${key}&phone=${number}`, {}, proxyIndex), SOURCE_TIMEOUT_MS, "abstractapi");
+    const resp = await withTimeout(proxyFetch(`https://phonevalidation.abstractapi.com/v1/?api_key=${key}&phone=${number}`, {}, proxyIndex, getLaneForSource("abstractapi")), SOURCE_TIMEOUT_MS, "abstractapi");
     const data = await resp.json();
 
     let lineType: SourceResult["lineType"] = "unknown";
@@ -285,7 +285,7 @@ export async function sourceIpqsLineType(phone: string, proxyIndex?: number): Pr
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `1${normalized}` : phone.replace(/\D/g, "");
-    const resp = await withTimeout(proxyFetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}`, {}, proxyIndex, "ipqs"), SOURCE_TIMEOUT_MS, "ipqs_line_type");
+    const resp = await withTimeout(proxyFetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}`, {}, proxyIndex, getLaneForSource("ipqs_line_type")), SOURCE_TIMEOUT_MS, "ipqs_line_type");
     const data = await resp.json();
 
     let lineType: SourceResult["lineType"] = "unknown";
@@ -318,7 +318,7 @@ export async function sourceIpqsActive(phone: string, proxyIndex?: number): Prom
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `1${normalized}` : phone.replace(/\D/g, "");
-    const resp = await withTimeout(proxyFetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}?strictness=1`, {}, proxyIndex, "ipqs"), SOURCE_TIMEOUT_MS, "ipqs_active");
+    const resp = await withTimeout(proxyFetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}?strictness=1`, {}, proxyIndex, getLaneForSource("ipqs_active")), SOURCE_TIMEOUT_MS, "ipqs_active");
     const data = await resp.json();
 
     return {
@@ -349,7 +349,7 @@ export async function sourceVeriphone(phone: string, proxyIndex?: number): Promi
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `+1${normalized}` : phone;
-    const resp = await withTimeout(proxyFetch(`https://api.veriphone.io/v2/verify?phone=${encodeURIComponent(number)}&key=${key}`, {}, proxyIndex), SOURCE_TIMEOUT_MS, "veriphone");
+    const resp = await withTimeout(proxyFetch(`https://api.veriphone.io/v2/verify?phone=${encodeURIComponent(number)}&key=${key}`, {}, proxyIndex, getLaneForSource("veriphone")), SOURCE_TIMEOUT_MS, "veriphone");
     const data = await resp.json();
 
     let lineType: SourceResult["lineType"] = "unknown";
@@ -386,7 +386,7 @@ export async function sourceTwilioCnam(phone: string, proxyIndex?: number): Prom
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=caller_name`;
     const resp = await withTimeout(proxyFetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    }, proxyIndex, "twilio"), SOURCE_TIMEOUT_MS, "twilio_cnam");
+    }, proxyIndex, getLaneForSource("twilio_cnam")), SOURCE_TIMEOUT_MS, "twilio_cnam");
     if (!resp.ok) return { source: "twilio_cnam", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
 
@@ -417,7 +417,7 @@ export async function sourceTwilioSimSwap(phone: string, proxyIndex?: number): P
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=sim_swap`;
     const resp = await withTimeout(proxyFetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    }, proxyIndex, "twilio"), SOURCE_TIMEOUT_MS, "twilio_sim_swap");
+    }, proxyIndex, getLaneForSource("twilio_sim_swap")), SOURCE_TIMEOUT_MS, "twilio_sim_swap");
     if (!resp.ok) return { source: "twilio_sim_swap", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const simSwap = data.sim_swap;
@@ -453,7 +453,7 @@ export async function sourceTwilioLiveActivity(phone: string, proxyIndex?: numbe
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=live_activity`;
     const resp = await withTimeout(proxyFetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    }, proxyIndex, "twilio"), SOURCE_TIMEOUT_MS, "twilio_live_activity");
+    }, proxyIndex, getLaneForSource("twilio_live_activity")), SOURCE_TIMEOUT_MS, "twilio_live_activity");
     if (!resp.ok) return { source: "twilio_live_activity", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const la = data.live_activity;
@@ -490,7 +490,7 @@ export async function sourceBraveSearch(phone: string, proxyIndex?: number): Pro
 
     const resp = await withTimeout(proxyFetch(`https://api.search.brave.com/res/v1/web/search?q="${encodeURIComponent(formatted)}"&count=5`, {
       headers: { "X-Subscription-Token": key, "Accept": "application/json" },
-    }, proxyIndex), SOURCE_TIMEOUT_MS, "brave_search");
+    }, proxyIndex, getLaneForSource("brave_search")), SOURCE_TIMEOUT_MS, "brave_search");
     if (!resp.ok) return { source: "brave_search", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const results = data.web?.results || [];
@@ -545,7 +545,7 @@ export async function sourceHubspot(phone: string, proxyIndex?: number): Promise
         properties: ["firstname", "lastname", "phone", "company"],
         limit: 5,
       }),
-    }, proxyIndex), SOURCE_TIMEOUT_MS, "hubspot");
+    }, proxyIndex, getLaneForSource("hubspot")), SOURCE_TIMEOUT_MS, "hubspot");
     if (!resp.ok) return { source: "hubspot", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const total = data.total || 0;

@@ -86,6 +86,45 @@ function getLaneSemaphore(lane: ProxyLane): ProxySemaphore {
   return lanes.get(lane) || lanes.get("general")!;
 }
 
+const DEFAULT_SOURCE_LANES: Record<string, ProxyLane> = {
+  twilio_line_type: "twilio",
+  twilio_cnam: "twilio",
+  twilio_sim_swap: "twilio",
+  twilio_live_activity: "twilio",
+  ipqs_line_type: "ipqs",
+  ipqs_active: "ipqs",
+  numverify: "general",
+  abstractapi: "general",
+  veriphone: "general",
+  brave_search: "general",
+  hubspot: "general",
+};
+
+let sourceLaneOverrides: Record<string, ProxyLane> | null = null;
+
+function parseSourceLaneOverrides(): Record<string, ProxyLane> {
+  if (sourceLaneOverrides !== null) return sourceLaneOverrides;
+  sourceLaneOverrides = {};
+  const raw = process.env.CARPENTER_SOURCE_LANES;
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      const validLanes = new Set<string>(["twilio", "ipqs", "general"]);
+      for (const [source, lane] of Object.entries(parsed)) {
+        if (typeof lane === "string" && validLanes.has(lane)) {
+          sourceLaneOverrides[source] = lane as ProxyLane;
+        }
+      }
+    } catch {}
+  }
+  return sourceLaneOverrides;
+}
+
+export function getLaneForSource(sourceName: string): ProxyLane {
+  const overrides = parseSourceLaneOverrides();
+  return overrides[sourceName] ?? DEFAULT_SOURCE_LANES[sourceName] ?? "general";
+}
+
 export interface LaneStats {
   active: number;
   queued: number;
