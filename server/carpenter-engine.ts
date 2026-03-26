@@ -15,6 +15,8 @@ import { carpenterAntResults } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
 
 const ANT_COUNT = 399;
+const ANT_WAVE_SIZE = 50;
+const ANT_WAVE_DELAY_MS = 2000;
 
 interface StepResult {
   step: number;
@@ -211,10 +213,14 @@ async function runStep10ActiveRound5(phone: string, proxyIndex?: number): Promis
   };
 }
 
-const STEP_RUNNERS: Array<(phone: string, proxyIndex?: number) => Promise<StepResult>> = [
-  runStep1Parse, runStep2LineTypeRound1, runStep3LineTypeRound2,
-  runStep4LineTypeRound3, runStep5LineTypeRound4, runStep6ActiveRound1,
-  runStep7ActiveRound2, runStep8ActiveRound3, runStep9ActiveRound4,
+const LINE_TYPE_BATCH: Array<(phone: string, proxyIndex?: number) => Promise<StepResult>> = [
+  runStep2LineTypeRound1, runStep3LineTypeRound2,
+  runStep4LineTypeRound3, runStep5LineTypeRound4,
+];
+
+const ACTIVE_BATCH: Array<(phone: string, proxyIndex?: number) => Promise<StepResult>> = [
+  runStep6ActiveRound1, runStep7ActiveRound2,
+  runStep8ActiveRound3, runStep9ActiveRound4,
   runStep10ActiveRound5,
 ];
 
@@ -474,28 +480,46 @@ export class CarpenterAntEngine {
           const allStepResults: StepResult[] = [];
           const allSources: SourceResult[] = [];
 
-          for (let stepIdx = 0; stepIdx < STEP_RUNNERS.length; stepIdx++) {
-            if (this.stopped) break;
+          if (this.stopped) break;
+          const parseResult = await runStep1Parse(phone, proxyIndex);
+          allStepResults.push(parseResult);
+          allSources.push(...parseResult.sources);
 
-            const stepResult = await STEP_RUNNERS[stepIdx](phone, proxyIndex);
-            allStepResults.push(stepResult);
-            allSources.push(...stepResult.sources);
+          this.antProgress.set(resultId, {
+            resultId, phoneRaw: phone, currentStep: 1, totalSteps: 10, status: "processing",
+          });
+          await resilientDbUpdate(resultId, {
+            currentStep: 1,
+            stepResults: JSON.parse(JSON.stringify(allStepResults)),
+          });
+          this.emitProgress();
 
-            this.antProgress.set(resultId, {
-              resultId,
-              phoneRaw: phone,
-              currentStep: stepIdx + 1,
-              totalSteps: 10,
-              status: "processing",
-            });
+          if (this.stopped) break;
+          const lineTypeResults = await Promise.all(
+            LINE_TYPE_BATCH.map(runner => runner(phone, proxyIndex))
+          );
+          allStepResults.push(...lineTypeResults);
+          for (const r of lineTypeResults) allSources.push(...r.sources);
 
-            await resilientDbUpdate(resultId, {
-              currentStep: stepIdx + 1,
-              stepResults: JSON.parse(JSON.stringify(allStepResults)),
-            });
+          this.antProgress.set(resultId, {
+            resultId, phoneRaw: phone, currentStep: 5, totalSteps: 10, status: "processing",
+          });
+          await resilientDbUpdate(resultId, {
+            currentStep: 5,
+            stepResults: JSON.parse(JSON.stringify(allStepResults)),
+          });
+          this.emitProgress();
 
-            this.emitProgress();
-          }
+          if (this.stopped) break;
+          const activeResults = await Promise.all(
+            ACTIVE_BATCH.map(runner => runner(phone, proxyIndex))
+          );
+          allStepResults.push(...activeResults);
+          for (const r of activeResults) allSources.push(...r.sources);
+
+          this.antProgress.set(resultId, {
+            resultId, phoneRaw: phone, currentStep: 10, totalSteps: 10, status: "processing",
+          });
 
           if (this.stopped) break;
 
@@ -548,8 +572,12 @@ export class CarpenterAntEngine {
 
     const antCount = Math.min(ANT_COUNT, queue.length);
     const workers: Promise<void>[] = [];
+
     for (let i = 0; i < antCount; i++) {
       workers.push(worker(i));
+      if ((i + 1) % ANT_WAVE_SIZE === 0 && i + 1 < antCount) {
+        await new Promise(r => setTimeout(r, ANT_WAVE_DELAY_MS));
+      }
     }
 
     await Promise.all(workers);
