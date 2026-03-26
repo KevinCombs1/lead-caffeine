@@ -299,7 +299,7 @@ export default function CarpenterAntsPage() {
         <h1 className="text-xl font-bold text-white tracking-wide" data-testid="text-page-title">Carpenter Ants</h1>
         <span className="text-xs text-gray-500 ml-2">Phone Number Intelligence Pipeline</span>
         <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/30 ml-auto">
-          33 ants | 10 steps | {availableCount}/{totalSources} sources
+          399 ants | 10 steps | {availableCount}/{totalSources} sources
         </span>
       </div>
 
