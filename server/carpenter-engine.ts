@@ -9,6 +9,7 @@ import {
   sourcePhoneAuthHeuristics, sourceDbFrequency,
   type SourceResult,
 } from "./carpenter-sources";
+import { getProxyCount } from "./carpenter-proxy";
 
 const ANT_COUNT = 399;
 
@@ -38,10 +39,28 @@ export interface JobProgress {
   results: PipelineProgress[];
 }
 
-let activeJob: CarpenterAntEngine | null = null;
+const activeJobs = new Map<string, CarpenterAntEngine>();
 
-export function getActiveCarpenterJob(): CarpenterAntEngine | null {
-  return activeJob;
+export type GlobalProgressCallback = (progress: JobProgress) => void;
+const globalProgressListeners = new Set<GlobalProgressCallback>();
+
+export function onGlobalProgress(cb: GlobalProgressCallback): () => void {
+  globalProgressListeners.add(cb);
+  return () => globalProgressListeners.delete(cb);
+}
+
+function emitGlobalProgress(progress: JobProgress) {
+  for (const cb of globalProgressListeners) {
+    try { cb(progress); } catch {}
+  }
+}
+
+export function getActiveJobs(): Map<string, CarpenterAntEngine> {
+  return activeJobs;
+}
+
+export function getJobEngine(jobId: string): CarpenterAntEngine | undefined {
+  return activeJobs.get(jobId);
 }
 
 function normalizeUSPhone(raw: string): string | null {
@@ -51,7 +70,7 @@ function normalizeUSPhone(raw: string): string | null {
   return null;
 }
 
-async function runStep1Parse(phone: string): Promise<StepResult> {
+async function runStep1Parse(phone: string, _proxyIndex?: number): Promise<StepResult> {
   const libResult = await sourceLibphonenumber(phone);
   return {
     step: 1,
@@ -61,8 +80,8 @@ async function runStep1Parse(phone: string): Promise<StepResult> {
   };
 }
 
-async function runStep2LineTypeRound1(phone: string): Promise<StepResult> {
-  const result = await sourceTwilioLineType(phone);
+async function runStep2LineTypeRound1(phone: string, proxyIndex?: number): Promise<StepResult> {
+  const result = await sourceTwilioLineType(phone, proxyIndex);
   return {
     step: 2,
     name: "LINE_TYPE_R1_TWILIO",
@@ -71,7 +90,7 @@ async function runStep2LineTypeRound1(phone: string): Promise<StepResult> {
   };
 }
 
-async function runStep3LineTypeRound2(phone: string): Promise<StepResult> {
+async function runStep3LineTypeRound2(phone: string, _proxyIndex?: number): Promise<StepResult> {
   const [fcc, npanxx, libphone] = await Promise.all([
     sourceFccBlocks(phone),
     sourceNpanxx(phone),
@@ -85,10 +104,10 @@ async function runStep3LineTypeRound2(phone: string): Promise<StepResult> {
   };
 }
 
-async function runStep4LineTypeRound3(phone: string): Promise<StepResult> {
+async function runStep4LineTypeRound3(phone: string, proxyIndex?: number): Promise<StepResult> {
   const [numverify, abstractapi] = await Promise.all([
-    sourceNumVerify(phone),
-    sourceAbstractAPI(phone),
+    sourceNumVerify(phone, proxyIndex),
+    sourceAbstractAPI(phone, proxyIndex),
   ]);
   return {
     step: 4,
@@ -98,10 +117,10 @@ async function runStep4LineTypeRound3(phone: string): Promise<StepResult> {
   };
 }
 
-async function runStep5LineTypeRound4(phone: string): Promise<StepResult> {
+async function runStep5LineTypeRound4(phone: string, proxyIndex?: number): Promise<StepResult> {
   const [ipqs, veriphone] = await Promise.all([
-    sourceIpqsLineType(phone),
-    sourceVeriphone(phone),
+    sourceIpqsLineType(phone, proxyIndex),
+    sourceVeriphone(phone, proxyIndex),
   ]);
   return {
     step: 5,
@@ -111,8 +130,8 @@ async function runStep5LineTypeRound4(phone: string): Promise<StepResult> {
   };
 }
 
-async function runStep6ActiveRound1(phone: string): Promise<StepResult> {
-  const result = await sourceTwilioLiveActivity(phone);
+async function runStep6ActiveRound1(phone: string, proxyIndex?: number): Promise<StepResult> {
+  const result = await sourceTwilioLiveActivity(phone, proxyIndex);
   return {
     step: 6,
     name: "ACTIVE_R1_TWILIO_LIVE",
@@ -121,10 +140,10 @@ async function runStep6ActiveRound1(phone: string): Promise<StepResult> {
   };
 }
 
-async function runStep7ActiveRound2(phone: string): Promise<StepResult> {
+async function runStep7ActiveRound2(phone: string, proxyIndex?: number): Promise<StepResult> {
   const [cnam, simSwap] = await Promise.all([
-    sourceTwilioCnam(phone),
-    sourceTwilioSimSwap(phone),
+    sourceTwilioCnam(phone, proxyIndex),
+    sourceTwilioSimSwap(phone, proxyIndex),
   ]);
   return {
     step: 7,
@@ -134,10 +153,10 @@ async function runStep7ActiveRound2(phone: string): Promise<StepResult> {
   };
 }
 
-async function runStep8ActiveRound3(phone: string): Promise<StepResult> {
+async function runStep8ActiveRound3(phone: string, proxyIndex?: number): Promise<StepResult> {
   const [brave, hubspot] = await Promise.all([
-    sourceBraveSearch(phone),
-    sourceHubspot(phone),
+    sourceBraveSearch(phone, proxyIndex),
+    sourceHubspot(phone, proxyIndex),
   ]);
   return {
     step: 8,
@@ -147,7 +166,7 @@ async function runStep8ActiveRound3(phone: string): Promise<StepResult> {
   };
 }
 
-async function runStep9ActiveRound4(phone: string): Promise<StepResult> {
+async function runStep9ActiveRound4(phone: string, _proxyIndex?: number): Promise<StepResult> {
   const [heuristics, dbFreq] = await Promise.all([
     sourcePhoneAuthHeuristics(phone),
     sourceDbFrequency(phone),
@@ -160,8 +179,8 @@ async function runStep9ActiveRound4(phone: string): Promise<StepResult> {
   };
 }
 
-async function runStep10ActiveRound5(phone: string): Promise<StepResult> {
-  const ipqsActive = await sourceIpqsActive(phone);
+async function runStep10ActiveRound5(phone: string, proxyIndex?: number): Promise<StepResult> {
+  const ipqsActive = await sourceIpqsActive(phone, proxyIndex);
   return {
     step: 10,
     name: "ACTIVE_R5_IPQS_DEEP",
@@ -170,7 +189,7 @@ async function runStep10ActiveRound5(phone: string): Promise<StepResult> {
   };
 }
 
-const STEP_RUNNERS = [
+const STEP_RUNNERS: Array<(phone: string, proxyIndex?: number) => Promise<StepResult>> = [
   runStep1Parse, runStep2LineTypeRound1, runStep3LineTypeRound2,
   runStep4LineTypeRound3, runStep5LineTypeRound4, runStep6ActiveRound1,
   runStep7ActiveRound2, runStep8ActiveRound3, runStep9ActiveRound4,
@@ -289,12 +308,18 @@ export class CarpenterAntEngine {
       total: this.phones.length,
       completed: this.completedCount,
       failed: this.failedCount,
-      currentAnts: Math.min(ANT_COUNT, this.phones.length - this.completedCount - this.failedCount),
+      currentAnts: this.stopped ? 0 : Math.min(ANT_COUNT, this.phones.length - this.completedCount - this.failedCount),
       results: Array.from(this.antProgress.values()),
     };
     for (const cb of this.progressCallbacks) {
       try { cb(progress); } catch {}
     }
+    emitGlobalProgress(progress);
+  }
+
+  private cleanup() {
+    this.progressCallbacks.clear();
+    this.antProgress.clear();
   }
 
   getProgress(): JobProgress {
@@ -326,7 +351,7 @@ export class CarpenterAntEngine {
     this.completedCount = 0;
     this.failedCount = 0;
     this.antProgress.clear();
-    activeJob = this;
+    activeJobs.set(this.jobId, this);
 
     const resultInserts = phones.map(p => ({
       jobId: this.jobId,
@@ -358,15 +383,20 @@ export class CarpenterAntEngine {
         });
       } catch {}
     } finally {
-      activeJob = null;
+      this.emitProgress();
+      activeJobs.delete(this.jobId);
+      this.cleanup();
     }
   }
 
   private async runPipeline() {
     const queue = [...this.resultIds];
     let queueIdx = 0;
+    const proxyCount = getProxyCount();
 
     const worker = async (antId: number) => {
+      const proxyIndex = proxyCount > 0 ? antId % proxyCount : undefined;
+
       while (!this.stopped) {
         const idx = queueIdx++;
         if (idx >= queue.length) break;
@@ -391,7 +421,7 @@ export class CarpenterAntEngine {
           for (let stepIdx = 0; stepIdx < STEP_RUNNERS.length; stepIdx++) {
             if (this.stopped) break;
 
-            const stepResult = await STEP_RUNNERS[stepIdx](phone);
+            const stepResult = await STEP_RUNNERS[stepIdx](phone, proxyIndex);
             allStepResults.push(stepResult);
             allSources.push(...stepResult.sources);
 

@@ -3094,13 +3094,9 @@ export async function registerRoutes(
 
   // ===== CARPENTER ANTS ROUTES =====
 
-  let carpenterJobLock = false;
   app.post("/api/carpenter/jobs", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { CarpenterAntEngine, getActiveCarpenterJob } = await import("./carpenter-engine");
-      if (getActiveCarpenterJob()?.isRunning() || carpenterJobLock) {
-        return res.status(409).json({ error: "A carpenter job is already running" });
-      }
+      const { CarpenterAntEngine } = await import("./carpenter-engine");
 
       const carpenterJobSchema = z.object({
         phones: z.array(z.string().min(1)).min(1, "At least one phone number required").max(50000, "Maximum 50,000 phone numbers per job"),
@@ -3112,16 +3108,10 @@ export async function registerRoutes(
       }
       const { phones, filename } = parsed.data;
 
-      carpenterJobLock = true;
-      try {
-        const engine = new CarpenterAntEngine();
-        const jobId = await engine.start(phones, filename);
-        res.json({ jobId, total: phones.length });
-      } finally {
-        carpenterJobLock = false;
-      }
+      const engine = new CarpenterAntEngine();
+      const jobId = await engine.start(phones, filename);
+      res.json({ jobId, total: phones.length });
     } catch (err: any) {
-      carpenterJobLock = false;
       res.status(500).json({ error: err.message });
     }
   });
@@ -3165,9 +3155,9 @@ export async function registerRoutes(
 
   app.post("/api/carpenter/jobs/:id/stop", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { getActiveCarpenterJob } = await import("./carpenter-engine");
-      const engine = getActiveCarpenterJob();
-      if (engine && engine.getJobId() === req.params.id) {
+      const { getJobEngine } = await import("./carpenter-engine");
+      const engine = getJobEngine(req.params.id);
+      if (engine && engine.isRunning()) {
         engine.stop();
         res.json({ stopped: true });
       } else {
@@ -3178,14 +3168,27 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/carpenter/progress", requireAuth, async (_req: Request, res: Response) => {
+  app.get("/api/carpenter/progress", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { getActiveCarpenterJob } = await import("./carpenter-engine");
-      const engine = getActiveCarpenterJob();
-      if (!engine || !engine.isRunning()) {
-        return res.json({ running: false });
+      const { getActiveJobs, getJobEngine } = await import("./carpenter-engine");
+      const jobId = req.query.jobId as string | undefined;
+
+      if (jobId) {
+        const engine = getJobEngine(jobId);
+        if (!engine || !engine.isRunning()) {
+          return res.json({ running: false });
+        }
+        return res.json({ running: true, ...engine.getProgress() });
       }
-      res.json({ running: true, ...engine.getProgress() });
+
+      const jobs = getActiveJobs();
+      if (jobs.size === 0) {
+        return res.json({ running: false, activeJobs: [] });
+      }
+      const activeJobProgress = Array.from(jobs.values())
+        .filter(e => e.isRunning())
+        .map(e => e.getProgress());
+      res.json({ running: activeJobProgress.length > 0, activeJobs: activeJobProgress });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -3197,24 +3200,34 @@ export async function registerRoutes(
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    const { getActiveCarpenterJob } = await import("./carpenter-engine");
-    const engine = getActiveCarpenterJob();
+    const { getJobEngine, onGlobalProgress } = await import("./carpenter-engine");
+    const jobId = req.query.jobId as string | undefined;
 
-    if (!engine || !engine.isRunning()) {
-      res.write(`data: ${JSON.stringify({ running: false })}\n\n`);
-      res.end();
+    if (jobId) {
+      const engine = getJobEngine(jobId);
+      if (!engine || !engine.isRunning()) {
+        res.write(`data: ${JSON.stringify({ running: false })}\n\n`);
+        res.end();
+        return;
+      }
+
+      const unsub = engine.onProgress((progress) => {
+        try {
+          res.write(`data: ${JSON.stringify({ running: engine.isRunning(), ...progress })}\n\n`);
+        } catch {}
+      });
+
+      req.on("close", () => { unsub(); });
       return;
     }
 
-    const unsub = engine.onProgress((progress) => {
+    const unsub = onGlobalProgress((progress) => {
       try {
-        res.write(`data: ${JSON.stringify({ running: engine.isRunning(), ...progress })}\n\n`);
+        res.write(`data: ${JSON.stringify({ running: true, ...progress })}\n\n`);
       } catch {}
     });
 
-    req.on("close", () => {
-      unsub();
-    });
+    req.on("close", () => { unsub(); });
   });
 
   app.get("/api/carpenter/sources", requireAuth, async (_req: Request, res: Response) => {

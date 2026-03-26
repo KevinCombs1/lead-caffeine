@@ -78,29 +78,35 @@ Phone number intelligence pipeline — a standalone tab for classifying phone nu
 
 ### Architecture
 - **399 concurrent worker ants** via Promise pool
+- **Unlimited concurrent jobs** — no single-job lock; any number of users can run independent scans simultaneously. Each job gets its own 399-ant pool, SSE progress stream, and stop control. Multi-job registry via `Map<jobId, engine>` in carpenter-engine.ts; engines auto-remove on completion/failure.
 - **10-step verification pipeline** per number: PARSE → 4× line-type rounds → 4× active rounds → IPQS deep
 - **16 independent verification sources**: libphonenumber (offline), FCC blocks (offline), NPANXX (offline), Twilio Lookup (4 calls: line_type, CNAM, SIM swap, live_activity), NumVerify, AbstractAPI, IPQualityScore (×2: line type + active), Veriphone, Brave Web Search, HubSpot CRM, phone-auth.ts heuristics, DB frequency scan
-- **Graceful degradation**: Every source independently try/caught; missing API key → `{ available: false }`. Deterministic weighted-average verdict when sources are unavailable
+- **399× Geo-Proxy Pipeline**: Each ant routes external API calls through its own dedicated proxy location. Configured via `CARPENTER_PROXIES` env var (comma-separated list of up to 399 proxy URLs: SOCKS5/HTTP/HTTPS). Each ant assigned proxy slot `antIndex % proxyCount`. Offline/internal sources bypass proxies. No proxies configured = direct calls (backward compatible). Proxy utility in `server/carpenter-proxy.ts` using `https-proxy-agent` + `socks-proxy-agent`.
+- **Graceful degradation**: Every source independently try/caught; missing API key → `{ available: false }`. Deterministic weighted-average verdict when sources are unavailable. Twilio semaphore (max 2 concurrent) shared globally across all jobs.
 - **CSV upload**: Up to 50,000 phone numbers per job, paste or file upload
 
 ### DB Tables
 - `carpenter_ant_jobs`: id, status, total_numbers, completed, failed, source_filename, created_at, completed_at
-- `carpenter_ant_results`: id, job_id, phone_raw, phone_normalized, country_code, carrier, step_results (JSONB), line_type_verdict, line_type_confidence, active_verdict, active_confidence, overall_status, current_step, error_message, created_at
+- `carpenter_ant_results`: id, job_id (FK cascade), phone_raw, phone_normalized, country_code, carrier, step_results (JSONB), line_type_verdict, line_type_confidence, active_verdict, active_confidence, overall_status, current_step, error_message, created_at
 
 ### Key Files
-- `server/carpenter-engine.ts`: 399-ant pool, 10-step pipeline, progress SSE streaming
-- `server/carpenter-sources.ts`: All 16 source functions + availability checker
+- `server/carpenter-engine.ts`: 399-ant pool, 10-step pipeline, multi-job registry (Map), progress SSE streaming
+- `server/carpenter-sources.ts`: All 16 source functions + availability checker + proxy_count reporting
+- `server/carpenter-proxy.ts`: Geo-proxy fetch wrapper — reads CARPENTER_PROXIES env, creates SOCKS5/HTTP agents, round-robin by ant index
 - `server/data/fcc-blocks.json`: FCC wireless prefix allocation data
 - `server/data/npanxx.json`: Area code → state mapping + wireless-only NPA indicators
-- `client/src/pages/carpenter-ants.tsx`: Full UI with upload, progress, results, step drill-down
+- `client/src/pages/carpenter-ants.tsx`: Full UI with multi-job progress, upload, results, step drill-down, proxy location indicator
+
+### Environment Variables
+- `CARPENTER_PROXIES` (optional) — comma-separated list of proxy URLs for geo-distributed API calls. Supports `socks5://host:port`, `http://host:port`, `https://host:port`. Up to 399 entries (one per ant). Example: `socks5://proxy1:1080,socks5://proxy2:1080,...`
 
 ### API Routes
-- `POST /api/carpenter/jobs` — Start new job with phone array
+- `POST /api/carpenter/jobs` — Start new job (unlimited concurrent, no lock)
 - `GET /api/carpenter/jobs` — List all jobs
 - `GET /api/carpenter/jobs/:id` — Get single job
 - `GET /api/carpenter/jobs/:id/results` — Get results for a job
-- `DELETE /api/carpenter/jobs/:id` — Delete job + results
-- `POST /api/carpenter/jobs/:id/stop` — Stop running job
-- `GET /api/carpenter/progress` — Get active job progress
-- `GET /api/carpenter/progress/stream` — SSE stream for real-time progress
-- `GET /api/carpenter/sources` — Check which sources are available
+- `DELETE /api/carpenter/jobs/:id` — Delete job + results (cascade)
+- `POST /api/carpenter/jobs/:id/stop` — Stop specific running job
+- `GET /api/carpenter/progress` — Get all active jobs' progress (or `?jobId=X` for specific job)
+- `GET /api/carpenter/progress/stream` — SSE stream for all active jobs (or `?jobId=X` for specific job)
+- `GET /api/carpenter/sources` — Check which sources are available + proxy_count

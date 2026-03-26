@@ -7,7 +7,7 @@ import {
   Bug, Upload, Play, Square, Trash2, Download, RefreshCw,
   CheckCircle2, XCircle, AlertTriangle, Loader2, Phone,
   ChevronDown, ChevronUp, Zap, Shield, Globe, Activity,
-  Signal, Wifi, PhoneOff, PhoneIncoming
+  Signal, Wifi, PhoneOff, PhoneIncoming, MapPin
 } from "lucide-react";
 
 interface CarpenterJob {
@@ -58,6 +58,21 @@ interface CarpenterResult {
   createdAt: string;
 }
 
+interface SingleJobProgress {
+  jobId: string;
+  total: number;
+  completed: number;
+  failed: number;
+  currentAnts: number;
+  results: Array<{
+    resultId: string;
+    phoneRaw: string;
+    currentStep: number;
+    totalSteps: number;
+    status: string;
+  }>;
+}
+
 interface ProgressData {
   running: boolean;
   jobId?: string;
@@ -65,6 +80,7 @@ interface ProgressData {
   completed?: number;
   failed?: number;
   currentAnts?: number;
+  activeJobs?: SingleJobProgress[];
   results?: Array<{
     resultId: string;
     phoneRaw: string;
@@ -163,6 +179,51 @@ function StepProgressDots({ currentStep, totalSteps, status }: { currentStep: nu
   );
 }
 
+function JobProgressPanel({ progress, onStop }: { progress: SingleJobProgress; onStop: (jobId: string) => void }) {
+  return (
+    <div className="border border-amber-500/30 rounded-lg bg-amber-500/5 p-3 space-y-2" data-testid={`progress-panel-${progress.jobId}`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+          <span className="text-xs font-semibold text-amber-400">{progress.currentAnts} ants active</span>
+          <span className="text-[10px] text-gray-500 font-mono">{progress.jobId.slice(0, 8)}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] text-gray-400">
+            {progress.completed}/{progress.total} done
+            {(progress.failed || 0) > 0 && <span className="text-red-400 ml-1">({progress.failed} failed)</span>}
+          </span>
+          <button
+            onClick={() => onStop(progress.jobId)}
+            className="text-[10px] text-red-400 hover:text-red-300 border border-red-500/30 rounded px-2 py-0.5 flex items-center gap-1"
+            data-testid={`button-stop-job-${progress.jobId}`}
+          >
+            <Square className="w-2.5 h-2.5" />
+            stop
+          </button>
+        </div>
+      </div>
+      <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-amber-400 rounded-full transition-all duration-500"
+          style={{ width: `${progress.total ? Math.round((progress.completed / progress.total) * 100) : 0}%` }}
+        />
+      </div>
+      {progress.results && progress.results.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-1 max-h-24 overflow-y-auto">
+          {progress.results.filter(r => r.status === "processing").map(r => (
+            <div key={r.resultId} className="flex items-center gap-1.5 bg-gray-900/50 rounded px-2 py-0.5 text-[10px]">
+              <Loader2 className="w-2.5 h-2.5 text-amber-400 animate-spin flex-shrink-0" />
+              <span className="text-gray-300 truncate font-mono">{r.phoneRaw.slice(-4)}</span>
+              <StepProgressDots currentStep={r.currentStep} totalSteps={r.totalSteps} status={r.status} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CarpenterAntsPage() {
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -177,18 +238,46 @@ export default function CarpenterAntsPage() {
     refetchInterval: 5000,
   });
 
-  const [progress, setProgress] = useState<ProgressData | null>(null);
+  const [activeJobsProgress, setActiveJobsProgress] = useState<SingleJobProgress[]>([]);
+  const [anyRunning, setAnyRunning] = useState(false);
 
   useEffect(() => {
     const es = new EventSource("/api/carpenter/progress/stream");
     es.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        setProgress(data);
+        const data: ProgressData = JSON.parse(event.data);
+        if (data.activeJobs) {
+          setActiveJobsProgress(data.activeJobs);
+          setAnyRunning(data.running);
+        } else if (data.jobId) {
+          setActiveJobsProgress(prev => {
+            const idx = prev.findIndex(p => p.jobId === data.jobId);
+            const entry: SingleJobProgress = {
+              jobId: data.jobId!,
+              total: data.total || 0,
+              completed: data.completed || 0,
+              failed: data.failed || 0,
+              currentAnts: data.currentAnts || 0,
+              results: data.results || [],
+            };
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = entry;
+              return next;
+            }
+            return [...prev, entry];
+          });
+          setAnyRunning(data.running);
+        } else {
+          if (!data.running) {
+            setActiveJobsProgress([]);
+            setAnyRunning(false);
+          }
+        }
       } catch {}
     };
     es.onerror = () => {
-      setProgress(null);
+      setAnyRunning(false);
     };
     return () => es.close();
   }, []);
@@ -197,10 +286,10 @@ export default function CarpenterAntsPage() {
     queryKey: ["/api/carpenter/jobs", viewingJobId, "results"],
     queryFn: () => fetch(`/api/carpenter/jobs/${viewingJobId}/results`, { credentials: "include" }).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
     enabled: !!viewingJobId,
-    refetchInterval: progress?.running ? 3000 : false,
+    refetchInterval: anyRunning ? 3000 : false,
   });
 
-  const { data: sources } = useQuery<Record<string, boolean>>({
+  const { data: sources } = useQuery<Record<string, boolean | number>>({
     queryKey: ["/api/carpenter/sources"],
   });
 
@@ -236,7 +325,7 @@ export default function CarpenterAntsPage() {
     mutationFn: (jobId: string) => apiRequest("POST", `/api/carpenter/jobs/${jobId}/stop`),
     onSuccess: () => {
       toast({ title: "Stop requested" });
-      queryClient.invalidateQueries({ queryKey: ["/api/carpenter/progress"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/carpenter/jobs"] });
     },
   });
 
@@ -286,11 +375,12 @@ export default function CarpenterAntsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const activeJob = jobs.find(j => j.status === "running");
+  const runningJobs = jobs.filter(j => j.status === "running");
   const currentJob = viewingJobId ? jobs.find(j => j.id === viewingJobId) : null;
 
-  const availableCount = sources ? Object.values(sources).filter(Boolean).length : 0;
-  const totalSources = sources ? Object.keys(sources).length : 16;
+  const availableCount = sources ? Object.entries(sources).filter(([k, v]) => k !== "proxy_count" && v === true).length : 0;
+  const totalSources = sources ? Object.keys(sources).filter(k => k !== "proxy_count").length : 16;
+  const proxyCount = sources && typeof sources.proxy_count === "number" ? sources.proxy_count : 0;
 
   return (
     <div className="min-h-screen bg-black text-gray-100 p-4 space-y-4" data-testid="carpenter-ants-page">
@@ -298,9 +388,22 @@ export default function CarpenterAntsPage() {
         <Bug className="w-6 h-6 text-amber-400" />
         <h1 className="text-xl font-bold text-white tracking-wide" data-testid="text-page-title">Carpenter Ants</h1>
         <span className="text-xs text-gray-500 ml-2">Phone Number Intelligence Pipeline</span>
-        <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/30 ml-auto">
-          399 ants | 10 steps | {availableCount}/{totalSources} sources
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          {proxyCount > 0 && (
+            <span className="text-[10px] bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/30 inline-flex items-center gap-1" data-testid="badge-proxy-count">
+              <MapPin className="w-2.5 h-2.5" />
+              {proxyCount} proxy location{proxyCount !== 1 ? "s" : ""}
+            </span>
+          )}
+          {runningJobs.length > 0 && (
+            <span className="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full border border-green-500/30 animate-pulse" data-testid="badge-active-jobs">
+              {runningJobs.length} active job{runningJobs.length !== 1 ? "s" : ""}
+            </span>
+          )}
+          <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/30">
+            399 ants | 10 steps | {availableCount}/{totalSources} sources
+          </span>
+        </div>
       </div>
 
       {/* Source Availability Panel */}
@@ -314,17 +417,31 @@ export default function CarpenterAntsPage() {
             <Shield className="w-4 h-4 text-amber-400" />
             <span className="text-sm font-semibold text-white">Verification Sources</span>
             <span className="text-xs text-gray-500">({availableCount}/{totalSources} active)</span>
+            {proxyCount > 0 && (
+              <span className="text-[10px] text-cyan-400 ml-1">+ {proxyCount} proxies</span>
+            )}
           </div>
           {sourcesOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
         </button>
         {sourcesOpen && sources && (
-          <div className="p-4 border-t border-gray-800 grid grid-cols-2 md:grid-cols-4 gap-2">
-            {Object.entries(sources).map(([name, available]) => (
-              <div key={name} className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded ${available ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`} data-testid={`source-${name}`}>
-                {available ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                {name.replace(/_/g, " ")}
+          <div className="p-4 border-t border-gray-800">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {Object.entries(sources).filter(([k]) => k !== "proxy_count").map(([name, available]) => (
+                <div key={name} className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded ${available ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`} data-testid={`source-${name}`}>
+                  {available ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                  {name.replace(/_/g, " ")}
+                </div>
+              ))}
+            </div>
+            {proxyCount > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-800">
+                <div className="flex items-center gap-2 text-xs text-cyan-400">
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span className="font-semibold">{proxyCount} Geo-Proxy Location{proxyCount !== 1 ? "s" : ""}</span>
+                  <span className="text-gray-500">— each ant routes through its own proxy (ant mod {proxyCount})</span>
+                </div>
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>
@@ -370,7 +487,7 @@ export default function CarpenterAntsPage() {
                 </button>
                 <button
                   onClick={() => startJob.mutate()}
-                  disabled={phoneCount === 0 || phoneCount > 50000 || startJob.isPending || !!activeJob}
+                  disabled={phoneCount === 0 || phoneCount > 50000 || startJob.isPending}
                   className="text-[10px] font-semibold text-black bg-amber-400 hover:bg-amber-300 disabled:bg-gray-700 disabled:text-gray-500 rounded px-3 py-1 flex items-center gap-1 transition-colors"
                   data-testid="button-start-job"
                 >
@@ -383,46 +500,12 @@ export default function CarpenterAntsPage() {
         </div>
       </div>
 
-      {/* Active Progress */}
-      {progress?.running && (
-        <div className="border border-amber-500/30 rounded-lg bg-amber-500/5 p-4 space-y-3" data-testid="progress-panel">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
-              <span className="text-sm font-semibold text-amber-400">Processing — {progress.currentAnts} ants active</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-400">
-                {progress.completed}/{progress.total} done
-                {(progress.failed || 0) > 0 && <span className="text-red-400 ml-1">({progress.failed} failed)</span>}
-              </span>
-              <button
-                onClick={() => progress.jobId && stopJob.mutate(progress.jobId)}
-                className="text-[10px] text-red-400 hover:text-red-300 border border-red-500/30 rounded px-2 py-0.5 flex items-center gap-1"
-                data-testid="button-stop-job"
-              >
-                <Square className="w-2.5 h-2.5" />
-                stop
-              </button>
-            </div>
-          </div>
-          <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-amber-400 rounded-full transition-all duration-500"
-              style={{ width: `${progress.total ? Math.round(((progress.completed || 0) / progress.total) * 100) : 0}%` }}
-            />
-          </div>
-          {progress.results && progress.results.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-1.5 max-h-32 overflow-y-auto">
-              {progress.results.filter(r => r.status === "processing").map(r => (
-                <div key={r.resultId} className="flex items-center gap-1.5 bg-gray-900/50 rounded px-2 py-1 text-[10px]">
-                  <Loader2 className="w-2.5 h-2.5 text-amber-400 animate-spin flex-shrink-0" />
-                  <span className="text-gray-300 truncate font-mono">{r.phoneRaw.slice(-4)}</span>
-                  <StepProgressDots currentStep={r.currentStep} totalSteps={r.totalSteps} status={r.status} />
-                </div>
-              ))}
-            </div>
-          )}
+      {/* Active Progress — shows all running jobs */}
+      {activeJobsProgress.length > 0 && (
+        <div className="space-y-2" data-testid="active-jobs-progress">
+          {activeJobsProgress.map(jp => (
+            <JobProgressPanel key={jp.jobId} progress={jp} onStop={(id) => stopJob.mutate(id)} />
+          ))}
         </div>
       )}
 
