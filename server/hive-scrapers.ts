@@ -115,7 +115,7 @@ function sleep(ms: number): Promise<void> {
 
 async function randomDelay(): Promise<void> {
   if (globalStopSignal) return;
-  const ms = 7000 + Math.random() * 4000;
+  const ms = 15400 + Math.random() * 8800;
   const chunks = Math.ceil(ms / 1000);
   for (let i = 0; i < chunks; i++) {
     if (globalStopSignal) return;

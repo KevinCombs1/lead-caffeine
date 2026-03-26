@@ -10,7 +10,7 @@ import {
   type SourceResult,
 } from "./carpenter-sources";
 
-const ANT_COUNT = 33;
+const ANT_COUNT = 66;
 
 interface StepResult {
   step: number;

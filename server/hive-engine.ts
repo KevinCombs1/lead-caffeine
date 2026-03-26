@@ -261,12 +261,12 @@ export class RayOfGraceEngine {
   private totalFlowers = 0;
   private totalPollen = 0;
   private completedCombos = 0;
-  private workerCount = 64;
+  private workerCount = 640;
   private maxResults: number | null = null;
   private logBuffer: string[] = [];
   private logFlushLock = false;
   private static readonly MAX_LOG_BUFFER = 500;
-  private domainGate = new DomainGate(2, 12000);
+  private domainGate = new DomainGate(2, 26400);
   private dirTracker = new DirectoryTracker(5, 180000);
   private metrics = new MetricsCollector();
 
@@ -339,7 +339,7 @@ export class RayOfGraceEngine {
     this.totalFlowers = 0;
     this.totalPollen = 0;
     this.completedCombos = 0;
-    this.domainGate = new DomainGate(2, 12000);
+    this.domainGate = new DomainGate(2, 26400);
     this.dirTracker = new DirectoryTracker(5, 180000);
     this.metrics = new MetricsCollector();
     activeEngine = this;
