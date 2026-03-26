@@ -6,3 +6,9 @@ id = "EsO2bqTKV6PDZ790NVxzS"
 uri = "file://.local/tasks/international-business-expansion.md"
 type = "text"
 title = "The Noble Plan: International Business Expansion"
+
+[[outputs]]
+id = "F3_Y2UNh4Ig3E_8sqYf6U"
+uri = "file://BEAUTEOUS_BRIGADE_AND_CARPENTER_ANTS_MANIFESTO.md"
+type = "text"
+title = "the beauteous brigade & carpenter ants manifesto"
