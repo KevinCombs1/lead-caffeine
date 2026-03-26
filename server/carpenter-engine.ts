@@ -7,6 +7,7 @@ import {
   sourceTwilioCnam, sourceTwilioSimSwap, sourceTwilioLiveActivity,
   sourceBraveSearch, sourceHubspot,
   sourcePhoneAuthHeuristics, sourceDbFrequency,
+  sourceTelnyx, sourceTelesign, sourceTrestle,
   type SourceResult,
 } from "./carpenter-sources";
 import { getProxyCount } from "./carpenter-proxy";
@@ -259,6 +260,20 @@ async function runStep10ActiveRound5(phone: string, proxyIndex?: number): Promis
   };
 }
 
+async function runStep11LineTypeRound5(phone: string, proxyIndex?: number): Promise<StepResult> {
+  const [telnyx, telesign, trestle] = await Promise.all([
+    safeSourceCall(() => sourceTelnyx(phone, proxyIndex), "telnyx"),
+    safeSourceCall(() => sourceTelesign(phone, proxyIndex), "telesign"),
+    safeSourceCall(() => sourceTrestle(phone, proxyIndex), "trestle"),
+  ]);
+  return {
+    step: 11,
+    name: "LINE_TYPE_R5_TRIPLE_CHECK",
+    sources: [telnyx, telesign, trestle],
+    completedAt: new Date().toISOString(),
+  };
+}
+
 const LINE_TYPE_BATCH_BASE: Array<{ runner: (phone: string, proxyIndex?: number) => Promise<StepResult>; key: string }> = [
   { runner: runStep2LineTypeRound1, key: "twilio_line_type" },
   { runner: runStep3LineTypeRound2, key: "fcc_blocks" },
@@ -272,6 +287,7 @@ const ACTIVE_BATCH_BASE: Array<{ runner: (phone: string, proxyIndex?: number) =>
   { runner: runStep8ActiveRound3, key: "brave_search" },
   { runner: runStep9ActiveRound4, key: "phone_auth_heuristics" },
   { runner: runStep10ActiveRound5, key: "ipqs_active" },
+  { runner: runStep11LineTypeRound5, key: "telnyx" },
 ];
 
 function sortBatchBySpeed<T extends { key: string }>(batch: T[]): T[] {
@@ -284,6 +300,9 @@ interface VerdictWeights {
 
 const LINE_TYPE_WEIGHTS: VerdictWeights = {
   twilio_line_type: 3.0,
+  telnyx: 2.5,
+  telesign: 2.5,
+  trestle: 2.0,
   ipqs_line_type: 2.0,
   numverify: 1.5,
   abstractapi: 1.5,
@@ -524,7 +543,7 @@ export class CarpenterAntEngine {
           resultId,
           phoneRaw: phone,
           currentStep: 0,
-          totalSteps: 10,
+          totalSteps: 11,
           status: "processing",
         });
 
@@ -548,7 +567,7 @@ export class CarpenterAntEngine {
           for (const r of lineTypeResults) allSources.push(...r.sources);
 
           this.antProgress.set(resultId, {
-            resultId, phoneRaw: phone, currentStep: 5, totalSteps: 10, status: "processing",
+            resultId, phoneRaw: phone, currentStep: 5, totalSteps: 11, status: "processing",
           });
           await resilientDbUpdate(resultId, {
             currentStep: 5,
@@ -572,7 +591,7 @@ export class CarpenterAntEngine {
           }
 
           this.antProgress.set(resultId, {
-            resultId, phoneRaw: phone, currentStep: 10, totalSteps: 10, status: "processing",
+            resultId, phoneRaw: phone, currentStep: 11, totalSteps: 11, status: "processing",
           });
 
           if (this.stopped) break;
@@ -583,7 +602,7 @@ export class CarpenterAntEngine {
           const finalStepResults = JSON.parse(JSON.stringify(allStepResults));
           if (earlyExited) {
             finalStepResults.push({
-              step: 11,
+              step: 12,
               name: "EARLY_EXIT",
               sources: [],
               completedAt: new Date().toISOString(),
@@ -599,7 +618,7 @@ export class CarpenterAntEngine {
             activeConfidence: activeVerdict.confidence,
             carrier: lineVerdict.carrier || null,
             overallStatus: "completed",
-            currentStep: 10,
+            currentStep: 11,
             stepResults: finalStepResults,
           });
 
@@ -607,8 +626,8 @@ export class CarpenterAntEngine {
           this.antProgress.set(resultId, {
             resultId,
             phoneRaw: phone,
-            currentStep: 10,
-            totalSteps: 10,
+            currentStep: 11,
+            totalSteps: 11,
             status: "completed",
           });
         } catch (err: any) {
@@ -617,7 +636,7 @@ export class CarpenterAntEngine {
             resultId,
             phoneRaw: phone,
             currentStep: 0,
-            totalSteps: 10,
+            totalSteps: 11,
             status: "failed",
           });
           await resilientDbUpdate(resultId, {

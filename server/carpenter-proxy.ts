@@ -98,6 +98,9 @@ const DEFAULT_SOURCE_LANES: Record<string, ProxyLane> = {
   veriphone: "general",
   brave_search: "general",
   hubspot: "general",
+  telnyx: "general",
+  telesign: "general",
+  trestle: "general",
 };
 
 let sourceLaneOverrides: Record<string, ProxyLane> | null = null;

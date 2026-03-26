@@ -612,6 +612,123 @@ export async function sourceDbFrequency(phone: string): Promise<SourceResult> {
   }
 }
 
+// ---------- SOURCE 17: Telnyx Number Lookup ----------
+export async function sourceTelnyx(phone: string, proxyIndex?: number): Promise<SourceResult> {
+  const key = env("TELNYX_API_KEY");
+  if (!key) return { source: "telnyx", available: false, error: "No Telnyx API key" };
+
+  try {
+    const normalized = normalizeUSPhone(phone);
+    const e164 = normalized ? `+1${normalized}` : phone;
+    const resp = await withTimeout(proxyFetch(`https://api.telnyx.com/v2/number_lookup/${encodeURIComponent(e164)}`, {
+      headers: { "Authorization": `Bearer ${key}`, "Accept": "application/json" },
+    }, proxyIndex, getLaneForSource("telnyx")), SOURCE_TIMEOUT_MS, "telnyx");
+    if (!resp.ok) return { source: "telnyx", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
+    const data = await resp.json();
+    const pn = data.data || data;
+
+    let lineType: SourceResult["lineType"] = "unknown";
+    const t = pn.phone_number?.type || pn.type;
+    if (t === "mobile" || t === "wireless") lineType = "cell";
+    else if (t === "landline" || t === "fixed") lineType = "landline";
+    else if (t === "voip") lineType = "voip";
+    else if (t === "toll_free" || t === "tollFree") lineType = "toll_free";
+    else if (t === "premium") lineType = "premium";
+
+    return {
+      source: "telnyx",
+      available: true,
+      lineType,
+      isActive: pn.phone_number?.valid ?? pn.valid ?? true,
+      carrier: pn.carrier?.name || pn.portability?.spid_carrier_name,
+      countryCode: pn.country_code,
+      confidence: 0.8,
+      raw: data,
+    };
+  } catch (e: any) {
+    return { source: "telnyx", available: false, error: e.message };
+  }
+}
+
+// ---------- SOURCE 18: Telesign PhoneID ----------
+export async function sourceTelesign(phone: string, proxyIndex?: number): Promise<SourceResult> {
+  const customerId = env("TELESIGN_CUSTOMER_ID");
+  const apiKey = env("TELESIGN_API_KEY");
+  if (!customerId || !apiKey) return { source: "telesign", available: false, error: "No Telesign credentials" };
+
+  try {
+    const normalized = normalizeUSPhone(phone);
+    const e164 = normalized ? `1${normalized}` : phone.replace(/\D/g, "");
+    const resp = await withTimeout(proxyFetch(`https://rest-api.telesign.com/v1/phoneid/${e164}`, {
+      method: "POST",
+      headers: {
+        "Authorization": "Basic " + Buffer.from(`${customerId}:${apiKey}`).toString("base64"),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    }, proxyIndex, getLaneForSource("telesign")), SOURCE_TIMEOUT_MS, "telesign");
+    if (!resp.ok) return { source: "telesign", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
+    const data = await resp.json();
+
+    let lineType: SourceResult["lineType"] = "unknown";
+    const code = data.phone_type?.code;
+    if (code === "2") lineType = "cell";
+    else if (code === "1") lineType = "landline";
+    else if (code === "3" || code === "5") lineType = "voip";
+    else if (code === "6") lineType = "toll_free";
+    else if (code === "4") lineType = "premium";
+
+    return {
+      source: "telesign",
+      available: true,
+      lineType,
+      isActive: data.numbering?.original?.complete_phone_number ? true : undefined,
+      carrier: data.carrier?.name,
+      countryCode: data.numbering?.original?.country_code,
+      confidence: 0.8,
+      raw: data,
+    };
+  } catch (e: any) {
+    return { source: "telesign", available: false, error: e.message };
+  }
+}
+
+// ---------- SOURCE 19: Trestle Reverse Phone ----------
+export async function sourceTrestle(phone: string, proxyIndex?: number): Promise<SourceResult> {
+  const key = env("TRESTLE_API_KEY");
+  if (!key) return { source: "trestle", available: false, error: "No Trestle API key" };
+
+  try {
+    const normalized = normalizeUSPhone(phone);
+    const number = normalized || phone.replace(/\D/g, "");
+    const resp = await withTimeout(proxyFetch(`https://api.trestleiq.com/3.1/phone?phone=${encodeURIComponent(number)}&api_key=${key}`, {
+      headers: { "Accept": "application/json" },
+    }, proxyIndex, getLaneForSource("trestle")), SOURCE_TIMEOUT_MS, "trestle");
+    if (!resp.ok) return { source: "trestle", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
+    const data = await resp.json();
+
+    let lineType: SourceResult["lineType"] = "unknown";
+    const lt = (data.line_type || "").toLowerCase();
+    if (lt === "mobile" || lt === "wireless") lineType = "cell";
+    else if (lt === "landline") lineType = "landline";
+    else if (lt === "voip" || lt === "non-fixed voip") lineType = "voip";
+    else if (lt === "toll free" || lt === "toll_free") lineType = "toll_free";
+    else if (lt === "premium") lineType = "premium";
+
+    return {
+      source: "trestle",
+      available: true,
+      lineType,
+      isActive: data.is_valid ?? data.valid ?? true,
+      carrier: data.carrier,
+      countryCode: data.country_code,
+      confidence: 0.75,
+      raw: data,
+    };
+  } catch (e: any) {
+    return { source: "trestle", available: false, error: e.message };
+  }
+}
+
 export function getAllSourceNames(): string[] {
   return [
     "libphonenumber", "fcc_blocks", "npanxx",
@@ -621,6 +738,7 @@ export function getAllSourceNames(): string[] {
     "veriphone",
     "brave_search", "hubspot",
     "phone_auth_heuristics", "db_frequency",
+    "telnyx", "telesign", "trestle",
   ];
 }
 
@@ -642,6 +760,9 @@ export async function checkSourceAvailability(): Promise<Record<string, boolean 
   status.hubspot = !!env("HUBSPOT_API_KEY");
   status.phone_auth_heuristics = true;
   status.db_frequency = true;
+  status.telnyx = !!env("TELNYX_API_KEY");
+  status.telesign = !!(env("TELESIGN_CUSTOMER_ID") && env("TELESIGN_API_KEY"));
+  status.trestle = !!env("TRESTLE_API_KEY");
   status.proxy_count = getProxyCount();
   return status;
 }
