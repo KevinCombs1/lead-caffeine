@@ -86,12 +86,57 @@ function normalizeUSPhone(raw: string): string | null {
   return null;
 }
 
+const ROLLING_WINDOW = 100;
+const sourceTimings = new Map<string, number[]>();
+
+function recordSourceTiming(sourceName: string, durationMs: number): void {
+  let timings = sourceTimings.get(sourceName);
+  if (!timings) {
+    timings = [];
+    sourceTimings.set(sourceName, timings);
+  }
+  timings.push(durationMs);
+  if (timings.length > ROLLING_WINDOW) timings.shift();
+}
+
+function getSourceAvgMs(sourceName: string): number {
+  const timings = sourceTimings.get(sourceName);
+  if (!timings || timings.length === 0) return 5000;
+  return timings.reduce((a, b) => a + b, 0) / timings.length;
+}
+
 async function safeSourceCall(fn: () => Promise<SourceResult>, sourceName: string): Promise<SourceResult> {
+  const start = Date.now();
   try {
-    return await fn();
+    const result = await fn();
+    recordSourceTiming(sourceName, Date.now() - start);
+    return result;
   } catch (err: any) {
+    recordSourceTiming(sourceName, Date.now() - start);
     return { source: sourceName, available: false, error: err.message || "unknown error" };
   }
+}
+
+const EARLY_EXIT_THRESHOLD = Math.max(0.1, Math.min(1.0,
+  parseFloat(process.env.CARPENTER_EARLY_EXIT_THRESHOLD || "0.85") || 0.85
+));
+
+const ACTIVE_SIGNAL_SOURCES = new Set([
+  "numverify", "abstractapi", "veriphone", "ipqs_line_type",
+]);
+
+function checkEarlyExit(allSources: SourceResult[]): boolean {
+  const lineVerdict = computeLineTypeVerdict(allSources);
+  if (lineVerdict.confidence < EARLY_EXIT_THRESHOLD) return false;
+
+  let activeSignalCount = 0;
+  let activeDefinedCount = 0;
+  for (const s of allSources) {
+    if (!s.available || !ACTIVE_SIGNAL_SOURCES.has(s.source)) continue;
+    activeSignalCount++;
+    if (s.isActive !== undefined) activeDefinedCount++;
+  }
+  return activeDefinedCount >= 2;
 }
 
 async function runStep1Parse(phone: string, _proxyIndex?: number): Promise<StepResult> {
@@ -213,16 +258,24 @@ async function runStep10ActiveRound5(phone: string, proxyIndex?: number): Promis
   };
 }
 
-const LINE_TYPE_BATCH: Array<(phone: string, proxyIndex?: number) => Promise<StepResult>> = [
-  runStep2LineTypeRound1, runStep3LineTypeRound2,
-  runStep4LineTypeRound3, runStep5LineTypeRound4,
+const LINE_TYPE_BATCH_BASE: Array<{ runner: (phone: string, proxyIndex?: number) => Promise<StepResult>; key: string }> = [
+  { runner: runStep2LineTypeRound1, key: "twilio_line_type" },
+  { runner: runStep3LineTypeRound2, key: "fcc_blocks" },
+  { runner: runStep4LineTypeRound3, key: "numverify" },
+  { runner: runStep5LineTypeRound4, key: "ipqs_line_type" },
 ];
 
-const ACTIVE_BATCH: Array<(phone: string, proxyIndex?: number) => Promise<StepResult>> = [
-  runStep6ActiveRound1, runStep7ActiveRound2,
-  runStep8ActiveRound3, runStep9ActiveRound4,
-  runStep10ActiveRound5,
+const ACTIVE_BATCH_BASE: Array<{ runner: (phone: string, proxyIndex?: number) => Promise<StepResult>; key: string }> = [
+  { runner: runStep6ActiveRound1, key: "twilio_live_activity" },
+  { runner: runStep7ActiveRound2, key: "twilio_cnam" },
+  { runner: runStep8ActiveRound3, key: "brave_search" },
+  { runner: runStep9ActiveRound4, key: "phone_auth_heuristics" },
+  { runner: runStep10ActiveRound5, key: "ipqs_active" },
 ];
+
+function sortBatchBySpeed<T extends { key: string }>(batch: T[]): T[] {
+  return [...batch].sort((a, b) => getSourceAvgMs(a.key) - getSourceAvgMs(b.key));
+}
 
 interface VerdictWeights {
   [source: string]: number;
@@ -486,8 +539,9 @@ export class CarpenterAntEngine {
           allSources.push(...parseResult.sources);
 
           if (this.stopped) break;
+          const sortedLineType = sortBatchBySpeed(LINE_TYPE_BATCH_BASE);
           const lineTypeResults = await Promise.all(
-            LINE_TYPE_BATCH.map(runner => runner(phone, proxyIndex))
+            sortedLineType.map(entry => entry.runner(phone, proxyIndex))
           );
           allStepResults.push(...lineTypeResults);
           for (const r of lineTypeResults) allSources.push(...r.sources);
@@ -501,12 +555,20 @@ export class CarpenterAntEngine {
           });
           this.emitProgress();
 
-          if (this.stopped) break;
-          const activeResults = await Promise.all(
-            ACTIVE_BATCH.map(runner => runner(phone, proxyIndex))
-          );
-          allStepResults.push(...activeResults);
-          for (const r of activeResults) allSources.push(...r.sources);
+          let earlyExited = false;
+          if (!this.stopped && checkEarlyExit(allSources)) {
+            earlyExited = true;
+          }
+
+          if (!earlyExited) {
+            if (this.stopped) break;
+            const sortedActive = sortBatchBySpeed(ACTIVE_BATCH_BASE);
+            const activeResults = await Promise.all(
+              sortedActive.map(entry => entry.runner(phone, proxyIndex))
+            );
+            allStepResults.push(...activeResults);
+            for (const r of activeResults) allSources.push(...r.sources);
+          }
 
           this.antProgress.set(resultId, {
             resultId, phoneRaw: phone, currentStep: 10, totalSteps: 10, status: "processing",
@@ -517,6 +579,18 @@ export class CarpenterAntEngine {
           const lineVerdict = computeLineTypeVerdict(allSources);
           const activeVerdict = computeActiveVerdict(allSources);
 
+          const finalStepResults = JSON.parse(JSON.stringify(allStepResults));
+          if (earlyExited) {
+            finalStepResults.push({
+              step: 11,
+              name: "EARLY_EXIT",
+              sources: [],
+              completedAt: new Date().toISOString(),
+              earlyExit: true,
+              threshold: EARLY_EXIT_THRESHOLD,
+            });
+          }
+
           await resilientDbUpdate(resultId, {
             lineTypeVerdict: lineVerdict.verdict,
             lineTypeConfidence: lineVerdict.confidence,
@@ -525,7 +599,7 @@ export class CarpenterAntEngine {
             carrier: lineVerdict.carrier || null,
             overallStatus: "completed",
             currentStep: 10,
-            stepResults: JSON.parse(JSON.stringify(allStepResults)),
+            stepResults: finalStepResults,
           });
 
           this.completedCount++;
