@@ -37,20 +37,36 @@ function getOrCreateAgent(proxyUrl: string): http.Agent {
   return agent;
 }
 
-export async function proxyFetch(
-  url: string,
-  init: RequestInit = {},
-  proxyIndex?: number,
-): Promise<Response> {
-  const proxies = getProxies();
-  if (proxies.length === 0 || proxyIndex === undefined) {
-    return fetch(url, init);
+class ProxySemaphore {
+  private queue: (() => void)[] = [];
+  private active = 0;
+  constructor(private max: number) {}
+  async acquire(): Promise<void> {
+    if (this.active < this.max) { this.active++; return; }
+    return new Promise<void>((resolve) => { this.queue.push(() => { this.active++; resolve(); }); });
   }
+  release(): void {
+    this.active--;
+    const next = this.queue.shift();
+    if (next) next();
+  }
+  getActive(): number { return this.active; }
+  getQueued(): number { return this.queue.length; }
+}
 
-  const idx = proxyIndex % proxies.length;
-  const proxyUrl = proxies[idx];
+const PROXY_CONCURRENCY_CAP = 50;
+const proxySemaphore = new ProxySemaphore(PROXY_CONCURRENCY_CAP);
+
+export function getProxyConcurrencyStats(): { active: number; queued: number; cap: number } {
+  return { active: proxySemaphore.getActive(), queued: proxySemaphore.getQueued(), cap: PROXY_CONCURRENCY_CAP };
+}
+
+function rawProxyFetch(
+  url: string,
+  init: RequestInit,
+  proxyUrl: string,
+): Promise<Response> {
   const agent = getOrCreateAgent(proxyUrl);
-
   const parsedUrl = new URL(url);
   const isHttps = parsedUrl.protocol === "https:";
   const transport = isHttps ? https : http;
@@ -114,4 +130,43 @@ export async function proxyFetch(
 
     req.end();
   });
+}
+
+const RETRY_DELAY_MS = 2500;
+const RETRY_PATTERNS = ["timeout", "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EPIPE", "socket hang up"];
+
+function isRetryableError(err: Error): boolean {
+  const msg = err.message || "";
+  return RETRY_PATTERNS.some(p => msg.includes(p));
+}
+
+export async function proxyFetch(
+  url: string,
+  init: RequestInit = {},
+  proxyIndex?: number,
+): Promise<Response> {
+  const proxies = getProxies();
+  if (proxies.length === 0 || proxyIndex === undefined) {
+    return fetch(url, init);
+  }
+
+  const idx = proxyIndex % proxies.length;
+  const proxyUrl = proxies[idx];
+
+  await proxySemaphore.acquire();
+  try {
+    return await rawProxyFetch(url, init, proxyUrl);
+  } catch (err: any) {
+    if (isRetryableError(err)) {
+      await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+      try {
+        return await rawProxyFetch(url, init, proxyUrl);
+      } catch (retryErr: any) {
+        throw retryErr;
+      }
+    }
+    throw err;
+  } finally {
+    proxySemaphore.release();
+  }
 }

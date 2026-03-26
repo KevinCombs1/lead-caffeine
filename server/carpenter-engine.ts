@@ -10,6 +10,9 @@ import {
   type SourceResult,
 } from "./carpenter-sources";
 import { getProxyCount } from "./carpenter-proxy";
+import { db } from "./db";
+import { carpenterAntResults } from "@shared/schema";
+import { eq, and, inArray } from "drizzle-orm";
 
 const ANT_COUNT = 399;
 
@@ -81,8 +84,16 @@ function normalizeUSPhone(raw: string): string | null {
   return null;
 }
 
+async function safeSourceCall(fn: () => Promise<SourceResult>, sourceName: string): Promise<SourceResult> {
+  try {
+    return await fn();
+  } catch (err: any) {
+    return { source: sourceName, available: false, error: err.message || "unknown error" };
+  }
+}
+
 async function runStep1Parse(phone: string, _proxyIndex?: number): Promise<StepResult> {
-  const libResult = await sourceLibphonenumber(phone);
+  const libResult = await safeSourceCall(() => sourceLibphonenumber(phone), "libphonenumber");
   return {
     step: 1,
     name: "PARSE",
@@ -92,7 +103,7 @@ async function runStep1Parse(phone: string, _proxyIndex?: number): Promise<StepR
 }
 
 async function runStep2LineTypeRound1(phone: string, proxyIndex?: number): Promise<StepResult> {
-  const result = await sourceTwilioLineType(phone, proxyIndex);
+  const result = await safeSourceCall(() => sourceTwilioLineType(phone, proxyIndex), "twilio_line_type");
   return {
     step: 2,
     name: "LINE_TYPE_R1_TWILIO",
@@ -103,9 +114,9 @@ async function runStep2LineTypeRound1(phone: string, proxyIndex?: number): Promi
 
 async function runStep3LineTypeRound2(phone: string, _proxyIndex?: number): Promise<StepResult> {
   const [fcc, npanxx, libphone] = await Promise.all([
-    sourceFccBlocks(phone),
-    sourceNpanxx(phone),
-    sourceLibphonenumber(phone),
+    safeSourceCall(() => sourceFccBlocks(phone), "fcc_blocks"),
+    safeSourceCall(() => sourceNpanxx(phone), "npanxx"),
+    safeSourceCall(() => sourceLibphonenumber(phone), "libphonenumber"),
   ]);
   return {
     step: 3,
@@ -117,8 +128,8 @@ async function runStep3LineTypeRound2(phone: string, _proxyIndex?: number): Prom
 
 async function runStep4LineTypeRound3(phone: string, proxyIndex?: number): Promise<StepResult> {
   const [numverify, abstractapi] = await Promise.all([
-    sourceNumVerify(phone, proxyIndex),
-    sourceAbstractAPI(phone, proxyIndex),
+    safeSourceCall(() => sourceNumVerify(phone, proxyIndex), "numverify"),
+    safeSourceCall(() => sourceAbstractAPI(phone, proxyIndex), "abstractapi"),
   ]);
   return {
     step: 4,
@@ -130,8 +141,8 @@ async function runStep4LineTypeRound3(phone: string, proxyIndex?: number): Promi
 
 async function runStep5LineTypeRound4(phone: string, proxyIndex?: number): Promise<StepResult> {
   const [ipqs, veriphone] = await Promise.all([
-    sourceIpqsLineType(phone, proxyIndex),
-    sourceVeriphone(phone, proxyIndex),
+    safeSourceCall(() => sourceIpqsLineType(phone, proxyIndex), "ipqs_line_type"),
+    safeSourceCall(() => sourceVeriphone(phone, proxyIndex), "veriphone"),
   ]);
   return {
     step: 5,
@@ -142,7 +153,7 @@ async function runStep5LineTypeRound4(phone: string, proxyIndex?: number): Promi
 }
 
 async function runStep6ActiveRound1(phone: string, proxyIndex?: number): Promise<StepResult> {
-  const result = await sourceTwilioLiveActivity(phone, proxyIndex);
+  const result = await safeSourceCall(() => sourceTwilioLiveActivity(phone, proxyIndex), "twilio_live_activity");
   return {
     step: 6,
     name: "ACTIVE_R1_TWILIO_LIVE",
@@ -153,8 +164,8 @@ async function runStep6ActiveRound1(phone: string, proxyIndex?: number): Promise
 
 async function runStep7ActiveRound2(phone: string, proxyIndex?: number): Promise<StepResult> {
   const [cnam, simSwap] = await Promise.all([
-    sourceTwilioCnam(phone, proxyIndex),
-    sourceTwilioSimSwap(phone, proxyIndex),
+    safeSourceCall(() => sourceTwilioCnam(phone, proxyIndex), "twilio_cnam"),
+    safeSourceCall(() => sourceTwilioSimSwap(phone, proxyIndex), "twilio_sim_swap"),
   ]);
   return {
     step: 7,
@@ -166,8 +177,8 @@ async function runStep7ActiveRound2(phone: string, proxyIndex?: number): Promise
 
 async function runStep8ActiveRound3(phone: string, proxyIndex?: number): Promise<StepResult> {
   const [brave, hubspot] = await Promise.all([
-    sourceBraveSearch(phone, proxyIndex),
-    sourceHubspot(phone, proxyIndex),
+    safeSourceCall(() => sourceBraveSearch(phone, proxyIndex), "brave_search"),
+    safeSourceCall(() => sourceHubspot(phone, proxyIndex), "hubspot"),
   ]);
   return {
     step: 8,
@@ -179,8 +190,8 @@ async function runStep8ActiveRound3(phone: string, proxyIndex?: number): Promise
 
 async function runStep9ActiveRound4(phone: string, _proxyIndex?: number): Promise<StepResult> {
   const [heuristics, dbFreq] = await Promise.all([
-    sourcePhoneAuthHeuristics(phone),
-    sourceDbFrequency(phone),
+    safeSourceCall(() => sourcePhoneAuthHeuristics(phone), "phone_auth_heuristics"),
+    safeSourceCall(() => sourceDbFrequency(phone), "db_frequency"),
   ]);
   return {
     step: 9,
@@ -191,7 +202,7 @@ async function runStep9ActiveRound4(phone: string, _proxyIndex?: number): Promis
 }
 
 async function runStep10ActiveRound5(phone: string, proxyIndex?: number): Promise<StepResult> {
-  const ipqsActive = await sourceIpqsActive(phone, proxyIndex);
+  const ipqsActive = await safeSourceCall(() => sourceIpqsActive(phone, proxyIndex), "ipqs_active");
   return {
     step: 10,
     name: "ACTIVE_R5_IPQS_DEEP",
@@ -290,6 +301,19 @@ function computeActiveVerdict(allSources: SourceResult[]): { verdict: string; co
   return { verdict, confidence: Math.min(confidence, 1.0) };
 }
 
+async function resilientDbUpdate(resultId: string, data: Partial<CarpenterAntResult>): Promise<void> {
+  try {
+    await storage.updateCarpenterResult(resultId, data);
+  } catch (err: any) {
+    await new Promise(r => setTimeout(r, 500));
+    try {
+      await storage.updateCarpenterResult(resultId, data);
+    } catch (retryErr: any) {
+      console.error(`[carpenter] DB write failed for result ${resultId} after retry: ${retryErr.message}`);
+    }
+  }
+}
+
 export class CarpenterAntEngine {
   private jobId: string = "";
   private stopped = false;
@@ -383,6 +407,25 @@ export class CarpenterAntEngine {
     this.stopped = true;
   }
 
+  private async cleanupOrphanedResults() {
+    try {
+      const orphanStatuses = ["pending", "processing"];
+      await db.update(carpenterAntResults)
+        .set({
+          overallStatus: "failed",
+          errorMessage: "job terminated before completion",
+        })
+        .where(
+          and(
+            eq(carpenterAntResults.jobId, this.jobId),
+            inArray(carpenterAntResults.overallStatus, orphanStatuses),
+          )
+        );
+    } catch (err: any) {
+      console.error(`[carpenter] orphan cleanup failed for job ${this.jobId}: ${err.message}`);
+    }
+  }
+
   private async runPipelineSafe() {
     try {
       await this.runPipeline();
@@ -394,6 +437,7 @@ export class CarpenterAntEngine {
         });
       } catch {}
     } finally {
+      await this.cleanupOrphanedResults();
       this.stopped = true;
       activeJobs.delete(this.jobId);
       emitGlobalSnapshot();
@@ -425,7 +469,7 @@ export class CarpenterAntEngine {
         });
 
         try {
-          await storage.updateCarpenterResult(resultId, { overallStatus: "processing", currentStep: 0 });
+          await resilientDbUpdate(resultId, { overallStatus: "processing", currentStep: 0 });
 
           const allStepResults: StepResult[] = [];
           const allSources: SourceResult[] = [];
@@ -445,7 +489,7 @@ export class CarpenterAntEngine {
               status: "processing",
             });
 
-            await storage.updateCarpenterResult(resultId, {
+            await resilientDbUpdate(resultId, {
               currentStep: stepIdx + 1,
               stepResults: JSON.parse(JSON.stringify(allStepResults)),
             });
@@ -458,7 +502,7 @@ export class CarpenterAntEngine {
           const lineVerdict = computeLineTypeVerdict(allSources);
           const activeVerdict = computeActiveVerdict(allSources);
 
-          await storage.updateCarpenterResult(resultId, {
+          await resilientDbUpdate(resultId, {
             lineTypeVerdict: lineVerdict.verdict,
             lineTypeConfidence: lineVerdict.confidence,
             activeVerdict: activeVerdict.verdict,
@@ -486,18 +530,18 @@ export class CarpenterAntEngine {
             totalSteps: 10,
             status: "failed",
           });
-          try {
-            await storage.updateCarpenterResult(resultId, {
-              overallStatus: "failed",
-              errorMessage: err.message,
-            });
-          } catch {}
+          await resilientDbUpdate(resultId, {
+            overallStatus: "failed",
+            errorMessage: err.message,
+          });
         }
 
-        await storage.updateCarpenterJob(this.jobId, {
-          completed: this.completedCount,
-          failed: this.failedCount,
-        });
+        try {
+          await storage.updateCarpenterJob(this.jobId, {
+            completed: this.completedCount,
+            failed: this.failedCount,
+          });
+        } catch {}
         this.emitProgress();
       }
     };
