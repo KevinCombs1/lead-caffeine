@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import path from "path";
 import { existsSync } from "fs";
 import session from "express-session";
+import { z } from "zod";
 import { storage } from "./storage";
 import { db } from "./db";
 import { sql, eq } from "drizzle-orm";
@@ -3101,13 +3102,15 @@ export async function registerRoutes(
         return res.status(409).json({ error: "A carpenter job is already running" });
       }
 
-      const { phones, filename } = req.body;
-      if (!phones || !Array.isArray(phones) || phones.length === 0) {
-        return res.status(400).json({ error: "phones array required" });
+      const carpenterJobSchema = z.object({
+        phones: z.array(z.string().min(1)).min(1, "At least one phone number required").max(100, "Maximum 100 phone numbers per job"),
+        filename: z.string().optional(),
+      });
+      const parsed = carpenterJobSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid request body" });
       }
-      if (phones.length > 100) {
-        return res.status(400).json({ error: "Maximum 100 phone numbers per job" });
-      }
+      const { phones, filename } = parsed.data;
 
       carpenterJobLock = true;
       try {

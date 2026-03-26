@@ -177,10 +177,21 @@ export default function CarpenterAntsPage() {
     refetchInterval: 5000,
   });
 
-  const { data: progress } = useQuery<ProgressData>({
-    queryKey: ["/api/carpenter/progress"],
-    refetchInterval: 1500,
-  });
+  const [progress, setProgress] = useState<ProgressData | null>(null);
+
+  useEffect(() => {
+    const es = new EventSource("/api/carpenter/progress/stream");
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setProgress(data);
+      } catch {}
+    };
+    es.onerror = () => {
+      setProgress(null);
+    };
+    return () => es.close();
+  }, []);
 
   const { data: results = [], isLoading: resultsLoading } = useQuery<CarpenterResult[]>({
     queryKey: ["/api/carpenter/jobs", viewingJobId, "results"],

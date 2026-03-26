@@ -8,9 +8,38 @@ export interface SourceResult {
   carrier?: string;
   countryCode?: string;
   confidence?: number;
-  raw?: any;
+  raw?: Record<string, unknown>;
   error?: string;
 }
+
+const SOURCE_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
+class Semaphore {
+  private queue: (() => void)[] = [];
+  private active = 0;
+  constructor(private max: number) {}
+  async acquire(): Promise<void> {
+    if (this.active < this.max) { this.active++; return; }
+    return new Promise<void>((resolve) => { this.queue.push(() => { this.active++; resolve(); }); });
+  }
+  release(): void {
+    this.active--;
+    const next = this.queue.shift();
+    if (next) next();
+  }
+}
+
+const twilioSemaphore = new Semaphore(2);
 
 function env(key: string): string | undefined {
   return process.env[key];
@@ -148,13 +177,14 @@ export async function sourceTwilioLineType(phone: string): Promise<SourceResult>
   const token = env("TWILIO_AUTH_TOKEN");
   if (!sid || !token) return { source: "twilio_line_type", available: false, error: "No Twilio credentials" };
 
+  await twilioSemaphore.acquire();
   try {
     const normalized = normalizeUSPhone(phone);
     const e164 = normalized ? `+1${normalized}` : phone;
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=line_type_intelligence`;
-    const resp = await fetch(url, {
+    const resp = await withTimeout(fetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    });
+    }), SOURCE_TIMEOUT_MS, "twilio_line_type");
     if (!resp.ok) return { source: "twilio_line_type", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const lti = data.line_type_intelligence;
@@ -177,6 +207,8 @@ export async function sourceTwilioLineType(phone: string): Promise<SourceResult>
     };
   } catch (e: any) {
     return { source: "twilio_line_type", available: false, error: e.message };
+  } finally {
+    twilioSemaphore.release();
   }
 }
 
@@ -188,7 +220,7 @@ export async function sourceNumVerify(phone: string): Promise<SourceResult> {
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `1${normalized}` : phone.replace(/\D/g, "");
-    const resp = await fetch(`https://apilayer.net/api/validate?access_key=${key}&number=${number}&country_code=US&format=1`);
+    const resp = await withTimeout(fetch(`https://apilayer.net/api/validate?access_key=${key}&number=${number}&country_code=US&format=1`), SOURCE_TIMEOUT_MS, "numverify");
     const data = await resp.json();
 
     let lineType: SourceResult["lineType"] = "unknown";
@@ -220,7 +252,7 @@ export async function sourceAbstractAPI(phone: string): Promise<SourceResult> {
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `1${normalized}` : phone.replace(/\D/g, "");
-    const resp = await fetch(`https://phonevalidation.abstractapi.com/v1/?api_key=${key}&phone=${number}`);
+    const resp = await withTimeout(fetch(`https://phonevalidation.abstractapi.com/v1/?api_key=${key}&phone=${number}`), SOURCE_TIMEOUT_MS, "abstractapi");
     const data = await resp.json();
 
     let lineType: SourceResult["lineType"] = "unknown";
@@ -252,7 +284,7 @@ export async function sourceIpqsLineType(phone: string): Promise<SourceResult> {
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `1${normalized}` : phone.replace(/\D/g, "");
-    const resp = await fetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}`);
+    const resp = await withTimeout(fetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}`), SOURCE_TIMEOUT_MS, "ipqs_line_type");
     const data = await resp.json();
 
     let lineType: SourceResult["lineType"] = "unknown";
@@ -285,7 +317,7 @@ export async function sourceIpqsActive(phone: string): Promise<SourceResult> {
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `1${normalized}` : phone.replace(/\D/g, "");
-    const resp = await fetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}?strictness=1`);
+    const resp = await withTimeout(fetch(`https://ipqualityscore.com/api/json/phone/${key}/${number}?strictness=1`), SOURCE_TIMEOUT_MS, "ipqs_active");
     const data = await resp.json();
 
     return {
@@ -316,7 +348,7 @@ export async function sourceVeriphone(phone: string): Promise<SourceResult> {
   try {
     const normalized = normalizeUSPhone(phone);
     const number = normalized ? `+1${normalized}` : phone;
-    const resp = await fetch(`https://api.veriphone.io/v2/verify?phone=${encodeURIComponent(number)}&key=${key}`);
+    const resp = await withTimeout(fetch(`https://api.veriphone.io/v2/verify?phone=${encodeURIComponent(number)}&key=${key}`), SOURCE_TIMEOUT_MS, "veriphone");
     const data = await resp.json();
 
     let lineType: SourceResult["lineType"] = "unknown";
@@ -346,13 +378,14 @@ export async function sourceTwilioCnam(phone: string): Promise<SourceResult> {
   const token = env("TWILIO_AUTH_TOKEN");
   if (!sid || !token) return { source: "twilio_cnam", available: false, error: "No Twilio credentials" };
 
+  await twilioSemaphore.acquire();
   try {
     const normalized = normalizeUSPhone(phone);
     const e164 = normalized ? `+1${normalized}` : phone;
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=caller_name`;
-    const resp = await fetch(url, {
+    const resp = await withTimeout(fetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    });
+    }), SOURCE_TIMEOUT_MS, "twilio_cnam");
     if (!resp.ok) return { source: "twilio_cnam", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
 
@@ -365,6 +398,8 @@ export async function sourceTwilioCnam(phone: string): Promise<SourceResult> {
     };
   } catch (e: any) {
     return { source: "twilio_cnam", available: false, error: e.message };
+  } finally {
+    twilioSemaphore.release();
   }
 }
 
@@ -374,13 +409,14 @@ export async function sourceTwilioSimSwap(phone: string): Promise<SourceResult> 
   const token = env("TWILIO_AUTH_TOKEN");
   if (!sid || !token) return { source: "twilio_sim_swap", available: false, error: "No Twilio credentials" };
 
+  await twilioSemaphore.acquire();
   try {
     const normalized = normalizeUSPhone(phone);
     const e164 = normalized ? `+1${normalized}` : phone;
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=sim_swap`;
-    const resp = await fetch(url, {
+    const resp = await withTimeout(fetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    });
+    }), SOURCE_TIMEOUT_MS, "twilio_sim_swap");
     if (!resp.ok) return { source: "twilio_sim_swap", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const simSwap = data.sim_swap;
@@ -398,6 +434,8 @@ export async function sourceTwilioSimSwap(phone: string): Promise<SourceResult> 
     };
   } catch (e: any) {
     return { source: "twilio_sim_swap", available: false, error: e.message };
+  } finally {
+    twilioSemaphore.release();
   }
 }
 
@@ -407,13 +445,14 @@ export async function sourceTwilioLiveActivity(phone: string): Promise<SourceRes
   const token = env("TWILIO_AUTH_TOKEN");
   if (!sid || !token) return { source: "twilio_live_activity", available: false, error: "No Twilio credentials" };
 
+  await twilioSemaphore.acquire();
   try {
     const normalized = normalizeUSPhone(phone);
     const e164 = normalized ? `+1${normalized}` : phone;
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=live_activity`;
-    const resp = await fetch(url, {
+    const resp = await withTimeout(fetch(url, {
       headers: { "Authorization": "Basic " + Buffer.from(`${sid}:${token}`).toString("base64") },
-    });
+    }), SOURCE_TIMEOUT_MS, "twilio_live_activity");
     if (!resp.ok) return { source: "twilio_live_activity", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const la = data.live_activity;
@@ -432,6 +471,8 @@ export async function sourceTwilioLiveActivity(phone: string): Promise<SourceRes
     };
   } catch (e: any) {
     return { source: "twilio_live_activity", available: false, error: e.message };
+  } finally {
+    twilioSemaphore.release();
   }
 }
 
@@ -446,9 +487,9 @@ export async function sourceBraveSearch(phone: string): Promise<SourceResult> {
       ? `(${normalized.slice(0,3)}) ${normalized.slice(3,6)}-${normalized.slice(6)}`
       : phone;
 
-    const resp = await fetch(`https://api.search.brave.com/res/v1/web/search?q="${encodeURIComponent(formatted)}"&count=5`, {
+    const resp = await withTimeout(fetch(`https://api.search.brave.com/res/v1/web/search?q="${encodeURIComponent(formatted)}"&count=5`, {
       headers: { "X-Subscription-Token": key, "Accept": "application/json" },
-    });
+    }), SOURCE_TIMEOUT_MS, "brave_search");
     if (!resp.ok) return { source: "brave_search", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const results = data.web?.results || [];
@@ -490,7 +531,7 @@ export async function sourceHubspot(phone: string): Promise<SourceResult> {
     const normalized = normalizeUSPhone(phone);
     const searchPhone = normalized || phone.replace(/\D/g, "");
 
-    const resp = await fetch("https://api.hubapi.com/crm/v3/objects/contacts/search", {
+    const resp = await withTimeout(fetch("https://api.hubapi.com/crm/v3/objects/contacts/search", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${key}`,
@@ -503,7 +544,7 @@ export async function sourceHubspot(phone: string): Promise<SourceResult> {
         properties: ["firstname", "lastname", "phone", "company"],
         limit: 5,
       }),
-    });
+    }), SOURCE_TIMEOUT_MS, "hubspot");
     if (!resp.ok) return { source: "hubspot", available: true, error: `HTTP ${resp.status}`, confidence: 0 };
     const data = await resp.json();
     const total = data.total || 0;

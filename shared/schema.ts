@@ -1298,7 +1298,7 @@ export type InsertCarpenterAntJob = z.infer<typeof insertCarpenterAntJobSchema>;
 
 export const carpenterAntResults = pgTable("carpenter_ant_results", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  jobId: varchar("job_id").notNull(),
+  jobId: varchar("job_id").notNull().references(() => carpenterAntJobs.id, { onDelete: "cascade" }),
   phoneRaw: text("phone_raw").notNull(),
   phoneNormalized: text("phone_normalized"),
   countryCode: varchar("country_code"),

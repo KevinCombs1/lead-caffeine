@@ -405,7 +405,7 @@ export class CarpenterAntEngine {
 
             await storage.updateCarpenterResult(resultId, {
               currentStep: stepIdx + 1,
-              stepResults: allStepResults as any,
+              stepResults: JSON.parse(JSON.stringify(allStepResults)),
             });
 
             this.emitProgress();
@@ -424,7 +424,7 @@ export class CarpenterAntEngine {
             carrier: lineVerdict.carrier || null,
             overallStatus: "completed",
             currentStep: 10,
-            stepResults: allStepResults as any,
+            stepResults: JSON.parse(JSON.stringify(allStepResults)),
           });
 
           this.completedCount++;
