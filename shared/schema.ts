@@ -1279,6 +1279,49 @@ export const insertHiveCompletedComboSchema = createInsertSchema(hiveCompletedCo
 export type HiveCompletedCombo = typeof hiveCompletedCombos.$inferSelect;
 export type InsertHiveCompletedCombo = z.infer<typeof insertHiveCompletedComboSchema>;
 
+export const carpenterAntJobs = pgTable("carpenter_ant_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  status: varchar("status").notNull().default("pending"),
+  totalNumbers: integer("total_numbers").notNull().default(0),
+  completed: integer("completed").notNull().default(0),
+  failed: integer("failed").notNull().default(0),
+  sourceFilename: text("source_filename"),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("caj_status_idx").on(table.status),
+]);
+
+export const insertCarpenterAntJobSchema = createInsertSchema(carpenterAntJobs).omit({ id: true, createdAt: true, completedAt: true });
+export type CarpenterAntJob = typeof carpenterAntJobs.$inferSelect;
+export type InsertCarpenterAntJob = z.infer<typeof insertCarpenterAntJobSchema>;
+
+export const carpenterAntResults = pgTable("carpenter_ant_results", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobId: varchar("job_id").notNull(),
+  phoneRaw: text("phone_raw").notNull(),
+  phoneNormalized: text("phone_normalized"),
+  countryCode: varchar("country_code"),
+  carrier: text("carrier"),
+  stepResults: jsonb("step_results"),
+  lineTypeVerdict: varchar("line_type_verdict"),
+  lineTypeConfidence: real("line_type_confidence"),
+  activeVerdict: varchar("active_verdict"),
+  activeConfidence: real("active_confidence"),
+  overallStatus: varchar("overall_status").notNull().default("pending"),
+  currentStep: integer("current_step").notNull().default(0),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("car_job_idx").on(table.jobId),
+  index("car_status_idx").on(table.overallStatus),
+  index("car_phone_idx").on(table.phoneNormalized),
+]);
+
+export const insertCarpenterAntResultSchema = createInsertSchema(carpenterAntResults).omit({ id: true, createdAt: true });
+export type CarpenterAntResult = typeof carpenterAntResults.$inferSelect;
+export type InsertCarpenterAntResult = z.infer<typeof insertCarpenterAntResultSchema>;
+
 export const legislativeCreditMap = pgTable("legislative_credit_map", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   creditId: varchar("credit_id").notNull(),

@@ -18,6 +18,8 @@ import {
   hiveFlowers, type HiveFlower, type InsertHiveFlower,
   hivePollen, type HivePollen, type InsertHivePollen,
   hiveCompletedCombos, type HiveCompletedCombo,
+  carpenterAntJobs, type CarpenterAntJob, type InsertCarpenterAntJob,
+  carpenterAntResults, type CarpenterAntResult, type InsertCarpenterAntResult,
 } from "@shared/schema";
 import { ilike, or, count, inArray } from "drizzle-orm";
 
@@ -115,6 +117,16 @@ export interface IStorage {
   isComboCompleted(directoryId: string, categoryId: string, locationId: string): Promise<boolean>;
   getCompletedCombosCount(): Promise<number>;
   clearCompletedCombos(): Promise<void>;
+  createCarpenterJob(data: InsertCarpenterAntJob): Promise<CarpenterAntJob>;
+  getCarpenterJob(id: string): Promise<CarpenterAntJob | undefined>;
+  updateCarpenterJob(id: string, data: Partial<CarpenterAntJob>): Promise<void>;
+  getCarpenterJobs(): Promise<CarpenterAntJob[]>;
+  deleteCarpenterJob(id: string): Promise<void>;
+  createCarpenterResult(data: InsertCarpenterAntResult): Promise<CarpenterAntResult>;
+  bulkCreateCarpenterResults(data: InsertCarpenterAntResult[]): Promise<CarpenterAntResult[]>;
+  updateCarpenterResult(id: string, data: Partial<CarpenterAntResult>): Promise<void>;
+  getCarpenterResults(jobId: string): Promise<CarpenterAntResult[]>;
+  getCarpenterResult(id: string): Promise<CarpenterAntResult | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -784,6 +796,52 @@ export class DatabaseStorage implements IStorage {
 
   async clearCompletedCombos(): Promise<void> {
     await db.delete(hiveCompletedCombos);
+  }
+
+  async createCarpenterJob(data: InsertCarpenterAntJob): Promise<CarpenterAntJob> {
+    const [job] = await db.insert(carpenterAntJobs).values(data).returning();
+    return job;
+  }
+
+  async getCarpenterJob(id: string): Promise<CarpenterAntJob | undefined> {
+    const [job] = await db.select().from(carpenterAntJobs).where(eq(carpenterAntJobs.id, id));
+    return job;
+  }
+
+  async updateCarpenterJob(id: string, data: Partial<CarpenterAntJob>): Promise<void> {
+    await db.update(carpenterAntJobs).set(data).where(eq(carpenterAntJobs.id, id));
+  }
+
+  async getCarpenterJobs(): Promise<CarpenterAntJob[]> {
+    return db.select().from(carpenterAntJobs).orderBy(desc(carpenterAntJobs.createdAt));
+  }
+
+  async deleteCarpenterJob(id: string): Promise<void> {
+    await db.delete(carpenterAntResults).where(eq(carpenterAntResults.jobId, id));
+    await db.delete(carpenterAntJobs).where(eq(carpenterAntJobs.id, id));
+  }
+
+  async createCarpenterResult(data: InsertCarpenterAntResult): Promise<CarpenterAntResult> {
+    const [result] = await db.insert(carpenterAntResults).values(data).returning();
+    return result;
+  }
+
+  async bulkCreateCarpenterResults(data: InsertCarpenterAntResult[]): Promise<CarpenterAntResult[]> {
+    if (data.length === 0) return [];
+    return db.insert(carpenterAntResults).values(data).returning();
+  }
+
+  async updateCarpenterResult(id: string, data: Partial<CarpenterAntResult>): Promise<void> {
+    await db.update(carpenterAntResults).set(data).where(eq(carpenterAntResults.id, id));
+  }
+
+  async getCarpenterResults(jobId: string): Promise<CarpenterAntResult[]> {
+    return db.select().from(carpenterAntResults).where(eq(carpenterAntResults.jobId, jobId)).orderBy(asc(carpenterAntResults.createdAt));
+  }
+
+  async getCarpenterResult(id: string): Promise<CarpenterAntResult | undefined> {
+    const [result] = await db.select().from(carpenterAntResults).where(eq(carpenterAntResults.id, id));
+    return result;
   }
 }
 
