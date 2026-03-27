@@ -330,57 +330,58 @@ export async function hiveProxyFetch(
   stateCode: string,
 ): Promise<HiveProxyFetchResult> {
   const map = getProxyMap();
-  const entry = map.get(stateCode);
+  const normalizedState = stateCode.toUpperCase();
+  const entry = map.get(normalizedState);
 
   if (!entry) {
     return {
       response: await fetch(url, init),
       route: "direct",
-      routeLabel: `direct (no proxy for ${stateCode})`,
+      routeLabel: `direct (no proxy for ${normalizedState})`,
     };
   }
 
-  if (!isProxyHealthy(stateCode)) {
-    const h = healthMap.get(stateCode)!;
+  if (!isProxyHealthy(normalizedState)) {
+    const h = healthMap.get(normalizedState)!;
     const remaining = Math.ceil((h.cooldownUntil - Date.now()) / 1000);
     return {
       response: await fetch(url, init),
       route: "direct",
-      routeLabel: `direct (${stateCode}-proxy cooldown ${remaining}s)`,
+      routeLabel: `direct (${normalizedState}-proxy cooldown ${remaining}s)`,
     };
   }
 
   try {
     const response = await rawHiveProxyFetch(url, init, entry.proxyUrl);
     if (response.status === 407) {
-      recordFailure(stateCode, "proxy auth failure (407)");
+      recordFailure(normalizedState, "proxy auth failure (407)");
       try {
         const fallbackResponse = await fetch(url, init);
         return {
           response: fallbackResponse,
           route: "fallback",
-          routeLabel: `${stateCode}-proxy auth failed (407), fell back to direct`,
+          routeLabel: `${normalizedState}-proxy auth failed (407), fell back to direct`,
         };
       } catch (directErr) {
         throw directErr;
       }
     }
-    recordSuccess(stateCode);
+    recordSuccess(normalizedState);
     return {
       response,
       route: "proxy",
-      routeLabel: `via ${stateCode}-proxy`,
+      routeLabel: `via ${normalizedState}-proxy`,
     };
   } catch (proxyErr: any) {
     const reason = proxyErr?.message || String(proxyErr);
     const safeReason = sanitizeErrorReason(reason);
-    recordFailure(stateCode, reason);
+    recordFailure(normalizedState, reason);
     try {
       const response = await fetch(url, init);
       return {
         response,
         route: "fallback",
-        routeLabel: `${stateCode}-proxy failed (${safeReason}), fell back to direct`,
+        routeLabel: `${normalizedState}-proxy failed (${safeReason}), fell back to direct`,
       };
     } catch (directErr) {
       throw directErr;
