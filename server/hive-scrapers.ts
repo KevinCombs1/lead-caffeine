@@ -848,7 +848,7 @@ async function fetchPage(url: string, log?: string[]): Promise<string> {
     return meta.html;
   } catch (err: any) {
     if (err instanceof FetchError && err.meta) {
-      if (_testMetaCollector) _testMetaCollector.push(err.meta as FetchPageMeta);
+      if (_testMetaCollector) _testMetaCollector.push({ ...err.meta, proxyRoute: (err.meta as any).proxyRoute || "unknown" } as FetchPageMetaExtended);
       if (log) {
         log.push(`[fetch] ${url} → ${err.meta.status || "ERR"} | ${err.meta.bodyLength || 0} bytes | ${err.message}`);
       }

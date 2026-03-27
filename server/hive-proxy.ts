@@ -173,6 +173,21 @@ function recordSuccess(stateCode: string): void {
   h.lastUsed = Date.now();
 }
 
+function sanitizeErrorReason(raw: string): string {
+  if (raw.includes("407")) return "AUTH_407";
+  if (/ECONNREFUSED/i.test(raw)) return "ECONNREFUSED";
+  if (/ECONNRESET/i.test(raw)) return "ECONNRESET";
+  if (/ETIMEDOUT/i.test(raw)) return "ETIMEDOUT";
+  if (/ENOTFOUND/i.test(raw)) return "ENOTFOUND";
+  if (/timeout/i.test(raw)) return "TIMEOUT";
+  if (/abort/i.test(raw)) return "ABORTED";
+  if (/EPROTO/i.test(raw)) return "EPROTO";
+  if (/socket hang up/i.test(raw)) return "SOCKET_HANGUP";
+  const code = raw.match(/^[A-Z_]+$/)?.[0];
+  if (code) return code;
+  return "PROXY_ERROR";
+}
+
 function recordFailure(stateCode: string, reason: string): void {
   const h = healthMap.get(stateCode);
   if (!h) return;
@@ -180,12 +195,13 @@ function recordFailure(stateCode: string, reason: string): void {
   h.totalRequests++;
   h.totalFailures++;
   h.lastUsed = Date.now();
-  h.lastFailureReason = reason;
+  const safeReason = sanitizeErrorReason(reason);
+  h.lastFailureReason = safeReason;
   if (h.consecutiveFailures >= FAIL_THRESHOLD) {
     h.status = "cooldown";
     h.cooldownUntil = Date.now() + COOLDOWN_MS;
     h.consecutiveFailures = 0;
-    console.log(`[hive-proxy] ${stateCode} proxy entering 5min cooldown after ${FAIL_THRESHOLD} consecutive failures (${reason})`);
+    console.log(`[hive-proxy] ${stateCode} proxy entering 5min cooldown after ${FAIL_THRESHOLD} consecutive failures (${safeReason})`);
   }
 }
 
@@ -357,13 +373,14 @@ export async function hiveProxyFetch(
     };
   } catch (proxyErr: any) {
     const reason = proxyErr?.message || String(proxyErr);
+    const safeReason = sanitizeErrorReason(reason);
     recordFailure(stateCode, reason);
     try {
       const response = await fetch(url, init);
       return {
         response,
         route: "fallback",
-        routeLabel: `${stateCode}-proxy failed (${reason.substring(0, 50)}), fell back to direct`,
+        routeLabel: `${stateCode}-proxy failed (${safeReason}), fell back to direct`,
       };
     } catch (directErr) {
       throw directErr;
@@ -440,7 +457,7 @@ export function getHiveProxyHealth(): HiveProxyStatus {
 
 export function reloadHiveProxies(): HiveProxyStatus {
   for (const [, agent] of agentCache) {
-    try { (agent as any).destroy?.(); } catch {}
+    try { agent.destroy(); } catch {}
   }
   agentCache.clear();
   healthMap.clear();
