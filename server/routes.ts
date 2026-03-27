@@ -3110,9 +3110,52 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/hive/proxy-fetch", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { isManualProxyConfigured, loadAutoFetchedProxies, setAutoFetchStats } = await import("./hive-proxy");
+      const { fetchAndValidateProxies, getAutoFetchStatus } = await import("./hive-proxy-fetcher");
+
+      if (isManualProxyConfigured()) {
+        return res.json({ skipped: true, reason: "manual proxies configured via HIVE_PROXIES — auto-fetch skipped" });
+      }
+
+      const status = getAutoFetchStatus();
+      if (status.inProgress) {
+        return res.json({ inProgress: true, phase: status.phase, detail: status.detail });
+      }
+
+      fetchAndValidateProxies(true).then((result) => {
+        setAutoFetchStats({
+          totalFound: result.totalFound,
+          totalValidated: result.totalValidated,
+          totalFailed: result.totalFailed,
+          sources: result.sources.map(s => ({ source: s.source, found: s.found, validated: s.validated })),
+          durationMs: result.durationMs,
+        });
+
+        if (result.validatedProxies.length > 0) {
+          const loaded = loadAutoFetchedProxies(
+            result.validatedProxies.map(p => ({ url: p.url, protocol: p.protocol }))
+          );
+          console.log(`[proxy-fetch] Auto-fetch complete: ${loaded} proxies loaded into pool`);
+        } else {
+          console.log(`[proxy-fetch] Auto-fetch found no valid proxies — pool unchanged`);
+        }
+      }).catch((err: any) => {
+        console.error(`[proxy-fetch] Auto-fetch failed:`, err.message);
+      });
+
+      res.json({ started: true, message: "Proxy fetch started in background" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/hive/proxy-reload", requireAuth, async (_req: Request, res: Response) => {
     try {
       const { reloadHiveProxies } = await import("./hive-proxy");
+      const { clearCache } = await import("./hive-proxy-fetcher");
+      clearCache();
       res.json({ reloaded: true, ...reloadHiveProxies() });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

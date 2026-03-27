@@ -104,6 +104,15 @@ interface ProxyStatus {
   domainGateParams: { maxConcurrent: number; minGapMs: number };
   delayTier: { name: string; minMs: number; maxMs: number };
   activeWorkers: number;
+  source: "manual" | "auto-fetched" | "none";
+  autoFetchStats: {
+    totalFound: number;
+    totalValidated: number;
+    totalFailed: number;
+    sources: Array<{ source: string; found: number; validated: number }>;
+    durationMs: number;
+  } | null;
+  autoFetchStatus: { inProgress: boolean; phase: string; detail: string; cached: boolean };
   proxies: Array<{
     index: number;
     maskedUrl: string;
@@ -183,6 +192,22 @@ export default function HivePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/hive/proxy-status"] });
       toast({ title: "Proxy configuration reloaded" });
     },
+  });
+
+  const proxyFetch = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hive/proxy-fetch"),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      if (data.skipped) {
+        toast({ title: "Auto-fetch skipped", description: data.reason });
+      } else if (data.inProgress) {
+        toast({ title: "Fetch already in progress", description: `${data.phase}: ${data.detail}` });
+      } else {
+        toast({ title: "Proxy fetch started", description: "Fetching and validating free proxies..." });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/hive/proxy-status"] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const flowerFilters: Record<string, string> = {};
@@ -766,6 +791,25 @@ export default function HivePage() {
                       <span className="text-gray-500" data-testid="text-active-workers">{proxyStatus.activeWorkers} workers</span>
                       <span className="text-gray-600">|</span>
                       <span className="text-gray-500">{Object.entries(proxyStatus.byProtocol).map(([p, n]) => `${p}:${n}`).join(" ")}</span>
+                      {proxyStatus.source === "auto-fetched" && (
+                        <span className="text-cyan-400 text-[10px] border border-cyan-700/40 px-1.5 py-0.5 rounded" data-testid="badge-auto-fetched">auto-fetched</span>
+                      )}
+                      {proxyStatus.source === "manual" && (
+                        <span className="text-purple-400 text-[10px] border border-purple-700/40 px-1.5 py-0.5 rounded" data-testid="badge-manual">manual</span>
+                      )}
+                      <button
+                        onClick={() => proxyFetch.mutate()}
+                        disabled={proxyFetch.isPending || proxyStatus.autoFetchStatus?.inProgress}
+                        className="flex items-center gap-1 text-gray-500 hover:text-cyan-400 transition-colors"
+                        data-testid="button-proxy-fetch"
+                      >
+                        {proxyStatus.autoFetchStatus?.inProgress ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Download className="w-3 h-3" />
+                        )}
+                        <span>{proxyStatus.autoFetchStatus?.inProgress ? proxyStatus.autoFetchStatus.detail : "fetch"}</span>
+                      </button>
                       <button
                         onClick={() => proxyReload.mutate()}
                         disabled={proxyReload.isPending}
@@ -796,11 +840,44 @@ export default function HivePage() {
                         </div>
                       </div>
                     )}
+                    {proxyStatus.autoFetchStats && (
+                      <div className="flex items-center gap-2 flex-wrap text-[10px] text-gray-500 border-t border-gray-800/50 pt-1" data-testid="auto-fetch-stats">
+                        <span className="text-cyan-400/70">fetch stats:</span>
+                        <span>found {proxyStatus.autoFetchStats.totalFound}</span>
+                        <span className="text-green-400/70">validated {proxyStatus.autoFetchStats.totalValidated}</span>
+                        <span className="text-red-400/70">failed {proxyStatus.autoFetchStats.totalFailed}</span>
+                        <span className="text-gray-600">|</span>
+                        {proxyStatus.autoFetchStats.sources.map(s => (
+                          <span key={s.source} className="text-gray-600">{s.source}: {s.validated}/{s.found}</span>
+                        ))}
+                        <span className="text-gray-600">| {(proxyStatus.autoFetchStats.durationMs / 1000).toFixed(1)}s</span>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1.5 text-gray-600">
-                    <Shield className="w-3.5 h-3.5" />
-                    <span>no proxies configured — using direct fetch</span>
+                  <div className="flex flex-col gap-2 w-full">
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <Shield className="w-3.5 h-3.5" />
+                      <span className="text-xs">no proxies configured — using direct fetch</span>
+                      <button
+                        onClick={() => proxyFetch.mutate()}
+                        disabled={proxyFetch.isPending || proxyStatus.autoFetchStatus?.inProgress}
+                        className="ml-auto flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+                        data-testid="button-proxy-fetch"
+                      >
+                        {proxyStatus.autoFetchStatus?.inProgress ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>{proxyStatus.autoFetchStatus.phase}: {proxyStatus.autoFetchStatus.detail}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3 h-3" />
+                            <span>fetch free proxies</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

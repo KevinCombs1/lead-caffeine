@@ -36,6 +36,15 @@ export interface HiveProxyStatus {
   domainGateParams: { maxConcurrent: number; minGapMs: number };
   delayTier: { name: string; minMs: number; maxMs: number };
   activeWorkers: number;
+  source: "manual" | "auto-fetched" | "none";
+  autoFetchStats: {
+    totalFound: number;
+    totalValidated: number;
+    totalFailed: number;
+    sources: Array<{ source: string; found: number; validated: number }>;
+    durationMs: number;
+  } | null;
+  autoFetchStatus: { inProgress: boolean; phase: string; detail: string; cached: boolean };
   proxies: Array<{
     index: number;
     maskedUrl: string;
@@ -53,6 +62,9 @@ let proxyPool: ProxyEntry[] | null = null;
 const healthMap = new Map<number, ProxyHealth>();
 const agentCache = new Map<string, http.Agent>();
 let roundRobinCounter = 0;
+let proxySource: "manual" | "auto-fetched" | "none" = "none";
+let autoFetchStatsCache: HiveProxyStatus["autoFetchStats"] = null;
+let autoFetchStatusRef: { inProgress: boolean; phase: string; detail: string; cached: boolean } | null = null;
 
 const COOLDOWN_MS = 300000;
 const FAIL_THRESHOLD = 3;
@@ -107,6 +119,7 @@ function parseProxies(): ProxyEntry[] {
   }
 
   if (pool.length > 0) {
+    proxySource = "manual";
     const protoCounts: Record<string, number> = {};
     for (const p of pool) protoCounts[p.protocol] = (protoCounts[p.protocol] || 0) + 1;
     const protoSummary = Object.entries(protoCounts).map(([p, n]) => `${p}:${n}`).join(", ");
@@ -460,6 +473,8 @@ export function getHiveProxyHealth(): HiveProxyStatus {
     if (info.status === "healthy" && info.requests === 0) unused++;
   }
 
+  const fetchStatusInfo = autoFetchStatusRef ?? { inProgress: false, phase: "idle", detail: "", cached: false };
+
   return {
     configured: pool.length > 0,
     loaded: pool.length,
@@ -471,6 +486,9 @@ export function getHiveProxyHealth(): HiveProxyStatus {
     domainGateParams: computeDomainGateParams(healthy),
     delayTier: getDelayTier(healthy),
     activeWorkers: computeWorkerCount(healthy),
+    source: proxySource,
+    autoFetchStats: autoFetchStatsCache,
+    autoFetchStatus: fetchStatusInfo,
   };
 }
 
@@ -482,8 +500,66 @@ export function reloadHiveProxies(): HiveProxyStatus {
   healthMap.clear();
   proxyPool = null;
   roundRobinCounter = 0;
+  proxySource = "none";
+  autoFetchStatsCache = null;
   getPool();
   return getHiveProxyHealth();
+}
+
+export function loadAutoFetchedProxies(proxyUrls: Array<{ url: string; protocol: string }>): number {
+  for (const [, agent] of agentCache) {
+    try { agent.destroy(); } catch {}
+  }
+  agentCache.clear();
+  healthMap.clear();
+  roundRobinCounter = 0;
+
+  const pool: ProxyEntry[] = [];
+  let idx = 0;
+  for (const entry of proxyUrls) {
+    if (idx >= MAX_PROXIES) break;
+    const protocol = entry.protocol as ProxyEntry["protocol"];
+    pool.push({ index: idx, proxyUrl: entry.url, protocol });
+    healthMap.set(idx, {
+      index: idx,
+      maskedUrl: maskUrl(entry.url),
+      protocol,
+      status: "healthy",
+      consecutiveFailures: 0,
+      cooldownUntil: 0,
+      totalRequests: 0,
+      totalSuccesses: 0,
+      totalFailures: 0,
+      lastUsed: 0,
+      lastFailureReason: "",
+    });
+    idx++;
+  }
+
+  proxyPool = pool;
+  proxySource = "auto-fetched";
+
+  if (pool.length > 0) {
+    const protoCounts: Record<string, number> = {};
+    for (const p of pool) protoCounts[p.protocol] = (protoCounts[p.protocol] || 0) + 1;
+    const protoSummary = Object.entries(protoCounts).map(([p, n]) => `${p}:${n}`).join(", ");
+    console.log(`[hive-proxy] Loaded ${pool.length} auto-fetched proxies (${protoSummary})`);
+  }
+
+  return pool.length;
+}
+
+export function setAutoFetchStats(stats: HiveProxyStatus["autoFetchStats"]): void {
+  autoFetchStatsCache = stats;
+}
+
+export function setAutoFetchStatusRef(status: { inProgress: boolean; phase: string; detail: string; cached: boolean }): void {
+  autoFetchStatusRef = status;
+}
+
+export function isManualProxyConfigured(): boolean {
+  const raw = process.env.HIVE_PROXIES || "";
+  return raw.trim().length > 0;
 }
 
 export function computeDomainGateParams(proxyCount: number): { maxConcurrent: number; minGapMs: number } {
