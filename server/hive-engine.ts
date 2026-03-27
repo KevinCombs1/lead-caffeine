@@ -526,6 +526,8 @@ export class RayOfGraceEngine {
         this.domainGate.release(scraperKey);
       }
 
+      if (this.stopped) break;
+
       this.completedCombos++;
       this.log(`[W${workerId}] Done: ${combo.directory.name}/${combo.location.city},${combo.location.state} — ${comboFlowers}f/${comboPollen}p (${this.completedCombos}/${this.combos.length})`);
 
@@ -611,7 +613,7 @@ export class RayOfGraceEngine {
         continue;
       }
 
-      if (cancelFlag.cancelled) break;
+      if (cancelFlag.cancelled || this.stopped) break;
       if (!output || !output.results) continue;
 
       if (output.log && output.log.length > 0) {
@@ -633,7 +635,7 @@ export class RayOfGraceEngine {
         continue;
       }
 
-      if (cancelFlag.cancelled) break;
+      if (cancelFlag.cancelled || this.stopped) break;
 
       const { flowers, pollen } = classified;
 
@@ -665,12 +667,17 @@ export class RayOfGraceEngine {
         crawlJobId: this.jobId,
       }));
 
+      if (this.stopped) break;
       const insertedFlowers = await storage.bulkInsertFlowers(flowerInserts);
-      const insertedPollen = await storage.bulkInsertPollen(pollenInserts);
-
       this.totalFlowers += insertedFlowers;
-      this.totalPollen += insertedPollen;
       localFlowers += insertedFlowers;
+
+      if (this.stopped) {
+        if (insertedFlowers > 0) hadResults = true;
+        break;
+      }
+      const insertedPollen = await storage.bulkInsertPollen(pollenInserts);
+      this.totalPollen += insertedPollen;
       localPollen += insertedPollen;
 
       if (insertedFlowers > 0 || insertedPollen > 0) {
