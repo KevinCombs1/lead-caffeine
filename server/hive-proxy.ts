@@ -678,6 +678,14 @@ export async function hiveProxyFetch(
           countryCode: options?.countryCode,
           sessionId,
         });
+        if (psResult.response.status === 502) {
+          console.log(`[hive-proxy] PacketStream relay offline (502) attempt ${psAttempt + 1}/${maxPsAttempts} for ${url}, ${psAttempt < maxPsAttempts - 1 ? "retrying with fresh session" : "giving up"}`);
+          if (psAttempt < maxPsAttempts - 1) {
+            await new Promise(r => setTimeout(r, 3000 + Math.random() * 4000));
+            continue;
+          }
+          return psResult;
+        }
         const blocked = isBlockResponse(psResult.response);
         if (blocked) {
           console.log(`[hive-proxy] PacketStream attempt ${psAttempt + 1}/${maxPsAttempts} blocked (${psResult.response.status}) for ${url}, ${psAttempt < maxPsAttempts - 1 ? "retrying with fresh session" : "giving up"}`);
