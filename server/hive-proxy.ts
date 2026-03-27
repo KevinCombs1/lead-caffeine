@@ -3,8 +3,159 @@ import { SocksProxyAgent } from "socks-proxy-agent";
 import http from "http";
 import https from "https";
 import zlib from "zlib";
+import crypto from "crypto";
 
 const MAX_PROXIES = 2000;
+
+const PROTECTED_DOMAINS: Set<string> = new Set([
+  "clutch.co",
+  "manta.com",
+  "yell.com",
+  "cylex-usa.com",
+  "cylex.co.uk",
+  "cylex.de",
+  "cylex.us",
+  "ec21.com",
+  "globalsources.com",
+  "tradeford.com",
+  "tradeindia.com",
+  "kompass.com",
+  "bbb.org",
+  "chamberofcommerce.com",
+]);
+
+function isDomainProtected(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    for (const domain of PROTECTED_DOMAINS) {
+      if (hostname === domain || hostname.endsWith("." + domain)) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function isBlockResponse(response: Response): boolean {
+  const server = (response.headers.get("server") || "").toLowerCase();
+  const cfRay = response.headers.get("cf-ray");
+  if (response.status === 403 && (server.includes("cloudflare") || cfRay)) return true;
+  if (response.status === 503 && server.includes("cloudflare")) return true;
+  if (response.headers.get("x-datadome")) return true;
+  if (response.status === 403 && server.includes("datadome")) return true;
+  if (response.status === 429 && (cfRay || server.includes("cloudflare"))) return true;
+  return false;
+}
+
+async function isBlockPage(response: Response, body: string): Promise<boolean> {
+  if (isBlockResponse(response)) return true;
+  const lower = body.substring(0, 5000).toLowerCase();
+  if (lower.includes("captcha") && (lower.includes("challenge") || lower.includes("verify"))) return true;
+  if (lower.includes("datadome") && lower.includes("blocked")) return true;
+  if (lower.includes("cf-challenge") || lower.includes("cf_chl_opt")) return true;
+  if (lower.includes("just a moment") && lower.includes("cloudflare")) return true;
+  return false;
+}
+
+interface PacketStreamStats {
+  configured: boolean;
+  totalRequests: number;
+  totalSuccesses: number;
+  totalFailures: number;
+  estimatedBandwidthBytes: number;
+  requestsByDomain: Record<string, number>;
+  escalations: number;
+}
+
+const packetStreamStats: PacketStreamStats = {
+  configured: false,
+  totalRequests: 0,
+  totalSuccesses: 0,
+  totalFailures: 0,
+  estimatedBandwidthBytes: 0,
+  requestsByDomain: {},
+  escalations: 0,
+};
+
+function getPacketStreamCredentials(): { user: string; key: string } | null {
+  const user = process.env.PACKETSTREAM_USER;
+  const key = process.env.PACKETSTREAM_KEY;
+  if (!user || !key) return null;
+  return { user, key };
+}
+
+export function isPacketStreamConfigured(): boolean {
+  return getPacketStreamCredentials() !== null;
+}
+
+export function buildPacketStreamProxyUrl(options?: { countryCode?: string; sessionId?: string }): string | null {
+  const creds = getPacketStreamCredentials();
+  if (!creds) return null;
+
+  let password = creds.key;
+  if (options?.countryCode) {
+    password += `_country-${options.countryCode.toUpperCase()}`;
+  }
+  if (options?.sessionId) {
+    password += `_session-${options.sessionId}`;
+  }
+
+  return `http://${creds.user}:${password}@proxy.packetstream.io:31112`;
+}
+
+export function generateSessionId(): string {
+  return crypto.randomBytes(4).toString("hex");
+}
+
+export function refineBandwidthEstimate(actualBytes: number, estimatedBytes: number): void {
+  const diff = actualBytes - estimatedBytes;
+  if (diff !== 0) {
+    packetStreamStats.estimatedBandwidthBytes += diff;
+  }
+}
+
+function recordPacketStreamRequest(url: string, bodySize: number, success: boolean): void {
+  packetStreamStats.totalRequests++;
+  if (success) {
+    packetStreamStats.totalSuccesses++;
+  } else {
+    packetStreamStats.totalFailures++;
+  }
+  packetStreamStats.estimatedBandwidthBytes += bodySize;
+  try {
+    const domain = new URL(url).hostname.replace(/^www\./, "");
+    packetStreamStats.requestsByDomain[domain] = (packetStreamStats.requestsByDomain[domain] || 0) + 1;
+  } catch {}
+}
+
+export function getPacketStreamStats(): PacketStreamStats {
+  return { ...packetStreamStats, configured: isPacketStreamConfigured() };
+}
+
+export async function packetStreamFetch(
+  url: string,
+  init: RequestInit,
+  options?: { countryCode?: string; sessionId?: string },
+): Promise<HiveProxyFetchResult> {
+  const proxyUrl = buildPacketStreamProxyUrl(options);
+  if (!proxyUrl) {
+    throw new Error("PacketStream not configured");
+  }
+
+  try {
+    const response = await rawHiveProxyFetch(url, init, proxyUrl);
+    const bodySize = parseInt(response.headers.get("content-length") || "0", 10) || 50000;
+    recordPacketStreamRequest(url, bodySize, response.ok);
+    return {
+      response,
+      route: "residential",
+      routeLabel: `via packetstream${options?.countryCode ? ` (${options.countryCode})` : ""}${options?.sessionId ? ` [s:${options.sessionId.substring(0, 4)}]` : ""}`,
+    };
+  } catch (err: any) {
+    recordPacketStreamRequest(url, 0, false);
+    throw err;
+  }
+}
 
 interface ProxyEntry {
   index: number;
@@ -53,6 +204,17 @@ export interface HiveProxyStatus {
     nextRefreshIn: number;
     lastRefreshAt: string;
     cycleCount: number;
+  };
+  packetStream: {
+    configured: boolean;
+    totalRequests: number;
+    totalSuccesses: number;
+    totalFailures: number;
+    estimatedBandwidthMB: number;
+    estimatedCostUSD: number;
+    escalations: number;
+    topDomains: Array<{ domain: string; requests: number }>;
+    protectedDomains: string[];
   };
   proxies: Array<{
     index: number;
@@ -479,14 +641,35 @@ function rawHiveProxyFetch(
 
 export interface HiveProxyFetchResult {
   response: Response;
-  route: "proxy" | "direct" | "fallback";
+  route: "proxy" | "direct" | "fallback" | "residential";
   routeLabel: string;
+}
+
+export interface HiveProxyFetchOptions {
+  countryCode?: string;
+  sessionId?: string;
+  forceResidential?: boolean;
 }
 
 export async function hiveProxyFetch(
   url: string,
   init: RequestInit,
+  options?: HiveProxyFetchOptions,
 ): Promise<HiveProxyFetchResult> {
+  const domainProtected = isDomainProtected(url);
+  const psConfigured = isPacketStreamConfigured();
+
+  if ((options?.forceResidential || domainProtected) && psConfigured) {
+    try {
+      return await packetStreamFetch(url, init, {
+        countryCode: options?.countryCode,
+        sessionId: options?.sessionId,
+      });
+    } catch (psErr: any) {
+      console.log(`[hive-proxy] PacketStream failed for ${url}: ${psErr.message}, falling back`);
+    }
+  }
+
   const entry = pickNextHealthyProxy();
 
   if (!entry) {
@@ -512,6 +695,32 @@ export async function hiveProxyFetch(
         throw directErr;
       }
     }
+
+    if (psConfigured && domainProtected === false) {
+      let blocked = isBlockResponse(response);
+      if (!blocked && (response.status === 403 || response.status === 503)) {
+        const cloned = response.clone();
+        const body = await cloned.text();
+        blocked = await isBlockPage(response, body);
+      }
+      if (blocked) {
+        packetStreamStats.escalations++;
+        recordFailure(entry.index, "block-escalated");
+        console.log(`[hive-proxy] Block detected on free proxy for ${url}, escalating to PacketStream`);
+        try {
+          return await packetStreamFetch(url, init, {
+            countryCode: options?.countryCode,
+            sessionId: options?.sessionId,
+          });
+        } catch {}
+        return {
+          response,
+          route: "proxy",
+          routeLabel: `via proxy#${entry.index} (blocked, escalation failed)`,
+        };
+      }
+    }
+
     recordSuccess(entry.index);
     return {
       response,
@@ -612,8 +821,15 @@ export function getHiveProxyHealth(): HiveProxyStatus {
     ? Math.max(0, Math.ceil((nextScheduledAt - Date.now()) / 1000))
     : 0;
 
+  const psStats = getPacketStreamStats();
+  const topDomains = Object.entries(psStats.requestsByDomain)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([domain, requests]) => ({ domain, requests }));
+  const bandwidthMB = psStats.estimatedBandwidthBytes / (1024 * 1024);
+
   return {
-    configured: pool.length > 0,
+    configured: pool.length > 0 || psStats.configured,
     loaded: pool.length,
     healthy,
     cooldown,
@@ -633,6 +849,17 @@ export function getHiveProxyHealth(): HiveProxyStatus {
       nextRefreshIn,
       lastRefreshAt: lastRefreshAt ? new Date(lastRefreshAt).toISOString() : "",
       cycleCount: refreshCycleCount,
+    },
+    packetStream: {
+      configured: psStats.configured,
+      totalRequests: psStats.totalRequests,
+      totalSuccesses: psStats.totalSuccesses,
+      totalFailures: psStats.totalFailures,
+      estimatedBandwidthMB: Math.round(bandwidthMB * 100) / 100,
+      estimatedCostUSD: Math.round(bandwidthMB / 1024 * 100) / 100,
+      escalations: psStats.escalations,
+      topDomains,
+      protectedDomains: Array.from(PROTECTED_DOMAINS),
     },
   };
 }

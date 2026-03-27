@@ -1,7 +1,7 @@
 import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
-import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
-import { getHiveProxyCount, isHiveProxyActive, hasHealthyProxy, getHealthyProxyCount, computeDomainGateParams, getDelayTier, computeWorkerCount } from "./hive-proxy";
+import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type ScraperResponse, type ScraperContext } from "./hive-scrapers";
+import { getHiveProxyCount, isHiveProxyActive, hasHealthyProxy, getHealthyProxyCount, computeDomainGateParams, getDelayTier, computeWorkerCount, generateSessionId, isPacketStreamConfigured } from "./hive-proxy";
 
 const US_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
@@ -13,6 +13,27 @@ const US_STATES = new Set([
 function isLocationUS(loc: HiveLocation): boolean {
   if (loc.tag === "intl") return false;
   return US_STATES.has(loc.state);
+}
+
+const STATE_TO_COUNTRY: Record<string, string> = {
+  "England": "GB", "Scotland": "GB", "Wales": "GB", "Northern Ireland": "GB",
+  "London": "GB", "Manchester": "GB", "Birmingham": "GB", "Leeds": "GB",
+  "Ontario": "CA", "Quebec": "CA", "British Columbia": "CA", "Alberta": "CA",
+  "New South Wales": "AU", "Victoria": "AU", "Queensland": "AU",
+  "Bavaria": "DE", "Berlin": "DE", "Hamburg": "DE", "Hesse": "DE",
+  "Île-de-France": "FR", "Provence": "FR",
+  "Maharashtra": "IN", "Delhi": "IN", "Karnataka": "IN", "Tamil Nadu": "IN",
+};
+
+function getCountryCode(loc: HiveLocation): string {
+  if (loc.tag === "intl") {
+    const mapped = STATE_TO_COUNTRY[loc.state];
+    if (mapped) return mapped;
+    if (loc.state.length === 2 && loc.state === loc.state.toUpperCase()) return loc.state;
+    return "";
+  }
+  if (US_STATES.has(loc.state)) return "US";
+  return "";
 }
 
 function isCompatible(dir: HiveDirectory, loc: HiveLocation): boolean {
@@ -615,6 +636,14 @@ export class RayOfGraceEngine {
       : [category.name];
 
     const loc: ScraperLocation = { city: location.city, state: location.state };
+
+    const comboSessionId = generateSessionId();
+    const countryCode = getCountryCode(location) || undefined;
+    const scraperCtx: ScraperContext = {
+      sessionId: comboSessionId,
+      countryCode,
+    };
+
     let hadResults = false;
     let hadErrors = false;
     let lastErrorType = "";
@@ -628,7 +657,7 @@ export class RayOfGraceEngine {
 
       let output: ScraperResponse;
       try {
-        output = await scraperFn([alias], loc);
+        output = await scraperFn([alias], loc, scraperCtx);
       } catch (scraperErr: any) {
         if (cancelFlag.cancelled) break;
         this.log(`[W${workerId}] ${directory.name}: Scraper threw on "${alias}": ${scraperErr.message || scraperErr}`);

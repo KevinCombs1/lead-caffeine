@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Flower2, Search, Play, Square, Download, Trash2, Heart, Phone, Globe,
   ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw, Palmtree, Building2, Plane,
-  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall, Shield
+  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall, Shield, Zap
 } from "lucide-react";
 
 interface HiveDirectory {
@@ -120,6 +120,17 @@ interface ProxyStatus {
     nextRefreshIn: number;
     lastRefreshAt: string;
     cycleCount: number;
+  };
+  packetStream: {
+    configured: boolean;
+    totalRequests: number;
+    totalSuccesses: number;
+    totalFailures: number;
+    estimatedBandwidthMB: number;
+    estimatedCostUSD: number;
+    escalations: number;
+    topDomains: Array<{ domain: string; requests: number }>;
+    protectedDomains: string[];
   };
   proxies: Array<{
     index: number;
@@ -921,6 +932,60 @@ export default function HivePage() {
                           <span key={s.source} className="text-gray-600">{s.source}: {s.validated}/{s.found}</span>
                         ))}
                         <span className="text-gray-600">| {(proxyStatus.autoFetchStats.durationMs / 1000).toFixed(1)}s</span>
+                      </div>
+                    )}
+                    {proxyStatus.packetStream && (
+                      <div className="flex items-center gap-2 flex-wrap text-[10px] border-t border-gray-800/50 pt-1" data-testid="packetstream-status">
+                        <div className="flex items-center gap-1.5">
+                          <Zap className={`w-3 h-3 ${proxyStatus.packetStream.configured ? "text-amber-400" : "text-gray-600"}`} />
+                          <span className={`font-semibold ${proxyStatus.packetStream.configured ? "text-amber-400" : "text-gray-600"}`}>
+                            PacketStream
+                          </span>
+                          <span className={`text-[9px] px-1 py-0.5 rounded ${proxyStatus.packetStream.configured ? "bg-amber-900/30 text-amber-400 border border-amber-700/40" : "bg-gray-800/50 text-gray-600 border border-gray-700/40"}`} data-testid="badge-packetstream">
+                            {proxyStatus.packetStream.configured ? "connected" : "not configured"}
+                          </span>
+                        </div>
+                        {proxyStatus.packetStream.configured && (
+                          <>
+                            <span className="text-gray-600">|</span>
+                            <span className="text-gray-500" data-testid="text-ps-requests">
+                              {proxyStatus.packetStream.totalRequests} req
+                            </span>
+                            <span className="text-green-400/70" data-testid="text-ps-success">
+                              {proxyStatus.packetStream.totalSuccesses} ok
+                            </span>
+                            {proxyStatus.packetStream.totalFailures > 0 && (
+                              <span className="text-red-400/70" data-testid="text-ps-failures">
+                                {proxyStatus.packetStream.totalFailures} fail
+                              </span>
+                            )}
+                            <span className="text-gray-600">|</span>
+                            <span className="text-amber-400/70" data-testid="text-ps-bandwidth">
+                              {proxyStatus.packetStream.estimatedBandwidthMB.toFixed(1)} MB
+                            </span>
+                            <span className="text-gray-500" data-testid="text-ps-cost">
+                              ~${proxyStatus.packetStream.estimatedCostUSD.toFixed(2)}
+                            </span>
+                            {proxyStatus.packetStream.escalations > 0 && (
+                              <>
+                                <span className="text-gray-600">|</span>
+                                <span className="text-orange-400/70" data-testid="text-ps-escalations">
+                                  {proxyStatus.packetStream.escalations} escalations
+                                </span>
+                              </>
+                            )}
+                            {proxyStatus.packetStream.topDomains.length > 0 && (
+                              <>
+                                <span className="text-gray-600">|</span>
+                                {proxyStatus.packetStream.topDomains.slice(0, 5).map(d => (
+                                  <span key={d.domain} className="text-gray-600" data-testid={`text-ps-domain-${d.domain}`}>
+                                    {d.domain}: {d.requests}
+                                  </span>
+                                ))}
+                              </>
+                            )}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
