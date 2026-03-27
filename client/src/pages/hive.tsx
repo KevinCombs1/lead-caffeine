@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Flower2, Search, Play, Square, Download, Trash2, Heart, Phone, Globe,
   ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw, Palmtree, Building2, Plane,
-  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall
+  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall, Shield
 } from "lucide-react";
 
 interface HiveDirectory {
@@ -94,6 +94,23 @@ interface HiveStats {
   locationCount: number;
 }
 
+interface ProxyStatus {
+  configured: boolean;
+  loaded: number;
+  healthy: number;
+  cooldown: number;
+  byProtocol: Record<string, number>;
+  domainGateParams: { maxConcurrent: number; minGapMs: number };
+  states: Record<string, {
+    status: string;
+    requests: number;
+    failures: number;
+    lastUsed: string;
+    cooldownRemaining?: number;
+    lastFailure?: string;
+  }>;
+}
+
 const US_STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
   "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
@@ -152,6 +169,15 @@ export default function HivePage() {
   const { data: locations = [] } = useQuery<HiveLocation[]>({ queryKey: ["/api/hive/locations"] });
   const { data: stats } = useQuery<HiveStats>({ queryKey: ["/api/hive/stats"], refetchInterval: 10000 });
   const { data: crawlStatus, refetch: refetchStatus } = useQuery<CrawlStatus>({ queryKey: ["/api/hive/crawl/status"], refetchInterval: 3000 });
+  const { data: proxyStatus } = useQuery<ProxyStatus>({ queryKey: ["/api/hive/proxy-status"], refetchInterval: 3000 });
+
+  const proxyReload = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hive/proxy-reload"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hive/proxy-status"] });
+      toast({ title: "Proxy configuration reloaded" });
+    },
+  });
 
   const flowerFilters: Record<string, string> = {};
   if (activeTab !== "all" && activeTab !== "pollen") flowerFilters.directory = activeTab;
@@ -698,6 +724,42 @@ export default function HivePage() {
                 </div>
               );
             })()}
+
+            {proxyStatus && (
+              <div className="flex items-center gap-3 px-3 py-2 rounded text-xs border border-gray-800 bg-gray-900/50" data-testid="proxy-status-panel">
+                {proxyStatus.configured ? (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-green-400" />
+                      <span className="text-green-400 font-semibold" data-testid="text-proxy-count">{proxyStatus.loaded} proxies</span>
+                    </div>
+                    <span className="text-gray-600">|</span>
+                    <span className="text-green-400" data-testid="text-proxy-healthy">{proxyStatus.healthy} healthy</span>
+                    {proxyStatus.cooldown > 0 && (
+                      <span className="text-yellow-400" data-testid="text-proxy-cooldown">{proxyStatus.cooldown} cooldown</span>
+                    )}
+                    <span className="text-gray-600">|</span>
+                    <span className="text-gray-500">gate: {proxyStatus.domainGateParams.maxConcurrent} concurrent, {(proxyStatus.domainGateParams.minGapMs / 1000).toFixed(1)}s gap</span>
+                    <span className="text-gray-600">|</span>
+                    <span className="text-gray-500">{Object.entries(proxyStatus.byProtocol).map(([p, n]) => `${p}:${n}`).join(" ")}</span>
+                    <button
+                      onClick={() => proxyReload.mutate()}
+                      disabled={proxyReload.isPending}
+                      className="ml-auto flex items-center gap-1 text-gray-500 hover:text-blue-400 transition-colors"
+                      data-testid="button-proxy-reload"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${proxyReload.isPending ? "animate-spin" : ""}`} />
+                      <span>reload</span>
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-gray-600">
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>no geo-proxies configured — using direct fetch</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
               {!crawlStatus?.active ? (

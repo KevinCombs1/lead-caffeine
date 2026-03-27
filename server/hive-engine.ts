@@ -1,6 +1,7 @@
 import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
-import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
+import { SCRAPERS, classifyResults, setStopSignal, runWithProxyState, setProxyMode, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
+import { getHiveProxyCount, isHiveProxyActive, computeDomainGateParams } from "./hive-proxy";
 
 const US_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
@@ -339,16 +340,25 @@ export class RayOfGraceEngine {
     this.totalFlowers = 0;
     this.totalPollen = 0;
     this.completedCombos = 0;
-    this.domainGate = new DomainGate(2, 26400);
+
+    const proxyCount = getHiveProxyCount();
+    const gateParams = computeDomainGateParams(proxyCount);
+    this.domainGate = new DomainGate(gateParams.maxConcurrent, gateParams.minGapMs);
     this.dirTracker = new DirectoryTracker(5, 180000);
     this.metrics = new MetricsCollector();
+    setProxyMode(proxyCount > 0);
     activeEngine = this;
 
     const limitMsg = this.maxResults ? ` (limit: ${this.maxResults} flowers)` : " (unlimited)";
     const skipMsg = skippedCount > 0 ? `, skipping ${skippedCount} already-scanned` : "";
     this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${allCombos.length} combos${skipMsg}, ${this.combos.length} remaining${limitMsg}`);
     this.log(`[engine] Combo queue interleaved across ${directories.length} directories (round-robin)`);
-    this.log(`[engine] Per-domain gate: max 2 concurrent, 12s min gap | Suspension: 5 consecutive failures → 3min cooldown`);
+    if (proxyCount > 0) {
+      this.log(`[engine] Geo-proxies: ${proxyCount} state proxies active | DomainGate: max ${gateParams.maxConcurrent} concurrent, ${gateParams.minGapMs}ms gap`);
+    } else {
+      this.log(`[engine] No geo-proxies configured — using direct fetch | DomainGate: max ${gateParams.maxConcurrent} concurrent, ${gateParams.minGapMs}ms gap`);
+    }
+    this.log(`[engine] Suspension: 5 consecutive failures → 3min cooldown`);
     await this.flushLogs();
 
     if (this.combos.length === 0) {
@@ -448,6 +458,7 @@ export class RayOfGraceEngine {
       if (!combo) break;
 
       const scraperKey = combo.directory.scraperKey;
+      const gateKey = isHiveProxyActive() ? `${scraperKey}:${combo.location.state}` : scraperKey;
 
       if (this.dirTracker.isSuspended(scraperKey)) {
         const resumeAt = this.dirTracker.getSuspendedUntil(scraperKey);
@@ -458,7 +469,7 @@ export class RayOfGraceEngine {
         continue;
       }
 
-      await this.domainGate.acquire(scraperKey);
+      await this.domainGate.acquire(gateKey);
 
       let comboFlowers = 0;
       let comboPollen = 0;
@@ -523,7 +534,7 @@ export class RayOfGraceEngine {
           this.log(`[W${workerId}] Error: ${combo.directory.name}/${combo.category.name}/${combo.location.city} — [${errType}] ${err.message}`);
         }
       } finally {
-        this.domainGate.release(scraperKey);
+        this.domainGate.release(gateKey);
       }
 
       if (this.stopped) break;
@@ -604,7 +615,7 @@ export class RayOfGraceEngine {
 
       let output: ScraperResponse;
       try {
-        output = await scraperFn([alias], loc);
+        output = await runWithProxyState(location.state, () => scraperFn([alias], loc));
       } catch (scraperErr: any) {
         if (cancelFlag.cancelled) break;
         this.log(`[W${workerId}] ${directory.name}: Scraper threw on "${alias}": ${scraperErr.message || scraperErr}`);

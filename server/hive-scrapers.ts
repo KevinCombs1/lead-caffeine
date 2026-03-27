@@ -1,3 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { hiveProxyFetch, isHiveProxyActive } from "./hive-proxy";
+
 export interface ScraperLocation {
   city: string;
   state: string;
@@ -28,6 +31,15 @@ export type ScraperFn = (searchTerms: string[], location: ScraperLocation) => Pr
 let globalStopSignal = false;
 export function setStopSignal(val: boolean) { globalStopSignal = val; }
 export function isStopRequested(): boolean { return globalStopSignal; }
+
+const proxyStateStorage = new AsyncLocalStorage<string>();
+
+export function runWithProxyState<T>(stateCode: string, fn: () => T): T {
+  return proxyStateStorage.run(stateCode, fn);
+}
+
+let _proxyModeActive = false;
+export function setProxyMode(active: boolean): void { _proxyModeActive = active; }
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -115,7 +127,9 @@ function sleep(ms: number): Promise<void> {
 
 async function randomDelay(): Promise<void> {
   if (globalStopSignal) return;
-  const ms = 15400 + Math.random() * 8800;
+  const ms = _proxyModeActive
+    ? 6000 + Math.random() * 6000
+    : 15400 + Math.random() * 8800;
   const chunks = Math.ceil(ms / 1000);
   for (let i = 0; i < chunks; i++) {
     if (globalStopSignal) return;
@@ -706,7 +720,21 @@ class FetchError extends Error {
   }
 }
 
-async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
+interface FetchPageMetaExtended extends FetchPageMeta {
+  proxyRoute: string;
+}
+
+async function doFetch(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<{ response: Response; proxyRoute: string }> {
+  const stateCode = proxyStateStorage.getStore();
+  if (stateCode && isHiveProxyActive()) {
+    const result = await hiveProxyFetch(url, { headers, signal, redirect: "follow" }, stateCode);
+    return { response: result.response, proxyRoute: result.routeLabel };
+  }
+  const response = await fetch(url, { headers, signal, redirect: "follow" });
+  return { response, proxyRoute: "direct" };
+}
+
+async function fetchPageWithMeta(url: string): Promise<FetchPageMetaExtended> {
   if (globalStopSignal) throw new Error("Stop signal received");
   const RETRYABLE = new Set([403, 429, 503]);
 
@@ -715,11 +743,7 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {
-      const response = await fetch(url, {
-        headers: getRandomHeaders(),
-        signal: controller.signal,
-        redirect: "follow",
-      });
+      const { response, proxyRoute } = await doFetch(url, getRandomHeaders(), controller.signal);
 
       const respHeaders: Record<string, string> = {};
       response.headers.forEach((v, k) => { respHeaders[k] = v; });
@@ -766,6 +790,7 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
         headers: respHeaders,
         bodyLength,
         redirected: response.redirected,
+        proxyRoute,
       };
     } catch (err: any) {
       if (err?.name === "AbortError" || err?.message?.includes("abort")) {
@@ -815,7 +840,8 @@ async function fetchPage(url: string, log?: string[]): Promise<string> {
     const meta = await fetchPageWithMeta(url);
     if (_testMetaCollector) _testMetaCollector.push(meta);
     if (log) {
-      log.push(`[fetch] ${url} → ${meta.status} | ${meta.bodyLength} bytes | server: ${meta.headers["server"] || "n/a"}${meta.redirected ? " | redirected" : ""}`);
+      const routePrefix = meta.proxyRoute !== "direct" ? `${meta.proxyRoute}: ` : isHiveProxyActive() ? "direct: " : "";
+      log.push(`[fetch] ${routePrefix}${url} → ${meta.status} | ${meta.bodyLength} bytes | server: ${meta.headers["server"] || "n/a"}${meta.redirected ? " | redirected" : ""}`);
     }
     return meta.html;
   } catch (err: any) {
@@ -884,7 +910,7 @@ export async function testScraper(
   _testMetaCollector = collected;
 
   try {
-    const response = await scraper([searchTerm], location);
+    const response = await runWithProxyState(state, () => scraper([searchTerm], location));
     globalStopSignal = oldStop;
     _testMetaCollector = null;
 
