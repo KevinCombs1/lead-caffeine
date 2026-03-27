@@ -59,11 +59,14 @@ function maskUrl(url: string): string {
   }
 }
 
-function detectProtocol(url: string): "socks5" | "socks4" | "http" | "https" {
+const ALLOWED_SCHEMES = ["socks5://", "socks4://", "https://", "http://"] as const;
+
+function detectProtocol(url: string): "socks5" | "socks4" | "http" | "https" | null {
   if (url.startsWith("socks5://")) return "socks5";
   if (url.startsWith("socks4://")) return "socks4";
   if (url.startsWith("https://")) return "https";
-  return "http";
+  if (url.startsWith("http://")) return "http";
+  return null;
 }
 
 function parseProxies(): Map<string, ProxyEntry> {
@@ -83,6 +86,12 @@ function parseProxies(): Map<string, ProxyEntry> {
       continue;
     }
 
+    const protocol = detectProtocol(proxyUrl);
+    if (!protocol) {
+      console.log(`[hive-proxy] Skipping ${stateCode}: unsupported scheme in ${maskUrl(proxyUrl)} (allowed: socks5, socks4, http, https)`);
+      continue;
+    }
+
     try {
       new URL(proxyUrl);
     } catch {
@@ -93,7 +102,7 @@ function parseProxies(): Map<string, ProxyEntry> {
     map.set(stateCode, {
       stateCode,
       proxyUrl,
-      protocol: detectProtocol(proxyUrl),
+      protocol,
     });
   }
 
@@ -213,9 +222,15 @@ function rawHiveProxyFetch(
 ): Promise<Response> {
   const agent = getOrCreateAgent(proxyUrl);
   const headers = extractHeaders(init);
+  const signal = init.signal as AbortSignal | undefined;
 
   function doRequest(currentUrl: string, redirectsLeft: number): Promise<Response> {
     return new Promise<Response>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new Error("Request aborted"));
+        return;
+      }
+
       const parsedUrl = new URL(currentUrl);
       const isHttps = parsedUrl.protocol === "https:";
       const transport = isHttps ? https : http;
@@ -267,6 +282,12 @@ function rawHiveProxyFetch(
         });
         res.on("error", reject);
       });
+
+      if (signal) {
+        const onAbort = () => { req.destroy(new Error("Request aborted")); };
+        signal.addEventListener("abort", onAbort, { once: true });
+        req.on("close", () => { signal.removeEventListener("abort", onAbort); });
+      }
 
       req.on("timeout", () => {
         req.destroy(new Error("Proxy connection timeout (15s)"));
@@ -359,6 +380,11 @@ export function isHiveProxyActive(): boolean {
 
 export function hasProxyForState(stateCode: string): boolean {
   return getProxyMap().has(stateCode.toUpperCase());
+}
+
+export function hasHealthyProxyForState(stateCode: string): boolean {
+  const upper = stateCode.toUpperCase();
+  return getProxyMap().has(upper) && isProxyHealthy(upper);
 }
 
 export function getHiveProxyHealth(): HiveProxyStatus {
