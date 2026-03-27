@@ -145,7 +145,6 @@ async function fetchFromFreeProxyList(): Promise<ProxyCandidate[]> {
       if (cells && cells.length >= 7) {
         const ip = cells[0].replace(/<\/?td>/g, "");
         const port = cells[1].replace(/<\/?td>/g, "");
-        const isHttps = cells[6].replace(/<\/?td>/g, "").toLowerCase() === "yes";
         if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip) && /^\d+$/.test(port)) {
           candidates.push({
             url: `http://${ip}:${port}`,
