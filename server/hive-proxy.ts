@@ -314,6 +314,19 @@ export async function hiveProxyFetch(
 
   try {
     const response = await rawHiveProxyFetch(url, init, entry.proxyUrl);
+    if (response.status === 407) {
+      recordFailure(stateCode, "proxy auth failure (407)");
+      try {
+        const fallbackResponse = await fetch(url, init);
+        return {
+          response: fallbackResponse,
+          route: "fallback",
+          routeLabel: `${stateCode}-proxy auth failed (407), fell back to direct`,
+        };
+      } catch (directErr) {
+        throw directErr;
+      }
+    }
     recordSuccess(stateCode);
     return {
       response,

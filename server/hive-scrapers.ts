@@ -833,7 +833,7 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMetaExtended> {
   throw new Error("fetchPage: max retries reached");
 }
 
-let _testMetaCollector: FetchPageMeta[] | null = null;
+let _testMetaCollector: FetchPageMetaExtended[] | null = null;
 
 async function fetchPage(url: string, log?: string[]): Promise<string> {
   try {
