@@ -4,7 +4,7 @@ import http from "http";
 import https from "https";
 import zlib from "zlib";
 
-const MAX_PROXIES = 400;
+const MAX_PROXIES = 2000;
 
 interface ProxyEntry {
   index: number;
@@ -34,6 +34,8 @@ export interface HiveProxyStatus {
   unused: number;
   byProtocol: Record<string, number>;
   domainGateParams: { maxConcurrent: number; minGapMs: number };
+  delayTier: { name: string; minMs: number; maxMs: number };
+  activeWorkers: number;
   proxies: Array<{
     index: number;
     maskedUrl: string;
@@ -467,6 +469,8 @@ export function getHiveProxyHealth(): HiveProxyStatus {
     byProtocol,
     proxies,
     domainGateParams: computeDomainGateParams(healthy),
+    delayTier: getDelayTier(healthy),
+    activeWorkers: computeWorkerCount(healthy),
   };
 }
 
@@ -484,11 +488,26 @@ export function reloadHiveProxies(): HiveProxyStatus {
 
 export function computeDomainGateParams(proxyCount: number): { maxConcurrent: number; minGapMs: number } {
   if (proxyCount >= 10) {
-    const maxConcurrent = Math.min(Math.ceil(proxyCount / 5), 80);
-    const minGapMs = Math.max(Math.round(26400 / (proxyCount / 2)), 500);
+    const maxConcurrent = Math.min(Math.ceil(proxyCount / 5), 384);
+    const minGapMs = proxyCount >= 1000
+      ? 100
+      : Math.max(Math.round(26400 / (proxyCount / 2)), 500);
     return { maxConcurrent, minGapMs };
   }
   return { maxConcurrent: 2, minGapMs: 26400 };
+}
+
+export function getDelayTier(healthyCount: number): { name: string; minMs: number; maxMs: number } {
+  if (healthyCount >= 1000) return { name: "industrial", minMs: 300, maxMs: 800 };
+  if (healthyCount >= 500)  return { name: "fast", minMs: 750, maxMs: 1500 };
+  if (healthyCount >= 200)  return { name: "comfortable", minMs: 1500, maxMs: 3000 };
+  if (healthyCount >= 50)   return { name: "moderate", minMs: 3000, maxMs: 6000 };
+  if (healthyCount >= 1)    return { name: "conservative", minMs: 6000, maxMs: 12000 };
+  return { name: "direct", minMs: 15400, maxMs: 24200 };
+}
+
+export function computeWorkerCount(healthyCount: number): number {
+  return Math.min(Math.max(640, healthyCount), 1920);
 }
 
 export function getHealthyProxyCount(): number {

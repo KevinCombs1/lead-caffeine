@@ -1,4 +1,4 @@
-import { hiveProxyFetch, isHiveProxyActive, hasHealthyProxy } from "./hive-proxy";
+import { hiveProxyFetch, isHiveProxyActive, hasHealthyProxy, getHealthyProxyCount, getDelayTier } from "./hive-proxy";
 
 export interface ScraperLocation {
   city: string;
@@ -118,9 +118,8 @@ function sleep(ms: number): Promise<void> {
 async function randomDelay(): Promise<void> {
   if (globalStopSignal) return;
   const usingProxy = isHiveProxyActive() && hasHealthyProxy();
-  const ms = usingProxy
-    ? 6000 + Math.random() * 6000
-    : 15400 + Math.random() * 8800;
+  const tier = usingProxy ? getDelayTier(getHealthyProxyCount()) : getDelayTier(0);
+  const ms = tier.minMs + Math.random() * (tier.maxMs - tier.minMs);
   const chunks = Math.ceil(ms / 1000);
   for (let i = 0; i < chunks; i++) {
     if (globalStopSignal) return;

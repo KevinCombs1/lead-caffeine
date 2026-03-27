@@ -1,7 +1,7 @@
 import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
 import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
-import { getHiveProxyCount, isHiveProxyActive, hasHealthyProxy, getHealthyProxyCount, computeDomainGateParams } from "./hive-proxy";
+import { getHiveProxyCount, isHiveProxyActive, hasHealthyProxy, getHealthyProxyCount, computeDomainGateParams, getDelayTier, computeWorkerCount } from "./hive-proxy";
 
 const US_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
@@ -344,6 +344,7 @@ export class RayOfGraceEngine {
 
     const proxyCount = getHiveProxyCount();
     const healthyCount = getHealthyProxyCount();
+    this.workerCount = computeWorkerCount(healthyCount);
     this.domainGate = new DomainGate(2, 26400);
     if (healthyCount > 0) {
       const gateParams = computeDomainGateParams(healthyCount);
@@ -359,11 +360,14 @@ export class RayOfGraceEngine {
     const skipMsg = skippedCount > 0 ? `, skipping ${skippedCount} already-scanned` : "";
     this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${allCombos.length} combos${skipMsg}, ${this.combos.length} remaining${limitMsg}`);
     this.log(`[engine] Combo queue interleaved across ${directories.length} directories (round-robin)`);
+    const delayTier = getDelayTier(healthyCount);
     if (proxyCount > 0) {
       const gp = computeDomainGateParams(healthyCount);
       this.log(`[engine] Proxy pool: ${proxyCount} loaded, ${healthyCount} healthy | ProxyGate: ${gp.maxConcurrent} concurrent, ${gp.minGapMs}ms gap | DirectGate: 2 concurrent, 26400ms gap`);
+      this.log(`[engine] Delay tier: ${delayTier.name} (${delayTier.minMs}-${delayTier.maxMs}ms) | Workers: ${this.workerCount}`);
     } else {
       this.log(`[engine] No proxy pool configured — using direct fetch | DomainGate: 2 concurrent, 26400ms gap`);
+      this.log(`[engine] Delay tier: ${delayTier.name} (${delayTier.minMs}-${delayTier.maxMs}ms) | Workers: ${this.workerCount}`);
     }
     this.log(`[engine] Suspension: 5 consecutive failures → 3min cooldown`);
     await this.flushLogs();

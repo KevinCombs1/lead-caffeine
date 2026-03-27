@@ -102,6 +102,8 @@ interface ProxyStatus {
   unused: number;
   byProtocol: Record<string, number>;
   domainGateParams: { maxConcurrent: number; minGapMs: number };
+  delayTier: { name: string; minMs: number; maxMs: number };
+  activeWorkers: number;
   proxies: Array<{
     index: number;
     maskedUrl: string;
@@ -747,7 +749,21 @@ export default function HivePage() {
                         <span className="text-gray-500" data-testid="text-proxy-unused">{proxyStatus.unused} unused</span>
                       )}
                       <span className="text-gray-600">|</span>
-                      <span className="text-gray-500">gate: {proxyStatus.domainGateParams.maxConcurrent} concurrent, {(proxyStatus.domainGateParams.minGapMs / 1000).toFixed(1)}s gap</span>
+                      <span className="text-gray-500">gate: {proxyStatus.domainGateParams.maxConcurrent} concurrent, {proxyStatus.domainGateParams.minGapMs < 1000 ? `${proxyStatus.domainGateParams.minGapMs}ms` : `${(proxyStatus.domainGateParams.minGapMs / 1000).toFixed(1)}s`} gap</span>
+                      <span className="text-gray-600">|</span>
+                      {proxyStatus.delayTier && (
+                        <>
+                          <span className={`font-semibold ${
+                            proxyStatus.delayTier.name === "industrial" ? "text-cyan-400" :
+                            proxyStatus.delayTier.name === "fast" ? "text-blue-400" :
+                            proxyStatus.delayTier.name === "comfortable" ? "text-green-400" :
+                            proxyStatus.delayTier.name === "moderate" ? "text-yellow-400" :
+                            "text-orange-400"
+                          }`} data-testid="text-delay-tier">{proxyStatus.delayTier.name} ({proxyStatus.delayTier.minMs < 1000 ? `${proxyStatus.delayTier.minMs}ms` : `${(proxyStatus.delayTier.minMs / 1000).toFixed(1)}s`}-{proxyStatus.delayTier.maxMs < 1000 ? `${proxyStatus.delayTier.maxMs}ms` : `${(proxyStatus.delayTier.maxMs / 1000).toFixed(1)}s`})</span>
+                          <span className="text-gray-600">|</span>
+                        </>
+                      )}
+                      <span className="text-gray-500" data-testid="text-active-workers">{proxyStatus.activeWorkers} workers</span>
                       <span className="text-gray-600">|</span>
                       <span className="text-gray-500">{Object.entries(proxyStatus.byProtocol).map(([p, n]) => `${p}:${n}`).join(" ")}</span>
                       <button
