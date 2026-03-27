@@ -29,6 +29,7 @@ export interface HiveProxyStatus {
   loaded: number;
   healthy: number;
   cooldown: number;
+  unused: number;
   byProtocol: Record<string, number>;
   domainGateParams: { maxConcurrent: number; minGapMs: number };
   states: Record<string, {
@@ -420,11 +421,17 @@ export function getHiveProxyHealth(): HiveProxyStatus {
     }
   }
 
+  let unused = 0;
+  for (const [, info] of Object.entries(states)) {
+    if (info.status === "healthy" && info.requests === 0) unused++;
+  }
+
   return {
     configured: map.size > 0,
     loaded: map.size,
     healthy,
     cooldown,
+    unused,
     byProtocol,
     states,
     domainGateParams: computeDomainGateParams(map.size),

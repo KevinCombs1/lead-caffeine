@@ -99,6 +99,7 @@ interface ProxyStatus {
   loaded: number;
   healthy: number;
   cooldown: number;
+  unused: number;
   byProtocol: Record<string, number>;
   domainGateParams: { maxConcurrent: number; minGapMs: number };
   states: Record<string, {
@@ -728,30 +729,53 @@ export default function HivePage() {
             {proxyStatus && (
               <div className="flex items-center gap-3 px-3 py-2 rounded text-xs border border-gray-800 bg-gray-900/50" data-testid="proxy-status-panel">
                 {proxyStatus.configured ? (
-                  <>
-                    <div className="flex items-center gap-1.5">
-                      <Shield className="w-3.5 h-3.5 text-green-400" />
-                      <span className="text-green-400 font-semibold" data-testid="text-proxy-count">{proxyStatus.loaded} proxies</span>
+                  <div className="flex flex-col gap-2 w-full">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <Shield className="w-3.5 h-3.5 text-green-400" />
+                        <span className="text-green-400 font-semibold" data-testid="text-proxy-count">{proxyStatus.loaded} proxies</span>
+                      </div>
+                      <span className="text-gray-600">|</span>
+                      <span className="text-green-400" data-testid="text-proxy-healthy">{proxyStatus.healthy} healthy</span>
+                      {proxyStatus.cooldown > 0 && (
+                        <span className="text-yellow-400" data-testid="text-proxy-cooldown">{proxyStatus.cooldown} cooldown</span>
+                      )}
+                      {(proxyStatus.unused ?? 0) > 0 && (
+                        <span className="text-gray-500" data-testid="text-proxy-unused">{proxyStatus.unused} unused</span>
+                      )}
+                      <span className="text-gray-600">|</span>
+                      <span className="text-gray-500">gate: {proxyStatus.domainGateParams.maxConcurrent} concurrent, {(proxyStatus.domainGateParams.minGapMs / 1000).toFixed(1)}s gap</span>
+                      <span className="text-gray-600">|</span>
+                      <span className="text-gray-500">{Object.entries(proxyStatus.byProtocol).map(([p, n]) => `${p}:${n}`).join(" ")}</span>
+                      <button
+                        onClick={() => proxyReload.mutate()}
+                        disabled={proxyReload.isPending}
+                        className="ml-auto flex items-center gap-1 text-gray-500 hover:text-blue-400 transition-colors"
+                        data-testid="button-proxy-reload"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${proxyReload.isPending ? "animate-spin" : ""}`} />
+                        <span>reload</span>
+                      </button>
                     </div>
-                    <span className="text-gray-600">|</span>
-                    <span className="text-green-400" data-testid="text-proxy-healthy">{proxyStatus.healthy} healthy</span>
-                    {proxyStatus.cooldown > 0 && (
-                      <span className="text-yellow-400" data-testid="text-proxy-cooldown">{proxyStatus.cooldown} cooldown</span>
+                    {Object.keys(proxyStatus.states).length > 0 && (
+                      <div className="flex flex-wrap gap-1" data-testid="proxy-state-grid">
+                        {Object.entries(proxyStatus.states).sort(([a], [b]) => a.localeCompare(b)).map(([state, info]) => (
+                          <span
+                            key={state}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold ${
+                              info.status === "healthy"
+                                ? info.requests > 0 ? "bg-green-900/50 text-green-400 border border-green-800/50" : "bg-gray-800/50 text-gray-500 border border-gray-700/50"
+                                : "bg-yellow-900/50 text-yellow-400 border border-yellow-800/50"
+                            }`}
+                            title={`${state}: ${info.status} | ${info.requests} req, ${info.failures} fail${info.cooldownRemaining ? ` | cooldown ${info.cooldownRemaining}s` : ""}${info.lastFailure ? ` | ${info.lastFailure}` : ""}`}
+                            data-testid={`proxy-state-${state}`}
+                          >
+                            {state}
+                          </span>
+                        ))}
+                      </div>
                     )}
-                    <span className="text-gray-600">|</span>
-                    <span className="text-gray-500">gate: {proxyStatus.domainGateParams.maxConcurrent} concurrent, {(proxyStatus.domainGateParams.minGapMs / 1000).toFixed(1)}s gap</span>
-                    <span className="text-gray-600">|</span>
-                    <span className="text-gray-500">{Object.entries(proxyStatus.byProtocol).map(([p, n]) => `${p}:${n}`).join(" ")}</span>
-                    <button
-                      onClick={() => proxyReload.mutate()}
-                      disabled={proxyReload.isPending}
-                      className="ml-auto flex items-center gap-1 text-gray-500 hover:text-blue-400 transition-colors"
-                      data-testid="button-proxy-reload"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${proxyReload.isPending ? "animate-spin" : ""}`} />
-                      <span>reload</span>
-                    </button>
-                  </>
+                  </div>
                 ) : (
                   <div className="flex items-center gap-1.5 text-gray-600">
                     <Shield className="w-3.5 h-3.5" />
