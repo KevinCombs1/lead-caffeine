@@ -99,6 +99,7 @@ interface ProxyStatus {
   loaded: number;
   healthy: number;
   cooldown: number;
+  blacklisted: number;
   unused: number;
   byProtocol: Record<string, number>;
   domainGateParams: { maxConcurrent: number; minGapMs: number };
@@ -113,6 +114,13 @@ interface ProxyStatus {
     durationMs: number;
   } | null;
   autoFetchStatus: { inProgress: boolean; phase: string; detail: string; cached: boolean };
+  refreshCycle: {
+    active: boolean;
+    intervalMinutes: number;
+    nextRefreshIn: number;
+    lastRefreshAt: string;
+    cycleCount: number;
+  };
   proxies: Array<{
     index: number;
     maskedUrl: string;
@@ -120,8 +128,10 @@ interface ProxyStatus {
     status: string;
     requests: number;
     failures: number;
+    successRate: number;
     lastUsed: string;
     cooldownRemaining?: number;
+    cooldownTier?: number;
     lastFailure?: string;
   }>;
 }
@@ -205,6 +215,30 @@ export default function HivePage() {
       } else if (data.success) {
         toast({ title: "Proxy fetch complete", description: `Found ${data.found}, validated ${data.validated}, loaded ${data.loaded} proxies (${(data.durationMs / 1000).toFixed(1)}s)` });
       }
+      queryClient.invalidateQueries({ queryKey: ["/api/hive/proxy-status"] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const proxyRefreshNow = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hive/proxy-refresh-now"),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      if (data.skipped) {
+        toast({ title: "Refresh skipped", description: data.reason });
+      } else {
+        toast({ title: "Refresh complete", description: `+${data.added} new, ${data.skippedBlacklist} blacklisted, ${data.skippedDuplicate} duplicate` });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/hive/proxy-status"] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const clearBlacklistMut = useMutation({
+    mutationFn: () => apiRequest("DELETE", "/api/hive/proxy-blacklist"),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      toast({ title: "Blacklist cleared", description: `${data.cleared} entries removed` });
       queryClient.invalidateQueries({ queryKey: ["/api/hive/proxy-status"] });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -770,6 +804,9 @@ export default function HivePage() {
                       {proxyStatus.cooldown > 0 && (
                         <span className="text-yellow-400" data-testid="text-proxy-cooldown">{proxyStatus.cooldown} cooldown</span>
                       )}
+                      {proxyStatus.blacklisted > 0 && (
+                        <span className="text-red-400" data-testid="text-proxy-blacklisted">{proxyStatus.blacklisted} blacklisted</span>
+                      )}
                       {(proxyStatus.unused ?? 0) > 0 && (
                         <span className="text-gray-500" data-testid="text-proxy-unused">{proxyStatus.unused} unused</span>
                       )}
@@ -831,7 +868,7 @@ export default function HivePage() {
                                   ? p.requests > 0 ? "bg-green-900/50 text-green-400 border border-green-800/50" : "bg-gray-800/50 text-gray-500 border border-gray-700/50"
                                   : "bg-yellow-900/50 text-yellow-400 border border-yellow-800/50"
                               }`}
-                              title={`#${p.index} ${p.maskedUrl} (${p.protocol}) | ${p.status} | ${p.requests} req, ${p.failures} fail${p.cooldownRemaining ? ` | cooldown ${p.cooldownRemaining}s` : ""}${p.lastFailure ? ` | ${p.lastFailure}` : ""}`}
+                              title={`#${p.index} ${p.maskedUrl} (${p.protocol}) | ${p.status}${p.cooldownTier ? ` tier ${p.cooldownTier}` : ""} | ${p.requests} req, ${p.failures} fail, ${p.successRate}% success${p.cooldownRemaining ? ` | cooldown ${p.cooldownRemaining}s` : ""}${p.lastFailure ? ` | ${p.lastFailure}` : ""}`}
                               data-testid={`proxy-idx-${p.index}`}
                             >
                               #{p.index}
@@ -840,6 +877,39 @@ export default function HivePage() {
                         </div>
                       </div>
                     )}
+                    <div className="flex items-center gap-2 flex-wrap text-[10px] border-t border-gray-800/50 pt-1">
+                      {proxyStatus.refreshCycle?.active && (
+                        <div className="flex items-center gap-2 text-gray-500" data-testid="refresh-cycle-info">
+                          <span className="text-blue-400/70">refresh cycle:</span>
+                          <span>every {proxyStatus.refreshCycle.intervalMinutes}m</span>
+                          <span className="text-blue-400/70">next in {Math.floor(proxyStatus.refreshCycle.nextRefreshIn / 60)}m {proxyStatus.refreshCycle.nextRefreshIn % 60}s</span>
+                          <span className="text-gray-600">#{proxyStatus.refreshCycle.cycleCount} cycles</span>
+                          <button
+                            onClick={() => proxyRefreshNow.mutate()}
+                            disabled={proxyRefreshNow.isPending || proxyStatus.autoFetchStatus?.inProgress}
+                            className="flex items-center gap-1 text-gray-500 hover:text-blue-400 transition-colors disabled:opacity-50"
+                            data-testid="button-refresh-now"
+                          >
+                            {proxyRefreshNow.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                            <span>refresh now</span>
+                          </button>
+                        </div>
+                      )}
+                      {proxyStatus.blacklisted > 0 && (
+                        <div className="flex items-center gap-2 text-gray-500 ml-auto" data-testid="blacklist-controls">
+                          <span className="text-red-400/70">{proxyStatus.blacklisted} permanently blacklisted</span>
+                          <button
+                            onClick={() => clearBlacklistMut.mutate()}
+                            disabled={clearBlacklistMut.isPending}
+                            className="flex items-center gap-1 text-gray-500 hover:text-red-400 transition-colors disabled:opacity-50"
+                            data-testid="button-clear-blacklist"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>clear</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     {proxyStatus.autoFetchStats && (
                       <div className="flex items-center gap-2 flex-wrap text-[10px] text-gray-500 border-t border-gray-800/50 pt-1" data-testid="auto-fetch-stats">
                         <span className="text-cyan-400/70">fetch stats:</span>

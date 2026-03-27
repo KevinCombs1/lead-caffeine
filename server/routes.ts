@@ -3151,6 +3151,38 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/hive/proxy-refresh-now", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { triggerImmediateRefresh } = await import("./hive-proxy");
+      const result = await triggerImmediateRefresh();
+      if (result.skipped) {
+        return res.json({ skipped: true, reason: result.reason });
+      }
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hive/proxy-blacklist", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getBlacklistedIps, getBlacklistCount } = await import("./hive-proxy");
+      res.json({ count: getBlacklistCount(), ips: getBlacklistedIps() });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/hive/proxy-blacklist", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { clearBlacklist } = await import("./hive-proxy");
+      const cleared = clearBlacklist();
+      res.json({ success: true, cleared });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ===== CARPENTER ANTS ROUTES =====
 
   app.post("/api/carpenter/jobs", requireAuth, async (req: Request, res: Response) => {
