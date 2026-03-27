@@ -1,7 +1,7 @@
 import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
 import { SCRAPERS, classifyResults, setStopSignal, runWithProxyState, setProxyMode, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
-import { getHiveProxyCount, isHiveProxyActive, computeDomainGateParams } from "./hive-proxy";
+import { getHiveProxyCount, isHiveProxyActive, hasProxyForState, computeDomainGateParams } from "./hive-proxy";
 
 const US_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
@@ -458,7 +458,7 @@ export class RayOfGraceEngine {
       if (!combo) break;
 
       const scraperKey = combo.directory.scraperKey;
-      const gateKey = isHiveProxyActive() ? `${scraperKey}:${combo.location.state}` : scraperKey;
+      const gateKey = hasProxyForState(combo.location.state) ? `${scraperKey}:${combo.location.state}` : scraperKey;
 
       if (this.dirTracker.isSuspended(scraperKey)) {
         const resumeAt = this.dirTracker.getSuspendedUntil(scraperKey);

@@ -872,6 +872,7 @@ export interface TestScraperResult {
   results: ScraperResult[];
   sample: ScraperResult[];
   log: string[];
+  proxyUsed: string;
   error?: string;
 }
 
@@ -899,6 +900,7 @@ export async function testScraper(
       results: [],
       sample: [],
       log: [`Unknown scraper key: ${scraperKey}`],
+      proxyUsed: "none",
       error: `Unknown scraper key: ${scraperKey}`,
     };
   }
@@ -920,10 +922,11 @@ export async function testScraper(
     if (!fetchedUrl) {
       const fetchLine = response.log.find(l => l.startsWith("[fetch] "));
       if (fetchLine) {
-        const urlMatch = fetchLine.match(/\[fetch\] (\S+)/);
-        if (urlMatch) fetchedUrl = urlMatch[1];
+        const urlMatch = fetchLine.match(/\[fetch\] (?:[^:]+: )?(https?:\/\/\S+)/);
+        if (urlMatch) fetchedUrl = urlMatch[1].split(" ")[0];
       }
     }
+    const proxyUsed = firstMeta?.proxyRoute || "direct";
     return {
       scraperKey,
       url: fetchedUrl,
@@ -939,6 +942,7 @@ export async function testScraper(
       results,
       sample: results.slice(0, 3),
       log: response.log,
+      proxyUsed,
     };
   } catch (err: any) {
     globalStopSignal = oldStop;
@@ -960,6 +964,7 @@ export async function testScraper(
       results: [],
       sample: [],
       log: [`Test failed: ${err.message || err}`],
+      proxyUsed: firstMeta?.proxyRoute || "none",
       error: err.message || String(err),
     };
   }

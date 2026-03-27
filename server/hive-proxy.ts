@@ -344,6 +344,10 @@ export function isHiveProxyActive(): boolean {
   return getProxyMap().size > 0;
 }
 
+export function hasProxyForState(stateCode: string): boolean {
+  return getProxyMap().has(stateCode.toUpperCase());
+}
+
 export function getHiveProxyHealth(): HiveProxyStatus {
   const map = getProxyMap();
   const byProtocol: Record<string, number> = {};
