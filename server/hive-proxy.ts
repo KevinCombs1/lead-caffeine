@@ -84,6 +84,9 @@ const COOLDOWN_TIERS = [
 ];
 
 const FAIL_THRESHOLD = 3;
+const BLACKLIST_ZERO_SUCCESS_MIN = 5;
+const BLACKLIST_MIN_REQUESTS = 10;
+const BLACKLIST_FAIL_RATE = 0.90;
 
 const blacklist = new Set<string>();
 
@@ -275,6 +278,19 @@ function blacklistProxy(index: number): void {
   proxyPool = pool.filter(e => e.index !== index);
 }
 
+function shouldLifetimeBlacklist(h: ProxyHealth): boolean {
+  if (h.totalRequests >= BLACKLIST_ZERO_SUCCESS_MIN && h.totalSuccesses === 0) {
+    return true;
+  }
+  if (h.totalRequests >= BLACKLIST_MIN_REQUESTS) {
+    const failRate = h.totalFailures / h.totalRequests;
+    if (failRate >= BLACKLIST_FAIL_RATE) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function recordSuccess(index: number): void {
   const h = healthMap.get(index);
   if (!h) return;
@@ -324,6 +340,11 @@ function recordFailure(index: number, reason: string): void {
     h.cooldownUntil = Date.now() + tierInfo.durationMs;
     h.consecutiveFailures = 0;
     console.log(`[hive-proxy] Proxy #${index} entering ${tierInfo.label} cooldown (tier ${nextTier}) after ${FAIL_THRESHOLD} consecutive failures (${safeReason})`);
+  }
+
+  if (healthMap.has(index) && shouldLifetimeBlacklist(h)) {
+    console.log(`[hive-proxy] Proxy #${index} lifetime blacklisted: ${h.totalSuccesses}/${h.totalRequests} success (${h.totalFailures} failures, ${((h.totalFailures / h.totalRequests) * 100).toFixed(0)}% fail rate)`);
+    blacklistProxy(index);
   }
 }
 
@@ -752,6 +773,16 @@ export function startRefreshCycle(): void {
     if (refreshCycleActive) return;
     if (isManualProxyConfigured()) {
       stopRefreshCycle();
+      return;
+    }
+
+    let crawlActive = false;
+    try {
+      const { getActiveEngine } = await import("./hive-engine");
+      crawlActive = getActiveEngine() !== null;
+    } catch {}
+    if (!crawlActive) {
+      nextScheduledAt = Date.now() + REFRESH_INTERVAL_MS;
       return;
     }
 
