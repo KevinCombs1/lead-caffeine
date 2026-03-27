@@ -466,7 +466,7 @@ export function getHiveProxyHealth(): HiveProxyStatus {
     unused,
     byProtocol,
     proxies,
-    domainGateParams: computeDomainGateParams(pool.length),
+    domainGateParams: computeDomainGateParams(healthy),
   };
 }
 
