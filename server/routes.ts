@@ -3082,6 +3082,15 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/hive/delete-haul", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const deleted = await storage.deleteHaulData();
+      res.json({ success: true, deleted });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/hive/health-check", requireAuth, async (_req: Request, res: Response) => {
     try {
       const { checkFlowerHealth } = await import("./hive-engine");

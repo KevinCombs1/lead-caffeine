@@ -117,6 +117,7 @@ export interface IStorage {
   isComboCompleted(directoryId: string, categoryId: string, locationId: string): Promise<boolean>;
   getCompletedCombosCount(): Promise<number>;
   clearCompletedCombos(): Promise<void>;
+  deleteHaulData(): Promise<{ flowers: number; pollen: number; combos: number }>;
   createCarpenterJob(data: InsertCarpenterAntJob): Promise<CarpenterAntJob>;
   getCarpenterJob(id: string): Promise<CarpenterAntJob | undefined>;
   updateCarpenterJob(id: string, data: Partial<CarpenterAntJob>): Promise<void>;
@@ -796,6 +797,20 @@ export class DatabaseStorage implements IStorage {
 
   async clearCompletedCombos(): Promise<void> {
     await db.delete(hiveCompletedCombos);
+  }
+
+  async deleteHaulData(): Promise<{ flowers: number; pollen: number; combos: number }> {
+    const [fCount] = await db.select({ count: sql<number>`count(*)` }).from(hiveFlowers);
+    const [pCount] = await db.select({ count: sql<number>`count(*)` }).from(hivePollen);
+    const [cCount] = await db.select({ count: sql<number>`count(*)` }).from(hiveCompletedCombos);
+    await db.delete(hiveFlowers);
+    await db.delete(hivePollen);
+    await db.delete(hiveCompletedCombos);
+    return {
+      flowers: Number(fCount?.count || 0),
+      pollen: Number(pCount?.count || 0),
+      combos: Number(cCount?.count || 0),
+    };
   }
 
   async createCarpenterJob(data: InsertCarpenterAntJob): Promise<CarpenterAntJob> {

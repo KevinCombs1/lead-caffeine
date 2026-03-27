@@ -271,6 +271,15 @@ export default function HivePage() {
     },
   });
 
+  const deleteHaul = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hive/delete-haul"),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      toast({ title: "Haul deleted", description: `Removed ${data.deleted.flowers.toLocaleString()} flowers, ${data.deleted.pollen.toLocaleString()} pollen, ${data.deleted.combos.toLocaleString()} combos.` });
+      queryClient.invalidateQueries({ predicate: (query) => (query.queryKey[0] as string)?.startsWith?.("/api/hive") });
+    },
+  });
+
   const healthCheck = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hive/health-check"),
     onSuccess: async (res) => {
@@ -765,6 +774,20 @@ export default function HivePage() {
               >
                 {healthCheck.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Heart className="w-3 h-3" />}
                 Health Check
+              </button>
+
+              <button
+                onClick={() => {
+                  if (confirm("Delete ALL flowers, pollen, and scan history? This cannot be undone.")) {
+                    deleteHaul.mutate();
+                  }
+                }}
+                disabled={deleteHaul.isPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-red-900 rounded text-red-400 hover:text-red-300 hover:border-red-700 transition-colors"
+                data-testid="button-delete-haul"
+              >
+                {deleteHaul.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                Delete Haul
               </button>
             </div>
 
