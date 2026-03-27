@@ -1212,65 +1212,28 @@ function startScheduler() {
   if (schedulerInterval) return;
   const allConfigs = CONFIG_SOURCES.filter(c => c.endpoints.length > 0);
 
-  const SCHEDULER_CONCURRENCY = 2;
-  const SCHEDULER_BATCH_DELAY_MS = 1500;
-  let schedulerTickRunning = false;
-
   schedulerInterval = setInterval(async () => {
-    if (schedulerTickRunning) {
-      console.log("[SCHEDULER] Skipping tick — previous tick still running");
-      return;
+    const now = Date.now();
+    for (const config of allConfigs) {
+      const lf = lastFetchTimes.get(config.slug) || 0;
+      if (now - lf >= config.fetchIntervalMs) {
+        try {
+          const r = await fetchConfigSource(config);
+          lastFetchTimes.set(config.slug, now);
+          if (r.stored > 0) console.log(`[SCHEDULER] ${config.slug}: stored ${r.stored} new events`);
+        } catch (err: any) { console.error(`[SCHEDULER] ${config.slug} error:`, err.message); recordSourceHealth(config.slug, false, 0, err.message); }
+      }
     }
-    schedulerTickRunning = true;
-    try {
-      const now = Date.now();
-      const configDue = allConfigs.filter(c => now - (lastFetchTimes.get(c.slug) || 0) >= c.fetchIntervalMs);
-      const customDue: Array<{ slug: string; fetcher: () => Promise<any> }> = [];
-      for (const [slug, fetcher] of Object.entries(CUSTOM_FETCH_MAP)) {
-        const lf = lastFetchTimes.get(slug) || 0;
-        const interval = slug === "exchange-rates" ? 24*60*60*1000 : slug === "coingecko" ? 30*60*1000 : 12*60*60*1000;
-        if (now - lf >= interval) {
-          customDue.push({ slug, fetcher });
-        }
+    for (const [slug, fetcher] of Object.entries(CUSTOM_FETCH_MAP)) {
+      const lf = lastFetchTimes.get(slug) || 0;
+      const interval = slug === "exchange-rates" ? 24*60*60*1000 : slug === "coingecko" ? 30*60*1000 : 12*60*60*1000;
+      if (now - lf >= interval) {
+        try {
+          const r = await fetcher();
+          lastFetchTimes.set(slug, now);
+          if (r.stored > 0) console.log(`[SCHEDULER] ${slug}: stored ${r.stored} new events`);
+        } catch (err: any) { console.error(`[SCHEDULER] ${slug} error:`, err.message); recordSourceHealth(slug, false, 0, err.message); }
       }
-
-      for (let i = 0; i < configDue.length; i += SCHEDULER_CONCURRENCY) {
-        const batch = configDue.slice(i, i + SCHEDULER_CONCURRENCY);
-        await Promise.allSettled(batch.map(async (config) => {
-          try {
-            const r = await fetchConfigSource(config);
-            lastFetchTimes.set(config.slug, Date.now());
-            if (r.stored > 0) console.log(`[SCHEDULER] ${config.slug}: stored ${r.stored} new events`);
-          } catch (err: any) {
-            console.error(`[SCHEDULER] ${config.slug} error:`, err.message);
-            recordSourceHealth(config.slug, false, 0, err.message);
-          }
-        }));
-        if (i + SCHEDULER_CONCURRENCY < configDue.length) {
-          await new Promise(r => setTimeout(r, SCHEDULER_BATCH_DELAY_MS));
-        }
-      }
-
-      for (let i = 0; i < customDue.length; i += SCHEDULER_CONCURRENCY) {
-        const batch = customDue.slice(i, i + SCHEDULER_CONCURRENCY);
-        await Promise.allSettled(batch.map(async ({ slug, fetcher }) => {
-          try {
-            const r = await fetcher();
-            lastFetchTimes.set(slug, Date.now());
-            if (r.stored > 0) console.log(`[SCHEDULER] ${slug}: stored ${r.stored} new events`);
-          } catch (err: any) {
-            console.error(`[SCHEDULER] ${slug} error:`, err.message);
-            recordSourceHealth(slug, false, 0, err.message);
-          }
-        }));
-        if (i + SCHEDULER_CONCURRENCY < customDue.length) {
-          await new Promise(r => setTimeout(r, SCHEDULER_BATCH_DELAY_MS));
-        }
-      }
-    } catch (schedulerErr: any) {
-      console.error(`[SCHEDULER] Unhandled scheduler tick error:`, schedulerErr.message);
-    } finally {
-      schedulerTickRunning = false;
     }
   }, 5 * 60 * 1000);
 

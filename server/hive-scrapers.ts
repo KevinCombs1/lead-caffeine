@@ -1,4 +1,4 @@
-import { hiveProxyFetch, isHiveProxyActive, hasHealthyProxy, getHealthyProxyCount, getDelayTier, isPacketStreamConfigured, packetStreamFetch, generateSessionId, refineBandwidthEstimate, type HiveProxyFetchOptions } from "./hive-proxy";
+import { hiveProxyFetch, isHiveProxyActive, hasHealthyProxy, getHealthyProxyCount, getDelayTier } from "./hive-proxy";
 
 export interface ScraperLocation {
   city: string;
@@ -25,12 +25,7 @@ export interface ScraperResponse {
   log: string[];
 }
 
-export interface ScraperContext {
-  sessionId?: string;
-  countryCode?: string;
-}
-
-export type ScraperFn = (searchTerms: string[], location: ScraperLocation, ctx?: ScraperContext) => Promise<ScraperResponse>;
+export type ScraperFn = (searchTerms: string[], location: ScraperLocation) => Promise<ScraperResponse>;
 
 let globalStopSignal = false;
 export function setStopSignal(val: boolean) { globalStopSignal = val; }
@@ -122,8 +117,8 @@ function sleep(ms: number): Promise<void> {
 
 async function randomDelay(): Promise<void> {
   if (globalStopSignal) return;
-  const usingProxy = (isHiveProxyActive() && hasHealthyProxy()) || isPacketStreamConfigured();
-  const tier = usingProxy ? getDelayTier(Math.max(getHealthyProxyCount(), isPacketStreamConfigured() ? 50 : 0)) : getDelayTier(0);
+  const usingProxy = isHiveProxyActive() && hasHealthyProxy();
+  const tier = usingProxy ? getDelayTier(getHealthyProxyCount()) : getDelayTier(0);
   const ms = tier.minMs + Math.random() * (tier.maxMs - tier.minMs);
   const chunks = Math.ceil(ms / 1000);
   for (let i = 0; i < chunks; i++) {
@@ -719,38 +714,16 @@ class FetchError extends Error {
   }
 }
 
-async function doFetch(url: string, headers: Record<string, string>, signal: AbortSignal, proxyOpts?: HiveProxyFetchOptions): Promise<{ response: Response; proxyRoute: string }> {
-  if (isHiveProxyActive() || isPacketStreamConfigured()) {
-    const result = await hiveProxyFetch(url, { headers, signal, redirect: "follow" }, proxyOpts);
+async function doFetch(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<{ response: Response; proxyRoute: string }> {
+  if (isHiveProxyActive()) {
+    const result = await hiveProxyFetch(url, { headers, signal, redirect: "follow" });
     return { response: result.response, proxyRoute: result.routeLabel };
   }
   const response = await fetch(url, { headers, signal, redirect: "follow" });
   return { response, proxyRoute: "direct" };
 }
 
-async function fetchPageResidential(url: string, log: string[], options?: { countryCode?: string; sessionId?: string }): Promise<string> {
-  if (!isPacketStreamConfigured()) {
-    return fetchPage(url, log);
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  try {
-    const result = await packetStreamFetch(url, { headers: getRandomHeaders(), signal: controller.signal, redirect: "follow" }, options);
-    const html = await result.response.text();
-    const actualBytes = new TextEncoder().encode(html).length;
-    const headerEstimate = parseInt(result.response.headers.get("content-length") || "0", 10) || 50000;
-    refineBandwidthEstimate(actualBytes, headerEstimate);
-    log.push(`[fetch] ${result.routeLabel}: ${url} → ${result.response.status} | ${actualBytes} bytes`);
-    if (!result.response.ok) {
-      throw new Error(`HTTP ${result.response.status}: ${result.response.statusText}`);
-    }
-    return html;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function fetchPageWithMeta(url: string, proxyOpts?: HiveProxyFetchOptions): Promise<FetchPageMetaExtended> {
+async function fetchPageWithMeta(url: string): Promise<FetchPageMetaExtended> {
   if (globalStopSignal) throw new Error("Stop signal received");
   const RETRYABLE = new Set([403, 429, 503]);
 
@@ -759,7 +732,7 @@ async function fetchPageWithMeta(url: string, proxyOpts?: HiveProxyFetchOptions)
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {
-      const { response, proxyRoute } = await doFetch(url, getRandomHeaders(), controller.signal, proxyOpts);
+      const { response, proxyRoute } = await doFetch(url, getRandomHeaders(), controller.signal);
 
       const respHeaders: Record<string, string> = {};
       response.headers.forEach((v, k) => { respHeaders[k] = v; });
@@ -851,9 +824,9 @@ async function fetchPageWithMeta(url: string, proxyOpts?: HiveProxyFetchOptions)
 
 let _testMetaCollector: FetchPageMetaExtended[] | null = null;
 
-async function fetchPage(url: string, log?: string[], proxyOpts?: HiveProxyFetchOptions): Promise<string> {
+async function fetchPage(url: string, log?: string[]): Promise<string> {
   try {
-    const meta = await fetchPageWithMeta(url, proxyOpts);
+    const meta = await fetchPageWithMeta(url);
     if (_testMetaCollector) _testMetaCollector.push(meta);
     if (log) {
       const routePrefix = meta.proxyRoute !== "direct" ? `${meta.proxyRoute}: ` : isHiveProxyActive() ? "direct: " : "";
@@ -1039,14 +1012,11 @@ function extractHref(tag: string): string {
 
 export async function scrapeYellowPages(
   searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
+  location: ScraperLocation
 ): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
   const log: string[] = [];
   const locationStr = `${location.city}, ${location.state}`;
-  const sessionId = ctx?.sessionId || generateSessionId();
-  const pOpts: HiveProxyFetchOptions = { sessionId, countryCode: ctx?.countryCode || "US" };
 
   for (const term of searchTerms) {
     if (globalStopSignal) break;
@@ -1061,7 +1031,7 @@ export async function scrapeYellowPages(
       if (globalStopSignal) break;
       try {
         const url = `https://www.yellowpages.com/search?search_terms=${encodedTerm}&geo_location_terms=${encodedLocation}&page=${page}`;
-        const html = await fetchPage(url, log, pOpts);
+        const html = await fetchPage(url, log);
 
         const namePattern = /<a[^>]*class="[^"]*business-name[^"]*"[^>]*>(?:<span[^>]*>)?([^<]+)/g;
         const phonePattern = /class="[^"]*phones?\s[^"]*"[^>]*>([^<]+)/g;
@@ -1166,13 +1136,11 @@ export async function scrapeYellowPages(
 
 export async function scrapeSuperpages(
   searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
+  location: ScraperLocation
 ): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
   const log: string[] = [];
   const locationStr = `${location.city}, ${location.state}`;
-  const pOpts: HiveProxyFetchOptions | undefined = ctx ? { sessionId: ctx.sessionId, countryCode: ctx.countryCode } : undefined;
 
   for (const term of searchTerms) {
     if (globalStopSignal) break;
@@ -1187,7 +1155,7 @@ export async function scrapeSuperpages(
       if (globalStopSignal) break;
       try {
         const url = `https://www.superpages.com/search?search_terms=${encodedTerm}&geo_location_terms=${encodedLocation}&page=${page}`;
-        const html = await fetchPage(url, log, pOpts);
+        const html = await fetchPage(url, log);
 
         const businessNameRegex = /<a[^>]*class="[^"]*business-name[^"]*"[^>]*>(?:<span[^>]*>)?([^<]+)/g;
         const phoneRegex = /class="[^"]*phones?\s[^"]*"[^>]*href="tel:([^"]+)"/g;
@@ -1254,14 +1222,12 @@ export const scrapeMapQuest: ScraperFn = () => blockedScraper("MapQuest", "Requi
 
 export async function scrapeHotfrog(
   searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
+  location: ScraperLocation
 ): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
   const log: string[] = [];
   const stateSlug = location.state.toLowerCase();
   const citySlug = location.city.toLowerCase().replace(/\s+/g, "-");
-  const pOpts: HiveProxyFetchOptions | undefined = ctx ? { sessionId: ctx.sessionId, countryCode: ctx.countryCode } : undefined;
 
   for (const term of searchTerms) {
     if (globalStopSignal) break;
@@ -1270,7 +1236,7 @@ export async function scrapeHotfrog(
     try {
       const termSlug = term.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
       const url = `https://www.hotfrog.com/search/${stateSlug}/${citySlug}/${termSlug}`;
-      const html = await fetchPage(url, log, pOpts);
+      const html = await fetchPage(url, log);
 
       const listingBlocks = extractAllBetween(html, '<div class="ser-card', '</div>');
       let blocks = listingBlocks;
@@ -1346,14 +1312,12 @@ export async function scrapeHotfrog(
 
 export async function scrapeEZLocal(
   searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
+  location: ScraperLocation
 ): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
   const log: string[] = [];
   const stateSlug = location.state.toLowerCase();
   const citySlug = location.city.toLowerCase().replace(/\s+/g, "-");
-  const pOpts: HiveProxyFetchOptions | undefined = ctx ? { sessionId: ctx.sessionId, countryCode: ctx.countryCode } : undefined;
 
   for (const term of searchTerms) {
     if (globalStopSignal) break;
@@ -1362,7 +1326,7 @@ export async function scrapeEZLocal(
     try {
       const termSlug = term.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
       const url = `https://ezlocal.com/${stateSlug}/${citySlug}/${termSlug}`;
-      const html = await fetchPage(url, log, pOpts);
+      const html = await fetchPage(url, log);
 
       const nameRegex = /<h3[^>]*class="[^"]*fn org[^"]*"[^>]*>\d+\.\s*<a[^>]*>([^<]+)/g;
       const phoneRegex = /class="[^"]*tel[^"]*"[^>]*>([^<]+)/g;
@@ -1415,12 +1379,10 @@ export async function scrapeEZLocal(
 
 export async function scrapeN49(
   searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
+  location: ScraperLocation
 ): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
   const log: string[] = [];
-  const pOpts: HiveProxyFetchOptions | undefined = ctx ? { sessionId: ctx.sessionId, countryCode: ctx.countryCode } : undefined;
 
   const CA_PROVINCES = new Set(["AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT"]);
   const isCA = CA_PROVINCES.has(location.state.toUpperCase());
@@ -1435,7 +1397,7 @@ export async function scrapeN49(
     try {
       const termSlug = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
       const url = `https://www.n49.com/biz/${countrySlug}/${stateSlug}/${citySlug}/${termSlug}/`;
-      const html = await fetchPage(url, log, pOpts);
+      const html = await fetchPage(url, log);
 
       const jsonLdRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
       let match;
@@ -1501,70 +1463,7 @@ async function blockedScraper(name: string, reason: string): Promise<ScraperResp
   return { results: [], log: [`${name}: ${reason}`] };
 }
 
-export async function scrapeKompass(
-  searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
-): Promise<ScraperResponse> {
-  if (!isPacketStreamConfigured()) {
-    return { results: [], log: ["Kompass: Requires residential proxy (PacketStream not configured)"] };
-  }
-  const results: ScraperResult[] = [];
-  const log: string[] = [];
-  const sessionId = ctx?.sessionId || generateSessionId();
-
-  for (const term of searchTerms) {
-    if (globalStopSignal) break;
-    log.push(`[Kompass] Searching "${term}"...`);
-    try {
-      const maxPages = 2;
-      let termTotal = 0;
-
-      for (let page = 1; page <= maxPages; page++) {
-        if (globalStopSignal) break;
-        const url = `https://www.kompass.com/searchCompanies?text=${encodeURIComponent(term)}&page=${page}`;
-        const html = await fetchPageResidential(url, log, { sessionId, countryCode: ctx?.countryCode });
-
-        const nameRegex = /<h2[^>]*class="[^"]*company[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/gi;
-
-        let match;
-        const names: string[] = [];
-        while ((match = nameRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2) names.push(name);
-        }
-
-        if (names.length === 0) {
-          const altNameRegex = /<a[^>]*href="\/[^"]*\/company\/[^"]*"[^>]*>([^<]{3,})<\/a>/gi;
-          while ((match = altNameRegex.exec(html)) !== null) {
-            const name = stripTags(match[1]);
-            if (name.length > 2 && !names.includes(name)) names.push(name);
-          }
-        }
-
-        if (names.length === 0) {
-          if (page === 1) log.push(`[Kompass] No listings for "${term}"`);
-          break;
-        }
-
-        for (const name of names) {
-          results.push({ name, city: location.city, state: location.state, sourceUrl: url });
-          termTotal++;
-        }
-        log.push(`[Kompass] Page ${page}: ${names.length} listings`);
-        if (names.length < 5) break;
-        await randomDelay();
-      }
-
-      if (termTotal > 0) log.push(`[Kompass] "${term}": ${termTotal} total`);
-    } catch (err: any) {
-      log.push(`[Kompass] Error for "${term}": ${err.message || err}`);
-    }
-  }
-
-  log.push(`[Kompass] Total: ${results.length} results`);
-  return { results, log };
-}
+export const scrapeKompass: ScraperFn = () => blockedScraper("Kompass", "Blocked — DataDome anti-bot protection (403)");
 
 function parseCompanyTiles(html: string, sourceUrl: string, location: ScraperLocation): ScraperResult[] {
   const results: ScraperResult[] = [];
@@ -1598,12 +1497,10 @@ function parseCompanyTiles(html: string, sourceUrl: string, location: ScraperLoc
 
 export async function scrapeEuropages(
   searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
+  location: ScraperLocation
 ): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
   const log: string[] = [];
-  const pOpts: HiveProxyFetchOptions | undefined = ctx ? { sessionId: ctx.sessionId, countryCode: ctx.countryCode } : undefined;
 
   for (const term of searchTerms) {
     if (globalStopSignal) break;
@@ -1616,7 +1513,7 @@ export async function scrapeEuropages(
       for (let page = 1; page <= maxPages; page++) {
         if (globalStopSignal) break;
         const url = `https://www.europages.co.uk/companies/pg-${page}/${encodeURIComponent(slug)}.html`;
-        const html = await fetchPage(url, log, pOpts);
+        const html = await fetchPage(url, log);
 
         const pageResults = parseCompanyTiles(html, url, location);
         if (pageResults.length === 0) {
@@ -1642,398 +1539,26 @@ export async function scrapeEuropages(
   return { results, log };
 }
 
-export async function scrapeYell(
-  searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
-): Promise<ScraperResponse> {
-  if (!isPacketStreamConfigured()) {
-    return { results: [], log: ["Yell: Requires residential proxy (PacketStream not configured)"] };
-  }
-  const results: ScraperResult[] = [];
-  const log: string[] = [];
-  const sessionId = ctx?.sessionId || generateSessionId();
+export const scrapeYell: ScraperFn = () => blockedScraper("Yell", "Blocked — Cloudflare protection (403)");
 
-  for (const term of searchTerms) {
-    if (globalStopSignal) break;
-    log.push(`[Yell] Searching "${term}"...`);
-    try {
-      const maxPages = 3;
-      let termTotal = 0;
-
-      for (let page = 1; page <= maxPages; page++) {
-        if (globalStopSignal) break;
-        const url = `https://www.yell.com/ucs/UcsSearchAction.do?scrambleSeed=&keywords=${encodeURIComponent(term)}&location=${encodeURIComponent(location.city)}&pageNum=${page}`;
-        const html = await fetchPageResidential(url, log, { countryCode: "GB", sessionId });
-
-        const nameRegex = /<h2[^>]*class="[^"]*businessCapsule--name[^"]*"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/gi;
-        const altNameRegex = /<a[^>]*class="[^"]*businessCapsule--name[^"]*"[^>]*>([^<]+)<\/a>/gi;
-
-        let match;
-        const names: string[] = [];
-        while ((match = nameRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2) names.push(name);
-        }
-        if (names.length === 0) {
-          while ((match = altNameRegex.exec(html)) !== null) {
-            const name = stripTags(match[1]);
-            if (name.length > 2) names.push(name);
-          }
-        }
-        if (names.length === 0) {
-          const jsonLd = html.match(/"name"\s*:\s*"([^"]{3,})"/g) || [];
-          for (const jm of jsonLd) {
-            const nameVal = jm.match(/"name"\s*:\s*"([^"]+)"/)?.[1];
-            if (nameVal && nameVal.length > 2 && !names.includes(nameVal)) names.push(nameVal);
-          }
-        }
-
-        if (names.length === 0) {
-          if (page === 1) log.push(`[Yell] No listings for "${term}"`);
-          break;
-        }
-
-        const phoneRegex = /href="tel:([^"]+)"/g;
-        const phones: string[] = [];
-        while ((match = phoneRegex.exec(html)) !== null) phones.push(match[1]);
-
-        for (let i = 0; i < names.length; i++) {
-          results.push({ name: names[i], phone: phones[i], city: location.city, state: location.state, sourceUrl: url });
-          termTotal++;
-        }
-        log.push(`[Yell] Page ${page}: ${names.length} listings`);
-        if (names.length < 5) break;
-        await randomDelay();
-      }
-
-      if (termTotal > 0) log.push(`[Yell] "${term}": ${termTotal} total`);
-    } catch (err: any) {
-      log.push(`[Yell] Error for "${term}": ${err.message || err}`);
-    }
-  }
-
-  log.push(`[Yell] Total: ${results.length} results`);
-  return { results, log };
-}
-
-export async function scrapeCylex(
-  searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
-): Promise<ScraperResponse> {
-  if (!isPacketStreamConfigured()) {
-    return { results: [], log: ["Cylex: Requires residential proxy (PacketStream not configured)"] };
-  }
-  const results: ScraperResult[] = [];
-  const log: string[] = [];
-  const sessionId = ctx?.sessionId || generateSessionId();
-
-  for (const term of searchTerms) {
-    if (globalStopSignal) break;
-    log.push(`[Cylex] Searching "${term}"...`);
-    try {
-      const citySlug = location.city.toLowerCase().replace(/\s+/g, "-");
-      const stateSlug = location.state.toLowerCase();
-      const url = `https://www.cylex-usa.com/${citySlug}-${stateSlug}/${encodeURIComponent(term.toLowerCase().replace(/\s+/g, "-"))}.html`;
-      const html = await fetchPageResidential(url, log, { countryCode: "US", sessionId });
-
-      const nameRegex = /<h2[^>]*class="[^"]*company-name[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/gi;
-      const altRegex = /<div[^>]*class="[^"]*result-title[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/gi;
-
-      let match;
-      const names: string[] = [];
-      while ((match = nameRegex.exec(html)) !== null) {
-        const name = stripTags(match[1]);
-        if (name.length > 2) names.push(name);
-      }
-      if (names.length === 0) {
-        while ((match = altRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2) names.push(name);
-        }
-      }
-
-      const phoneRegex = /href="tel:([^"]+)"/g;
-      const phones: string[] = [];
-      while ((match = phoneRegex.exec(html)) !== null) phones.push(match[1]);
-
-      for (let i = 0; i < names.length; i++) {
-        results.push({ name: names[i], phone: phones[i], city: location.city, state: location.state, sourceUrl: url });
-      }
-
-      if (names.length === 0) log.push(`[Cylex] No listings for "${term}"`);
-      else log.push(`[Cylex] Found ${names.length} listings for "${term}"`);
-      await randomDelay();
-    } catch (err: any) {
-      log.push(`[Cylex] Error for "${term}": ${err.message || err}`);
-    }
-  }
-
-  log.push(`[Cylex] Total: ${results.length} results`);
-  return { results, log };
-}
+export const scrapeCylex: ScraperFn = () => blockedScraper("Cylex", "Blocked — Cloudflare challenge page");
 
 export const scrapeTradeKey: ScraperFn = () => blockedScraper("TradeKey", "Dead — endpoint returns 410 Gone");
 export const scrapeExportHub: ScraperFn = () => blockedScraper("ExportHub", "Dead — search endpoint returns 404");
 export const scrapeGo4WorldBusiness: ScraperFn = () => blockedScraper("Go4WorldBusiness", "Blocked — AWS ELB returns 403");
+export const scrapeTradeFord: ScraperFn = () => blockedScraper("TradeFord", "Blocked — Cloudflare protection (403)");
 
-export async function scrapeTradeFord(
-  searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
-): Promise<ScraperResponse> {
-  if (!isPacketStreamConfigured()) {
-    return { results: [], log: ["TradeFord: Requires residential proxy (PacketStream not configured)"] };
-  }
-  const results: ScraperResult[] = [];
-  const log: string[] = [];
-  const sessionId = ctx?.sessionId || generateSessionId();
-
-  for (const term of searchTerms) {
-    if (globalStopSignal) break;
-    log.push(`[TradeFord] Searching "${term}"...`);
-    try {
-      const maxPages = 2;
-      let termTotal = 0;
-
-      for (let page = 1; page <= maxPages; page++) {
-        if (globalStopSignal) break;
-        const url = `https://www.tradeford.com/search.php?q=${encodeURIComponent(term)}&page=${page}`;
-        const html = await fetchPageResidential(url, log, { sessionId, countryCode: ctx?.countryCode });
-
-        const nameRegex = /<h[23][^>]*class="[^"]*product-name[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/gi;
-        const altRegex = /<a[^>]*class="[^"]*company[^"]*"[^>]*>([^<]{3,})<\/a>/gi;
-        const companyRegex = /<span[^>]*class="[^"]*company-name[^"]*"[^>]*>([^<]+)<\/span>/gi;
-
-        let match;
-        const names: string[] = [];
-        while ((match = nameRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2 && !names.includes(name)) names.push(name);
-        }
-        if (names.length === 0) {
-          while ((match = altRegex.exec(html)) !== null) {
-            const name = stripTags(match[1]);
-            if (name.length > 2 && !names.includes(name)) names.push(name);
-          }
-        }
-        if (names.length === 0) {
-          while ((match = companyRegex.exec(html)) !== null) {
-            const name = stripTags(match[1]);
-            if (name.length > 2 && !names.includes(name)) names.push(name);
-          }
-        }
-
-        if (names.length === 0) {
-          if (page === 1) log.push(`[TradeFord] No listings for "${term}"`);
-          break;
-        }
-
-        for (const name of names) {
-          results.push({ name, city: location.city, state: location.state, sourceUrl: url });
-          termTotal++;
-        }
-        log.push(`[TradeFord] Page ${page}: ${names.length} listings`);
-        if (names.length < 5) break;
-        await randomDelay();
-      }
-
-      if (termTotal > 0) log.push(`[TradeFord] "${term}": ${termTotal} total`);
-    } catch (err: any) {
-      log.push(`[TradeFord] Error for "${term}": ${err.message || err}`);
-    }
-  }
-
-  log.push(`[TradeFord] Total: ${results.length} results`);
-  return { results, log };
-}
-
-export async function scrapeTradeIndia(
-  searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
-): Promise<ScraperResponse> {
-  if (!isPacketStreamConfigured()) {
-    return { results: [], log: ["TradeIndia: Requires residential proxy (PacketStream not configured)"] };
-  }
-  const results: ScraperResult[] = [];
-  const log: string[] = [];
-  const sessionId = ctx?.sessionId || generateSessionId();
-
-  for (const term of searchTerms) {
-    if (globalStopSignal) break;
-    log.push(`[TradeIndia] Searching "${term}"...`);
-    try {
-      const url = `https://www.tradeindia.com/search.html?keyword=${encodeURIComponent(term)}`;
-      const html = await fetchPageResidential(url, log, { countryCode: "IN", sessionId });
-
-      const nameRegex = /<h2[^>]*class="[^"]*company[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/gi;
-      const altRegex = /<a[^>]*class="[^"]*companyname[^"]*"[^>]*>([^<]+)<\/a>/gi;
-      const cardRegex = /<div[^>]*class="[^"]*card-title[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/gi;
-
-      let match;
-      const names: string[] = [];
-      while ((match = nameRegex.exec(html)) !== null) {
-        const name = stripTags(match[1]);
-        if (name.length > 2 && !names.includes(name)) names.push(name);
-      }
-      if (names.length === 0) {
-        while ((match = altRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2 && !names.includes(name)) names.push(name);
-        }
-      }
-      if (names.length === 0) {
-        while ((match = cardRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2 && !names.includes(name)) names.push(name);
-        }
-      }
-
-      for (const name of names) {
-        results.push({ name, city: location.city, state: location.state, sourceUrl: url });
-      }
-
-      if (names.length === 0) log.push(`[TradeIndia] No listings for "${term}"`);
-      else log.push(`[TradeIndia] Found ${names.length} listings for "${term}"`);
-      await randomDelay();
-    } catch (err: any) {
-      log.push(`[TradeIndia] Error for "${term}": ${err.message || err}`);
-    }
-  }
-
-  log.push(`[TradeIndia] Total: ${results.length} results`);
-  return { results, log };
-}
-
+export const scrapeTradeIndia: ScraperFn = () => blockedScraper("TradeIndia", "Blocked — Cloudflare protection");
 export const scrapeMadeInChina: ScraperFn = () => blockedScraper("Made-in-China", "Blocked — requires authentication");
 export const scrapeIndiaMart: ScraperFn = () => blockedScraper("IndiaMart", "Blocked — requires authentication");
-
-export async function scrapeEC21(
-  searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
-): Promise<ScraperResponse> {
-  if (!isPacketStreamConfigured()) {
-    return { results: [], log: ["EC21: Requires residential proxy (PacketStream not configured)"] };
-  }
-  const results: ScraperResult[] = [];
-  const log: string[] = [];
-  const sessionId = ctx?.sessionId || generateSessionId();
-
-  for (const term of searchTerms) {
-    if (globalStopSignal) break;
-    log.push(`[EC21] Searching "${term}"...`);
-    try {
-      const url = `https://www.ec21.com/product-list/s--${encodeURIComponent(term.replace(/\s+/g, "+"))}--1.html`;
-      const html = await fetchPageResidential(url, log, { sessionId, countryCode: ctx?.countryCode });
-
-      const nameRegex = /<a[^>]*class="[^"]*company-name[^"]*"[^>]*>([^<]+)<\/a>/gi;
-      const altRegex = /<span[^>]*class="[^"]*seller[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/gi;
-      const linkRegex = /<a[^>]*href="[^"]*ec21\.com\/company\/[^"]*"[^>]*>([^<]{3,})<\/a>/gi;
-
-      let match;
-      const names: string[] = [];
-      while ((match = nameRegex.exec(html)) !== null) {
-        const name = stripTags(match[1]);
-        if (name.length > 2 && !names.includes(name)) names.push(name);
-      }
-      if (names.length === 0) {
-        while ((match = altRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2 && !names.includes(name)) names.push(name);
-        }
-      }
-      if (names.length === 0) {
-        while ((match = linkRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2 && !names.includes(name)) names.push(name);
-        }
-      }
-
-      for (const name of names) {
-        results.push({ name, city: location.city, state: location.state, sourceUrl: url });
-      }
-
-      if (names.length === 0) log.push(`[EC21] No listings for "${term}"`);
-      else log.push(`[EC21] Found ${names.length} listings for "${term}"`);
-      await randomDelay();
-    } catch (err: any) {
-      log.push(`[EC21] Error for "${term}": ${err.message || err}`);
-    }
-  }
-
-  log.push(`[EC21] Total: ${results.length} results`);
-  return { results, log };
-}
-
-export async function scrapeGlobalSources(
-  searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
-): Promise<ScraperResponse> {
-  if (!isPacketStreamConfigured()) {
-    return { results: [], log: ["GlobalSources: Requires residential proxy (PacketStream not configured)"] };
-  }
-  const results: ScraperResult[] = [];
-  const log: string[] = [];
-  const sessionId = ctx?.sessionId || generateSessionId();
-
-  for (const term of searchTerms) {
-    if (globalStopSignal) break;
-    log.push(`[GlobalSources] Searching "${term}"...`);
-    try {
-      const slug = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-      const url = `https://www.globalsources.com/manufacturers/${slug}.html`;
-      const html = await fetchPageResidential(url, log, { sessionId, countryCode: ctx?.countryCode });
-
-      const nameRegex = /<h2[^>]*class="[^"]*supplier[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/gi;
-      const altRegex = /<a[^>]*class="[^"]*supplierName[^"]*"[^>]*>([^<]+)<\/a>/gi;
-      const cardRegex = /<span[^>]*class="[^"]*company-name[^"]*"[^>]*>([^<]+)<\/span>/gi;
-
-      let match;
-      const names: string[] = [];
-      while ((match = nameRegex.exec(html)) !== null) {
-        const name = stripTags(match[1]);
-        if (name.length > 2 && !names.includes(name)) names.push(name);
-      }
-      if (names.length === 0) {
-        while ((match = altRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2 && !names.includes(name)) names.push(name);
-        }
-      }
-      if (names.length === 0) {
-        while ((match = cardRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2 && !names.includes(name)) names.push(name);
-        }
-      }
-
-      for (const name of names) {
-        results.push({ name, city: location.city, state: location.state, sourceUrl: url });
-      }
-
-      if (names.length === 0) log.push(`[GlobalSources] No listings for "${term}"`);
-      else log.push(`[GlobalSources] Found ${names.length} listings for "${term}"`);
-      await randomDelay();
-    } catch (err: any) {
-      log.push(`[GlobalSources] Error for "${term}": ${err.message || err}`);
-    }
-  }
-
-  log.push(`[GlobalSources] Total: ${results.length} results`);
-  return { results, log };
-}
+export const scrapeEC21: ScraperFn = () => blockedScraper("EC21", "Blocked — Cloudflare protection");
+export const scrapeGlobalSources: ScraperFn = () => blockedScraper("GlobalSources", "Blocked — Cloudflare protection");
 export async function scrapeWLW(
   searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
+  location: ScraperLocation
 ): Promise<ScraperResponse> {
   const results: ScraperResult[] = [];
   const log: string[] = [];
-  const pOpts: HiveProxyFetchOptions | undefined = ctx ? { sessionId: ctx.sessionId, countryCode: ctx.countryCode } : undefined;
 
   for (const term of searchTerms) {
     if (globalStopSignal) break;
@@ -2045,7 +1570,7 @@ export async function scrapeWLW(
       for (let page = 1; page <= maxPages; page++) {
         if (globalStopSignal) break;
         const url = `https://www.wlw.de/en/search?q=${encodeURIComponent(term)}&page=${page}`;
-        const html = await fetchPage(url, log, pOpts);
+        const html = await fetchPage(url, log);
 
         const pageResults = parseCompanyTiles(html, url, location);
         if (pageResults.length === 0) {
@@ -2074,133 +1599,8 @@ export async function scrapeWLW(
 export const scrapeYelp: ScraperFn = () => blockedScraper("Yelp", "Blocked — requires API key");
 export const scrapeBBB: ScraperFn = () => blockedScraper("BBB", "Blocked — CAPTCHA/anti-bot protection");
 export const scrapeAngi: ScraperFn = () => blockedScraper("Angi", "Blocked — requires authentication");
-export async function scrapeClutch(
-  searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
-): Promise<ScraperResponse> {
-  if (!isPacketStreamConfigured()) {
-    return { results: [], log: ["Clutch: Requires residential proxy (PacketStream not configured)"] };
-  }
-  const results: ScraperResult[] = [];
-  const log: string[] = [];
-  const sessionId = ctx?.sessionId || generateSessionId();
-
-  for (const term of searchTerms) {
-    if (globalStopSignal) break;
-    log.push(`[Clutch] Searching "${term}"...`);
-    try {
-      const slug = term.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-      const citySlug = location.city.toLowerCase().replace(/\s+/g, "-");
-      const url = `https://clutch.co/directory/${slug}/${citySlug}`;
-      const html = await fetchPageResidential(url, log, { countryCode: "US", sessionId });
-
-      const nameRegex = /<h3[^>]*class="[^"]*company_info[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/gi;
-      const altRegex = /<a[^>]*class="[^"]*company-name[^"]*"[^>]*>([^<]+)<\/a>/gi;
-      const cardRegex = /<div[^>]*class="[^"]*provider-name[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/gi;
-
-      let match;
-      const names: string[] = [];
-      while ((match = nameRegex.exec(html)) !== null) {
-        const name = stripTags(match[1]);
-        if (name.length > 2 && !names.includes(name)) names.push(name);
-      }
-      if (names.length === 0) {
-        while ((match = altRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2 && !names.includes(name)) names.push(name);
-        }
-      }
-      if (names.length === 0) {
-        while ((match = cardRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2 && !names.includes(name)) names.push(name);
-        }
-      }
-
-      const websiteRegex = /href="(https?:\/\/[^"]*)"[^>]*class="[^"]*website[^"]*"/gi;
-      const websites: string[] = [];
-      while ((match = websiteRegex.exec(html)) !== null) websites.push(match[1]);
-
-      for (let i = 0; i < names.length; i++) {
-        results.push({ name: names[i], website: websites[i], city: location.city, state: location.state, sourceUrl: url });
-      }
-
-      if (names.length === 0) log.push(`[Clutch] No listings for "${term}"`);
-      else log.push(`[Clutch] Found ${names.length} listings for "${term}"`);
-      await randomDelay();
-    } catch (err: any) {
-      log.push(`[Clutch] Error for "${term}": ${err.message || err}`);
-    }
-  }
-
-  log.push(`[Clutch] Total: ${results.length} results`);
-  return { results, log };
-}
-
-export async function scrapeManta(
-  searchTerms: string[],
-  location: ScraperLocation,
-  ctx?: ScraperContext
-): Promise<ScraperResponse> {
-  if (!isPacketStreamConfigured()) {
-    return { results: [], log: ["Manta: Requires residential proxy (PacketStream not configured)"] };
-  }
-  const results: ScraperResult[] = [];
-  const log: string[] = [];
-  const sessionId = ctx?.sessionId || generateSessionId();
-
-  for (const term of searchTerms) {
-    if (globalStopSignal) break;
-    log.push(`[Manta] Searching "${term}"...`);
-    try {
-      const stateSlug = location.state.toLowerCase();
-      const citySlug = location.city.toLowerCase().replace(/\s+/g, "+");
-      const url = `https://www.manta.com/search?search_source=nav&search=${encodeURIComponent(term)}&search_location=${citySlug}%2C+${stateSlug}`;
-      const html = await fetchPageResidential(url, log, { countryCode: "US", sessionId });
-
-      const nameRegex = /<h3[^>]*class="[^"]*card-title[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/gi;
-      const altRegex = /<a[^>]*class="[^"]*business-name[^"]*"[^>]*>([^<]+)<\/a>/gi;
-      const linkRegex = /<a[^>]*href="\/mb\/[^"]*"[^>]*>([^<]{3,})<\/a>/gi;
-
-      let match;
-      const names: string[] = [];
-      while ((match = nameRegex.exec(html)) !== null) {
-        const name = stripTags(match[1]);
-        if (name.length > 2 && !names.includes(name)) names.push(name);
-      }
-      if (names.length === 0) {
-        while ((match = altRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2 && !names.includes(name)) names.push(name);
-        }
-      }
-      if (names.length === 0) {
-        while ((match = linkRegex.exec(html)) !== null) {
-          const name = stripTags(match[1]);
-          if (name.length > 2 && !names.includes(name)) names.push(name);
-        }
-      }
-
-      const phoneRegex = /href="tel:([^"]+)"/g;
-      const phones: string[] = [];
-      while ((match = phoneRegex.exec(html)) !== null) phones.push(match[1]);
-
-      for (let i = 0; i < names.length; i++) {
-        results.push({ name: names[i], phone: phones[i], city: location.city, state: location.state, sourceUrl: url });
-      }
-
-      if (names.length === 0) log.push(`[Manta] No listings for "${term}"`);
-      else log.push(`[Manta] Found ${names.length} listings for "${term}"`);
-      await randomDelay();
-    } catch (err: any) {
-      log.push(`[Manta] Error for "${term}": ${err.message || err}`);
-    }
-  }
-
-  log.push(`[Manta] Total: ${results.length} results`);
-  return { results, log };
-}
+export const scrapeClutch: ScraperFn = () => blockedScraper("Clutch", "Blocked — Cloudflare protection");
+export const scrapeManta: ScraperFn = () => blockedScraper("Manta", "Blocked — Cloudflare protection");
 export const scrapeChamberOfCommerce: ScraperFn = () => blockedScraper("ChamberOfCommerce", "Blocked — CAPTCHA/anti-bot protection");
 
 export const SCRAPERS: Record<string, ScraperFn> = {

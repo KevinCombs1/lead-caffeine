@@ -3,13 +3,6 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
-process.on("uncaughtException", (err) => {
-  console.error("[PROCESS] Uncaught exception (kept alive):", err.stack || err.message || err);
-});
-process.on("unhandledRejection", (reason) => {
-  console.error("[PROCESS] Unhandled rejection (kept alive):", reason instanceof Error ? (reason.stack || reason.message) : reason);
-});
-
 const app = express();
 const httpServer = createServer(app);
 

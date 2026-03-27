@@ -19,7 +19,6 @@ interface ProxyHealth {
   status: "healthy" | "cooldown";
   consecutiveFailures: number;
   cooldownUntil: number;
-  cooldownTier: number;
   totalRequests: number;
   totalSuccesses: number;
   totalFailures: number;
@@ -32,7 +31,6 @@ export interface HiveProxyStatus {
   loaded: number;
   healthy: number;
   cooldown: number;
-  blacklisted: number;
   unused: number;
   byProtocol: Record<string, number>;
   domainGateParams: { maxConcurrent: number; minGapMs: number };
@@ -47,24 +45,6 @@ export interface HiveProxyStatus {
     durationMs: number;
   } | null;
   autoFetchStatus: { inProgress: boolean; phase: string; detail: string; cached: boolean };
-  refreshCycle: {
-    active: boolean;
-    intervalMinutes: number;
-    nextRefreshIn: number;
-    lastRefreshAt: string;
-    cycleCount: number;
-  };
-  packetStream: {
-    configured: boolean;
-    totalRequests: number;
-    totalSuccesses: number;
-    totalFailures: number;
-    estimatedBandwidthMB: number;
-    estimatedCostUSD: number;
-    escalations: number;
-    topDomains: Array<{ domain: string; requests: number }>;
-    protectedDomains: string[];
-  };
   proxies: Array<{
     index: number;
     maskedUrl: string;
@@ -72,10 +52,8 @@ export interface HiveProxyStatus {
     status: string;
     requests: number;
     failures: number;
-    successRate: number;
     lastUsed: string;
     cooldownRemaining?: number;
-    cooldownTier?: number;
     lastFailure?: string;
   }>;
 }
@@ -88,34 +66,8 @@ let proxySource: "manual" | "auto-fetched" | "none" = "none";
 let autoFetchStatsCache: HiveProxyStatus["autoFetchStats"] = null;
 let autoFetchStatusRef: { inProgress: boolean; phase: string; detail: string; cached: boolean } | null = null;
 
-const COOLDOWN_TIERS = [
-  { tier: 1, durationMs: 300000, label: "5min" },
-  { tier: 2, durationMs: 1800000, label: "30min" },
-  { tier: 3, durationMs: -1, label: "blacklist" },
-];
-
+const COOLDOWN_MS = 300000;
 const FAIL_THRESHOLD = 3;
-const BLACKLIST_ZERO_SUCCESS_MIN = 5;
-const BLACKLIST_MIN_REQUESTS = 10;
-const BLACKLIST_FAIL_RATE = 0.90;
-
-const blacklist = new Set<string>();
-
-const REFRESH_INTERVAL_MS = 20 * 60 * 1000;
-let refreshTimer: ReturnType<typeof setInterval> | null = null;
-let lastRefreshAt = 0;
-let nextScheduledAt = 0;
-let refreshCycleCount = 0;
-let refreshCycleActive = false;
-
-function extractHostPort(proxyUrl: string): string {
-  try {
-    const u = new URL(proxyUrl);
-    return `${u.hostname}:${u.port || (u.protocol === "https:" ? "443" : "80")}`;
-  } catch {
-    return proxyUrl;
-  }
-}
 
 function maskUrl(url: string): string {
   try {
@@ -162,11 +114,6 @@ function parseProxies(): ProxyEntry[] {
       continue;
     }
 
-    const hostPort = extractHostPort(entry);
-    if (blacklist.has(hostPort)) {
-      continue;
-    }
-
     pool.push({ index: idx, proxyUrl: entry, protocol });
     idx++;
   }
@@ -176,7 +123,7 @@ function parseProxies(): ProxyEntry[] {
     const protoCounts: Record<string, number> = {};
     for (const p of pool) protoCounts[p.protocol] = (protoCounts[p.protocol] || 0) + 1;
     const protoSummary = Object.entries(protoCounts).map(([p, n]) => `${p}:${n}`).join(", ");
-    console.log(`[hive-proxy] Loaded ${pool.length} proxies (${protoSummary})${blacklist.size > 0 ? `, ${blacklist.size} blacklisted IPs excluded` : ""}`);
+    console.log(`[hive-proxy] Loaded ${pool.length} proxies (${protoSummary})`);
   }
 
   return pool;
@@ -196,7 +143,6 @@ function getPool(): ProxyEntry[] {
           status: "healthy",
           consecutiveFailures: 0,
           cooldownUntil: 0,
-          cooldownTier: 0,
           totalRequests: 0,
           totalSuccesses: 0,
           totalFailures: 0,
@@ -231,10 +177,8 @@ function triggerAutoFetch(): void {
       } else {
         console.log(`[hive-proxy] Auto-fetch on startup: no valid proxies found`);
       }
-      startRefreshCycle();
     }).catch((err: any) => {
       console.log(`[hive-proxy] Auto-fetch on startup failed: ${err.message}`);
-      startRefreshCycle();
     });
   }).catch(() => {});
 }
@@ -263,50 +207,10 @@ function isProxyHealthyByIndex(index: number): boolean {
   return false;
 }
 
-function blacklistProxy(index: number): void {
-  const pool = proxyPool;
-  if (!pool) return;
-
-  const entry = pool.find(e => e.index === index);
-  if (!entry) return;
-
-  const hostPort = extractHostPort(entry.proxyUrl);
-  blacklist.add(hostPort);
-
-  const h = healthMap.get(index);
-  const successRate = h ? (h.totalRequests > 0 ? ((h.totalSuccesses / h.totalRequests) * 100).toFixed(0) : "0") : "0";
-  const totalReq = h?.totalRequests ?? 0;
-  const totalFail = h?.totalFailures ?? 0;
-  console.log(`[hive-proxy] Proxy #${index} blacklisted: ${h?.totalSuccesses ?? 0}/${totalReq} success rate (${totalFail} failures) — ${hostPort}`);
-
-  const agent = agentCache.get(entry.proxyUrl);
-  if (agent) {
-    try { agent.destroy(); } catch {}
-    agentCache.delete(entry.proxyUrl);
-  }
-
-  healthMap.delete(index);
-  proxyPool = pool.filter(e => e.index !== index);
-}
-
-function shouldLifetimeBlacklist(h: ProxyHealth): boolean {
-  if (h.totalRequests >= BLACKLIST_ZERO_SUCCESS_MIN && h.totalSuccesses === 0) {
-    return true;
-  }
-  if (h.totalRequests >= BLACKLIST_MIN_REQUESTS) {
-    const failRate = h.totalFailures / h.totalRequests;
-    if (failRate >= BLACKLIST_FAIL_RATE) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function recordSuccess(index: number): void {
   const h = healthMap.get(index);
   if (!h) return;
   h.consecutiveFailures = 0;
-  h.cooldownTier = 0;
   h.status = "healthy";
   h.totalRequests++;
   h.totalSuccesses++;
@@ -338,24 +242,10 @@ function recordFailure(index: number, reason: string): void {
   const safeReason = sanitizeErrorReason(reason);
   h.lastFailureReason = safeReason;
   if (h.consecutiveFailures >= FAIL_THRESHOLD) {
-    const nextTier = Math.min(h.cooldownTier + 1, COOLDOWN_TIERS.length);
-    const tierInfo = COOLDOWN_TIERS[nextTier - 1];
-
-    if (tierInfo.durationMs === -1) {
-      blacklistProxy(index);
-      return;
-    }
-
-    h.cooldownTier = nextTier;
     h.status = "cooldown";
-    h.cooldownUntil = Date.now() + tierInfo.durationMs;
+    h.cooldownUntil = Date.now() + COOLDOWN_MS;
     h.consecutiveFailures = 0;
-    console.log(`[hive-proxy] Proxy #${index} entering ${tierInfo.label} cooldown (tier ${nextTier}) after ${FAIL_THRESHOLD} consecutive failures (${safeReason})`);
-  }
-
-  if (healthMap.has(index) && shouldLifetimeBlacklist(h)) {
-    console.log(`[hive-proxy] Proxy #${index} lifetime blacklisted: ${h.totalSuccesses}/${h.totalRequests} success (${h.totalFailures} failures, ${((h.totalFailures / h.totalRequests) * 100).toFixed(0)}% fail rate)`);
-    blacklistProxy(index);
+    console.log(`[hive-proxy] Proxy #${index} entering 5min cooldown after ${FAIL_THRESHOLD} consecutive failures (${safeReason})`);
   }
 }
 
@@ -490,71 +380,14 @@ function rawHiveProxyFetch(
 
 export interface HiveProxyFetchResult {
   response: Response;
-  route: "proxy" | "direct" | "fallback" | "residential";
+  route: "proxy" | "direct" | "fallback";
   routeLabel: string;
-}
-
-export interface HiveProxyFetchOptions {
-  countryCode?: string;
-  sessionId?: string;
-  forceResidential?: boolean;
 }
 
 export async function hiveProxyFetch(
   url: string,
   init: RequestInit,
-  options?: HiveProxyFetchOptions,
 ): Promise<HiveProxyFetchResult> {
-  const domainProtected = isDomainProtected(url);
-  const psConfigured = isPacketStreamConfigured();
-
-  if ((options?.forceResidential || domainProtected) && psConfigured) {
-    const maxPsAttempts = 3;
-    for (let psAttempt = 0; psAttempt < maxPsAttempts; psAttempt++) {
-      const sessionId = psAttempt === 0 && options?.sessionId
-        ? options.sessionId
-        : generateSessionId();
-      try {
-        const psResult = await packetStreamFetch(url, init, {
-          countryCode: options?.countryCode,
-          sessionId,
-        });
-        if (psResult.response.status === 502) {
-          console.log(`[hive-proxy] PacketStream relay offline (502) attempt ${psAttempt + 1}/${maxPsAttempts} for ${url}, ${psAttempt < maxPsAttempts - 1 ? "retrying with fresh session" : "giving up"}`);
-          if (psAttempt < maxPsAttempts - 1) {
-            await new Promise(r => setTimeout(r, 3000 + Math.random() * 4000));
-            continue;
-          }
-          return psResult;
-        }
-        const blocked = isBlockResponse(psResult.response);
-        if (blocked) {
-          console.log(`[hive-proxy] PacketStream attempt ${psAttempt + 1}/${maxPsAttempts} blocked (${psResult.response.status}) for ${url}, ${psAttempt < maxPsAttempts - 1 ? "retrying with fresh session" : "giving up"}`);
-          if (psAttempt < maxPsAttempts - 1) {
-            await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000));
-            continue;
-          }
-          return psResult;
-        }
-        return psResult;
-      } catch (psErr: any) {
-        console.log(`[hive-proxy] PacketStream attempt ${psAttempt + 1}/${maxPsAttempts} failed for ${url}: ${psErr.message}${psAttempt < maxPsAttempts - 1 ? ", retrying with fresh session" : ", giving up"}`);
-        if (psAttempt < maxPsAttempts - 1) {
-          await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000));
-          continue;
-        }
-      }
-    }
-    if (domainProtected) {
-      console.log(`[hive-proxy] All PacketStream attempts exhausted for protected domain ${url}, NOT falling back to free proxy`);
-      return {
-        response: new Response("All PacketStream attempts exhausted for protected domain", { status: 403 }),
-        route: "residential",
-        routeLabel: "packetstream exhausted (protected domain)",
-      };
-    }
-  }
-
   const entry = pickNextHealthyProxy();
 
   if (!entry) {
@@ -580,32 +413,6 @@ export async function hiveProxyFetch(
         throw directErr;
       }
     }
-
-    if (psConfigured && domainProtected === false) {
-      let blocked = isBlockResponse(response);
-      if (!blocked && (response.status === 403 || response.status === 503)) {
-        const cloned = response.clone();
-        const body = await cloned.text();
-        blocked = await isBlockPage(response, body);
-      }
-      if (blocked) {
-        packetStreamStats.escalations++;
-        recordFailure(entry.index, "block-escalated");
-        console.log(`[hive-proxy] Block detected on free proxy for ${url}, escalating to PacketStream`);
-        try {
-          return await packetStreamFetch(url, init, {
-            countryCode: options?.countryCode,
-            sessionId: options?.sessionId,
-          });
-        } catch {}
-        return {
-          response,
-          route: "proxy",
-          routeLabel: `via proxy#${entry.index} (blocked, escalation failed)`,
-        };
-      }
-    }
-
     recordSuccess(entry.index);
     return {
       response,
@@ -663,7 +470,6 @@ export function getHiveProxyHealth(): HiveProxyStatus {
       } else {
         cooldown++;
       }
-      const successRate = h.totalRequests > 0 ? Math.round((h.totalSuccesses / h.totalRequests) * 100) : 100;
       const proxyInfo: HiveProxyStatus["proxies"][number] = {
         index: entry.index,
         maskedUrl: h.maskedUrl,
@@ -671,12 +477,10 @@ export function getHiveProxyHealth(): HiveProxyStatus {
         status: isHealthy ? "healthy" : "cooldown",
         requests: h.totalRequests,
         failures: h.totalFailures,
-        successRate,
         lastUsed: h.lastUsed ? new Date(h.lastUsed).toISOString() : "",
       };
       if (!isHealthy) {
         proxyInfo.cooldownRemaining = Math.ceil((h.cooldownUntil - Date.now()) / 1000);
-        proxyInfo.cooldownTier = h.cooldownTier;
         proxyInfo.lastFailure = h.lastFailureReason;
       }
       proxies.push(proxyInfo);
@@ -689,7 +493,6 @@ export function getHiveProxyHealth(): HiveProxyStatus {
         status: "healthy",
         requests: 0,
         failures: 0,
-        successRate: 100,
         lastUsed: "",
       });
     }
@@ -702,23 +505,11 @@ export function getHiveProxyHealth(): HiveProxyStatus {
 
   const fetchStatusInfo = autoFetchStatusRef ?? { inProgress: false, phase: "idle", detail: "", cached: false };
 
-  const nextRefreshIn = refreshTimer
-    ? Math.max(0, Math.ceil((nextScheduledAt - Date.now()) / 1000))
-    : 0;
-
-  const psStats = getPacketStreamStats();
-  const topDomains = Object.entries(psStats.requestsByDomain)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([domain, requests]) => ({ domain, requests }));
-  const bandwidthMB = psStats.estimatedBandwidthBytes / (1024 * 1024);
-
   return {
-    configured: pool.length > 0 || psStats.configured,
+    configured: pool.length > 0,
     loaded: pool.length,
     healthy,
     cooldown,
-    blacklisted: blacklist.size,
     unused,
     byProtocol,
     proxies,
@@ -728,24 +519,6 @@ export function getHiveProxyHealth(): HiveProxyStatus {
     source: proxySource,
     autoFetchStats: autoFetchStatsCache,
     autoFetchStatus: fetchStatusInfo,
-    refreshCycle: {
-      active: refreshTimer !== null,
-      intervalMinutes: REFRESH_INTERVAL_MS / 60000,
-      nextRefreshIn,
-      lastRefreshAt: lastRefreshAt ? new Date(lastRefreshAt).toISOString() : "",
-      cycleCount: refreshCycleCount,
-    },
-    packetStream: {
-      configured: psStats.configured,
-      totalRequests: psStats.totalRequests,
-      totalSuccesses: psStats.totalSuccesses,
-      totalFailures: psStats.totalFailures,
-      estimatedBandwidthMB: Math.round(bandwidthMB * 100) / 100,
-      estimatedCostUSD: Math.round(bandwidthMB / 1024 * 100) / 100,
-      escalations: psStats.escalations,
-      topDomains,
-      protectedDomains: Array.from(PROTECTED_DOMAINS),
-    },
   };
 }
 
@@ -765,16 +538,6 @@ export function reloadHiveProxies(): HiveProxyStatus {
 }
 
 export function loadAutoFetchedProxies(proxyUrls: Array<{ url: string; protocol: string }>): number {
-  const existingHealthy = new Map<string, ProxyHealth>();
-  if (proxyPool) {
-    for (const entry of proxyPool) {
-      const h = healthMap.get(entry.index);
-      if (h && h.totalSuccesses > 0 && isProxyHealthyByIndex(entry.index)) {
-        existingHealthy.set(extractHostPort(entry.proxyUrl), h);
-      }
-    }
-  }
-
   for (const [, agent] of agentCache) {
     try { agent.destroy(); } catch {}
   }
@@ -784,18 +547,10 @@ export function loadAutoFetchedProxies(proxyUrls: Array<{ url: string; protocol:
 
   const pool: ProxyEntry[] = [];
   let idx = 0;
-  let blacklistSkipped = 0;
-
   for (const entry of proxyUrls) {
     if (idx >= MAX_PROXIES) break;
-    const hostPort = extractHostPort(entry.url);
-    if (blacklist.has(hostPort)) {
-      blacklistSkipped++;
-      continue;
-    }
     const protocol = entry.protocol as ProxyEntry["protocol"];
     pool.push({ index: idx, proxyUrl: entry.url, protocol });
-    const prev = existingHealthy.get(hostPort);
     healthMap.set(idx, {
       index: idx,
       maskedUrl: maskUrl(entry.url),
@@ -803,12 +558,11 @@ export function loadAutoFetchedProxies(proxyUrls: Array<{ url: string; protocol:
       status: "healthy",
       consecutiveFailures: 0,
       cooldownUntil: 0,
-      cooldownTier: 0,
-      totalRequests: prev?.totalRequests ?? 0,
-      totalSuccesses: prev?.totalSuccesses ?? 0,
-      totalFailures: prev?.totalFailures ?? 0,
-      lastUsed: prev?.lastUsed ?? 0,
-      lastFailureReason: prev?.lastFailureReason ?? "",
+      totalRequests: 0,
+      totalSuccesses: 0,
+      totalFailures: 0,
+      lastUsed: 0,
+      lastFailureReason: "",
     });
     idx++;
   }
@@ -820,169 +574,10 @@ export function loadAutoFetchedProxies(proxyUrls: Array<{ url: string; protocol:
     const protoCounts: Record<string, number> = {};
     for (const p of pool) protoCounts[p.protocol] = (protoCounts[p.protocol] || 0) + 1;
     const protoSummary = Object.entries(protoCounts).map(([p, n]) => `${p}:${n}`).join(", ");
-    const carryOver = existingHealthy.size > 0 ? `, ${existingHealthy.size} stats carried over` : "";
-    const blSkip = blacklistSkipped > 0 ? `, ${blacklistSkipped} blacklisted skipped` : "";
-    console.log(`[hive-proxy] Loaded ${pool.length} auto-fetched proxies (${protoSummary}${carryOver}${blSkip})`);
+    console.log(`[hive-proxy] Loaded ${pool.length} auto-fetched proxies (${protoSummary})`);
   }
 
   return pool.length;
-}
-
-export function mergeNewProxies(proxyUrls: Array<{ url: string; protocol: string }>): { added: number; skippedBlacklist: number; skippedDuplicate: number } {
-  const pool = getPool();
-  const existingHostPorts = new Set<string>();
-  for (const entry of pool) {
-    existingHostPorts.add(extractHostPort(entry.proxyUrl));
-  }
-
-  let added = 0;
-  let skippedBlacklist = 0;
-  let skippedDuplicate = 0;
-  let nextIndex = pool.length > 0 ? Math.max(...pool.map(e => e.index)) + 1 : 0;
-
-  for (const entry of proxyUrls) {
-    if (pool.length >= MAX_PROXIES) break;
-    const hostPort = extractHostPort(entry.url);
-    if (blacklist.has(hostPort)) {
-      skippedBlacklist++;
-      continue;
-    }
-    if (existingHostPorts.has(hostPort)) {
-      skippedDuplicate++;
-      continue;
-    }
-    const protocol = entry.protocol as ProxyEntry["protocol"];
-    const idx = nextIndex++;
-    pool.push({ index: idx, proxyUrl: entry.url, protocol });
-    existingHostPorts.add(hostPort);
-    healthMap.set(idx, {
-      index: idx,
-      maskedUrl: maskUrl(entry.url),
-      protocol,
-      status: "healthy",
-      consecutiveFailures: 0,
-      cooldownUntil: 0,
-      cooldownTier: 0,
-      totalRequests: 0,
-      totalSuccesses: 0,
-      totalFailures: 0,
-      lastUsed: 0,
-      lastFailureReason: "",
-    });
-    added++;
-  }
-
-  return { added, skippedBlacklist, skippedDuplicate };
-}
-
-export function startRefreshCycle(): void {
-  if (refreshTimer) return;
-  if (isManualProxyConfigured()) return;
-
-  lastRefreshAt = Date.now();
-  nextScheduledAt = Date.now() + REFRESH_INTERVAL_MS;
-  refreshTimer = setInterval(async () => {
-    if (refreshCycleActive) return;
-    if (isManualProxyConfigured()) {
-      stopRefreshCycle();
-      return;
-    }
-
-    let crawlActive = false;
-    try {
-      const { getActiveEngine } = await import("./hive-engine");
-      crawlActive = getActiveEngine() !== null;
-    } catch {}
-    if (!crawlActive) {
-      nextScheduledAt = Date.now() + REFRESH_INTERVAL_MS;
-      return;
-    }
-
-    refreshCycleActive = true;
-    refreshCycleCount++;
-    const cycleNum = refreshCycleCount;
-    console.log(`[hive-proxy] Refresh cycle #${cycleNum} starting...`);
-
-    try {
-      const { fetchAndValidateProxies } = await import("./hive-proxy-fetcher");
-      const result = await fetchAndValidateProxies(true);
-
-      if (result.validatedProxies.length > 0) {
-        const { added, skippedBlacklist, skippedDuplicate } = mergeNewProxies(
-          result.validatedProxies.map(p => ({ url: p.url, protocol: p.protocol }))
-        );
-
-        setAutoFetchStats({
-          totalFound: result.totalFound,
-          totalValidated: result.totalValidated,
-          totalFailed: result.totalFailed,
-          sources: result.sources.map(s => ({ source: s.source, found: s.found, validated: s.validated })),
-          durationMs: result.durationMs,
-        });
-
-        const pool = getPool();
-        console.log(`[hive-proxy] Refresh cycle #${cycleNum} complete: ${result.totalValidated} validated, +${added} new, ${skippedBlacklist} blacklisted, ${skippedDuplicate} duplicate | pool: ${pool.length} total, ${blacklist.size} blacklisted`);
-      } else {
-        console.log(`[hive-proxy] Refresh cycle #${cycleNum}: no new valid proxies found`);
-      }
-    } catch (err: any) {
-      console.log(`[hive-proxy] Refresh cycle #${cycleNum} failed: ${err.message}`);
-    } finally {
-      refreshCycleActive = false;
-      lastRefreshAt = Date.now();
-      nextScheduledAt = Date.now() + REFRESH_INTERVAL_MS;
-    }
-  }, REFRESH_INTERVAL_MS);
-
-  console.log(`[hive-proxy] Continuous refresh cycle started (every ${REFRESH_INTERVAL_MS / 60000} minutes)`);
-}
-
-export function stopRefreshCycle(): void {
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-    console.log(`[hive-proxy] Continuous refresh cycle stopped`);
-  }
-}
-
-export async function triggerImmediateRefresh(): Promise<{ added: number; skippedBlacklist: number; skippedDuplicate: number; totalValidated: number; skipped?: boolean; reason?: string }> {
-  if (isManualProxyConfigured()) {
-    return { added: 0, skippedBlacklist: 0, skippedDuplicate: 0, totalValidated: 0, skipped: true, reason: "manual proxies configured via HIVE_PROXIES" };
-  }
-  if (refreshCycleActive) {
-    return { added: 0, skippedBlacklist: 0, skippedDuplicate: 0, totalValidated: 0, skipped: true, reason: "refresh cycle already in progress" };
-  }
-
-  refreshCycleActive = true;
-  refreshCycleCount++;
-  const cycleNum = refreshCycleCount;
-
-  try {
-    const { fetchAndValidateProxies } = await import("./hive-proxy-fetcher");
-    const result = await fetchAndValidateProxies(true);
-
-    if (result.validatedProxies.length > 0) {
-      const mergeResult = mergeNewProxies(
-        result.validatedProxies.map(p => ({ url: p.url, protocol: p.protocol }))
-      );
-
-      setAutoFetchStats({
-        totalFound: result.totalFound,
-        totalValidated: result.totalValidated,
-        totalFailed: result.totalFailed,
-        sources: result.sources.map(s => ({ source: s.source, found: s.found, validated: s.validated })),
-        durationMs: result.durationMs,
-      });
-
-      console.log(`[hive-proxy] Immediate refresh #${cycleNum}: +${mergeResult.added} new, ${mergeResult.skippedBlacklist} blacklisted, ${mergeResult.skippedDuplicate} duplicate`);
-      return { ...mergeResult, totalValidated: result.totalValidated };
-    }
-
-    return { added: 0, skippedBlacklist: 0, skippedDuplicate: 0, totalValidated: 0 };
-  } finally {
-    refreshCycleActive = false;
-    lastRefreshAt = Date.now();
-  }
 }
 
 export function setAutoFetchStats(stats: HiveProxyStatus["autoFetchStats"]): void {
@@ -1018,26 +613,7 @@ export async function fetchAndLoadProxies(force: boolean = false): Promise<{ loa
     );
   }
 
-  if (!refreshTimer && !isManualProxyConfigured()) {
-    startRefreshCycle();
-  }
-
   return { loaded, stats };
-}
-
-export function getBlacklistCount(): number {
-  return blacklist.size;
-}
-
-export function getBlacklistedIps(): string[] {
-  return Array.from(blacklist);
-}
-
-export function clearBlacklist(): number {
-  const count = blacklist.size;
-  blacklist.clear();
-  console.log(`[hive-proxy] Blacklist cleared (${count} entries removed)`);
-  return count;
 }
 
 export function computeDomainGateParams(proxyCount: number): { maxConcurrent: number; minGapMs: number } {
