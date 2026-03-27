@@ -487,11 +487,15 @@ export function reloadHiveProxies(): HiveProxyStatus {
 }
 
 export function computeDomainGateParams(proxyCount: number): { maxConcurrent: number; minGapMs: number } {
+  if (proxyCount >= 1000) {
+    const maxConcurrent = Math.min(Math.ceil(proxyCount / 5), 384);
+    return { maxConcurrent, minGapMs: 100 };
+  }
   if (proxyCount >= 10) {
     const maxConcurrent = Math.min(Math.ceil(proxyCount / 5), 384);
-    const minGapMs = proxyCount >= 1000
-      ? 100
-      : Math.max(Math.round(26400 / (proxyCount / 2)), 500);
+    const raw = Math.round(26400 / (proxyCount / 2));
+    const t = Math.min((proxyCount - 10) / 990, 1);
+    const minGapMs = Math.max(Math.round(raw * (1 - t) + 100 * t), 100);
     return { maxConcurrent, minGapMs };
   }
   return { maxConcurrent: 2, minGapMs: 26400 };
