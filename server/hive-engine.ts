@@ -1,7 +1,7 @@
 import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
 import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
-import { getHiveProxyCount, isHiveProxyActive, hasHealthyProxy, computeDomainGateParams } from "./hive-proxy";
+import { getHiveProxyCount, isHiveProxyActive, hasHealthyProxy, getHealthyProxyCount, computeDomainGateParams } from "./hive-proxy";
 
 const US_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
@@ -343,9 +343,10 @@ export class RayOfGraceEngine {
     this.completedCombos = 0;
 
     const proxyCount = getHiveProxyCount();
+    const healthyCount = getHealthyProxyCount();
     this.domainGate = new DomainGate(2, 26400);
-    if (proxyCount > 0) {
-      const gateParams = computeDomainGateParams(proxyCount);
+    if (healthyCount > 0) {
+      const gateParams = computeDomainGateParams(healthyCount);
       this.proxyGate = new DomainGate(gateParams.maxConcurrent, gateParams.minGapMs);
     } else {
       this.proxyGate = null;
@@ -359,10 +360,10 @@ export class RayOfGraceEngine {
     this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${allCombos.length} combos${skipMsg}, ${this.combos.length} remaining${limitMsg}`);
     this.log(`[engine] Combo queue interleaved across ${directories.length} directories (round-robin)`);
     if (proxyCount > 0) {
-      const gp = computeDomainGateParams(proxyCount);
-      this.log(`[engine] Geo-proxies: ${proxyCount} state proxies active | ProxyGate: ${gp.maxConcurrent} concurrent, ${gp.minGapMs}ms gap per state | DirectGate: 2 concurrent, 26400ms gap`);
+      const gp = computeDomainGateParams(healthyCount);
+      this.log(`[engine] Proxy pool: ${proxyCount} loaded, ${healthyCount} healthy | ProxyGate: ${gp.maxConcurrent} concurrent, ${gp.minGapMs}ms gap | DirectGate: 2 concurrent, 26400ms gap`);
     } else {
-      this.log(`[engine] No geo-proxies configured — using direct fetch | DomainGate: 2 concurrent, 26400ms gap`);
+      this.log(`[engine] No proxy pool configured — using direct fetch | DomainGate: 2 concurrent, 26400ms gap`);
     }
     this.log(`[engine] Suspension: 5 consecutive failures → 3min cooldown`);
     await this.flushLogs();
