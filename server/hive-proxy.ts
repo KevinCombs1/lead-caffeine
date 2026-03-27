@@ -4,14 +4,16 @@ import http from "http";
 import https from "https";
 import zlib from "zlib";
 
+const MAX_PROXIES = 400;
+
 interface ProxyEntry {
-  stateCode: string;
+  index: number;
   proxyUrl: string;
   protocol: "socks5" | "socks4" | "http" | "https";
 }
 
 interface ProxyHealth {
-  stateCode: string;
+  index: number;
   maskedUrl: string;
   protocol: string;
   status: "healthy" | "cooldown";
@@ -32,7 +34,10 @@ export interface HiveProxyStatus {
   unused: number;
   byProtocol: Record<string, number>;
   domainGateParams: { maxConcurrent: number; minGapMs: number };
-  states: Record<string, {
+  proxies: Array<{
+    index: number;
+    maskedUrl: string;
+    protocol: string;
     status: string;
     requests: number;
     failures: number;
@@ -42,9 +47,10 @@ export interface HiveProxyStatus {
   }>;
 }
 
-let proxyMap: Map<string, ProxyEntry> | null = null;
-const healthMap = new Map<string, ProxyHealth>();
+let proxyPool: ProxyEntry[] | null = null;
+const healthMap = new Map<number, ProxyHealth>();
 const agentCache = new Map<string, http.Agent>();
+let roundRobinCounter = 0;
 
 const COOLDOWN_MS = 300000;
 const FAIL_THRESHOLD = 3;
@@ -60,8 +66,6 @@ function maskUrl(url: string): string {
   }
 }
 
-const ALLOWED_SCHEMES = ["socks5://", "socks4://", "https://", "http://"] as const;
-
 function detectProtocol(url: string): "socks5" | "socks4" | "http" | "https" | null {
   if (url.startsWith("socks5://")) return "socks5";
   if (url.startsWith("socks4://")) return "socks4";
@@ -70,58 +74,53 @@ function detectProtocol(url: string): "socks5" | "socks4" | "http" | "https" | n
   return null;
 }
 
-function parseProxies(): Map<string, ProxyEntry> {
+function parseProxies(): ProxyEntry[] {
   const raw = process.env.HIVE_PROXIES || "";
-  const map = new Map<string, ProxyEntry>();
-  if (!raw.trim()) return map;
+  const pool: ProxyEntry[] = [];
+  if (!raw.trim()) return pool;
 
   const entries = raw.split(",").map(e => e.trim()).filter(e => e.length > 0);
+  let idx = 0;
   for (const entry of entries) {
-    const colonIdx = entry.indexOf(":");
-    if (colonIdx < 2) continue;
-    const stateCode = entry.substring(0, colonIdx).toUpperCase();
-    const proxyUrl = entry.substring(colonIdx + 1);
-
-    if (!/^[A-Z]{2}$/.test(stateCode)) {
-      console.log(`[hive-proxy] Skipping invalid state code: ${stateCode}`);
-      continue;
+    if (idx >= MAX_PROXIES) {
+      console.log(`[hive-proxy] Capped at ${MAX_PROXIES} proxies (${entries.length} provided)`);
+      break;
     }
 
-    const protocol = detectProtocol(proxyUrl);
+    const protocol = detectProtocol(entry);
     if (!protocol) {
-      console.log(`[hive-proxy] Skipping ${stateCode}: unsupported scheme in ${maskUrl(proxyUrl)} (allowed: socks5, socks4, http, https)`);
+      console.log(`[hive-proxy] Skipping entry ${idx}: unsupported scheme in ${maskUrl(entry)} (allowed: socks5, socks4, http, https)`);
       continue;
     }
 
     try {
-      new URL(proxyUrl);
+      new URL(entry);
     } catch {
-      console.log(`[hive-proxy] Skipping invalid proxy URL for ${stateCode}: ${maskUrl(proxyUrl)}`);
+      console.log(`[hive-proxy] Skipping invalid proxy URL at index ${idx}: ${maskUrl(entry)}`);
       continue;
     }
 
-    map.set(stateCode, {
-      stateCode,
-      proxyUrl,
-      protocol,
-    });
+    pool.push({ index: idx, proxyUrl: entry, protocol });
+    idx++;
   }
 
-  if (map.size > 0) {
-    const states = Array.from(map.keys()).sort().join(", ");
-    console.log(`[hive-proxy] Loaded ${map.size} proxies covering states: ${states}`);
+  if (pool.length > 0) {
+    const protoCounts: Record<string, number> = {};
+    for (const p of pool) protoCounts[p.protocol] = (protoCounts[p.protocol] || 0) + 1;
+    const protoSummary = Object.entries(protoCounts).map(([p, n]) => `${p}:${n}`).join(", ");
+    console.log(`[hive-proxy] Loaded ${pool.length} proxies (${protoSummary})`);
   }
 
-  return map;
+  return pool;
 }
 
-function getProxyMap(): Map<string, ProxyEntry> {
-  if (proxyMap === null) {
-    proxyMap = parseProxies();
-    for (const [state, entry] of proxyMap) {
-      if (!healthMap.has(state)) {
-        healthMap.set(state, {
-          stateCode: state,
+function getPool(): ProxyEntry[] {
+  if (proxyPool === null) {
+    proxyPool = parseProxies();
+    for (const entry of proxyPool) {
+      if (!healthMap.has(entry.index)) {
+        healthMap.set(entry.index, {
+          index: entry.index,
           maskedUrl: maskUrl(entry.proxyUrl),
           protocol: entry.protocol,
           status: "healthy",
@@ -136,7 +135,7 @@ function getProxyMap(): Map<string, ProxyEntry> {
       }
     }
   }
-  return proxyMap;
+  return proxyPool;
 }
 
 function getOrCreateAgent(proxyUrl: string): http.Agent {
@@ -150,8 +149,8 @@ function getOrCreateAgent(proxyUrl: string): http.Agent {
   return agent;
 }
 
-function isProxyHealthy(stateCode: string): boolean {
-  const h = healthMap.get(stateCode);
+function isProxyHealthyByIndex(index: number): boolean {
+  const h = healthMap.get(index);
   if (!h) return true;
   if (h.cooldownUntil === 0) return true;
   if (Date.now() >= h.cooldownUntil) {
@@ -163,8 +162,8 @@ function isProxyHealthy(stateCode: string): boolean {
   return false;
 }
 
-function recordSuccess(stateCode: string): void {
-  const h = healthMap.get(stateCode);
+function recordSuccess(index: number): void {
+  const h = healthMap.get(index);
   if (!h) return;
   h.consecutiveFailures = 0;
   h.status = "healthy";
@@ -188,8 +187,8 @@ function sanitizeErrorReason(raw: string): string {
   return "PROXY_ERROR";
 }
 
-function recordFailure(stateCode: string, reason: string): void {
-  const h = healthMap.get(stateCode);
+function recordFailure(index: number, reason: string): void {
+  const h = healthMap.get(index);
   if (!h) return;
   h.consecutiveFailures++;
   h.totalRequests++;
@@ -201,8 +200,24 @@ function recordFailure(stateCode: string, reason: string): void {
     h.status = "cooldown";
     h.cooldownUntil = Date.now() + COOLDOWN_MS;
     h.consecutiveFailures = 0;
-    console.log(`[hive-proxy] ${stateCode} proxy entering 5min cooldown after ${FAIL_THRESHOLD} consecutive failures (${safeReason})`);
+    console.log(`[hive-proxy] Proxy #${index} entering 5min cooldown after ${FAIL_THRESHOLD} consecutive failures (${safeReason})`);
   }
+}
+
+function pickNextHealthyProxy(): ProxyEntry | null {
+  const pool = getPool();
+  if (pool.length === 0) return null;
+
+  const start = roundRobinCounter;
+  for (let i = 0; i < pool.length; i++) {
+    const idx = (start + i) % pool.length;
+    const entry = pool[idx];
+    if (isProxyHealthyByIndex(entry.index)) {
+      roundRobinCounter = (idx + 1) % pool.length;
+      return entry;
+    }
+  }
+  return null;
 }
 
 function extractHeaders(init: RequestInit): Record<string, string> {
@@ -327,64 +342,51 @@ export interface HiveProxyFetchResult {
 export async function hiveProxyFetch(
   url: string,
   init: RequestInit,
-  stateCode: string,
 ): Promise<HiveProxyFetchResult> {
-  const map = getProxyMap();
-  const normalizedState = stateCode.toUpperCase();
-  const entry = map.get(normalizedState);
+  const entry = pickNextHealthyProxy();
 
   if (!entry) {
     return {
       response: await fetch(url, init),
       route: "direct",
-      routeLabel: `direct (no proxy for ${normalizedState})`,
-    };
-  }
-
-  if (!isProxyHealthy(normalizedState)) {
-    const h = healthMap.get(normalizedState)!;
-    const remaining = Math.ceil((h.cooldownUntil - Date.now()) / 1000);
-    return {
-      response: await fetch(url, init),
-      route: "direct",
-      routeLabel: `direct (${normalizedState}-proxy cooldown ${remaining}s)`,
+      routeLabel: "direct (no healthy proxy available)",
     };
   }
 
   try {
     const response = await rawHiveProxyFetch(url, init, entry.proxyUrl);
     if (response.status === 407) {
-      recordFailure(normalizedState, "proxy auth failure (407)");
+      recordFailure(entry.index, "proxy auth failure (407)");
       try {
         const fallbackResponse = await fetch(url, init);
         return {
           response: fallbackResponse,
           route: "fallback",
-          routeLabel: `${normalizedState}-proxy auth failed (407), fell back to direct`,
+          routeLabel: `proxy#${entry.index} auth failed (407), fell back to direct`,
         };
       } catch (directErr) {
         throw directErr;
       }
     }
-    recordSuccess(normalizedState);
+    recordSuccess(entry.index);
     return {
       response,
       route: "proxy",
-      routeLabel: `via ${normalizedState}-proxy`,
+      routeLabel: `via proxy#${entry.index}`,
     };
   } catch (proxyErr: any) {
     const reason = proxyErr?.message || String(proxyErr);
     const safeReason = sanitizeErrorReason(reason);
     const isTargetDnsFailure = proxyErr?.code === "ENOTFOUND" || reason.includes("ENOTFOUND");
     if (!isTargetDnsFailure) {
-      recordFailure(normalizedState, reason);
+      recordFailure(entry.index, reason);
     }
     try {
       const response = await fetch(url, init);
       return {
         response,
         route: "fallback",
-        routeLabel: `${normalizedState}-proxy failed (${safeReason}), fell back to direct`,
+        routeLabel: `proxy#${entry.index} failed (${safeReason}), fell back to direct`,
       };
     } catch (directErr) {
       throw directErr;
@@ -393,69 +395,78 @@ export async function hiveProxyFetch(
 }
 
 export function getHiveProxyCount(): number {
-  return getProxyMap().size;
+  return getPool().length;
 }
 
 export function isHiveProxyActive(): boolean {
-  return getProxyMap().size > 0;
+  return getPool().length > 0;
 }
 
-export function hasProxyForState(stateCode: string): boolean {
-  return getProxyMap().has(stateCode.toUpperCase());
-}
-
-export function hasHealthyProxyForState(stateCode: string): boolean {
-  const upper = stateCode.toUpperCase();
-  return getProxyMap().has(upper) && isProxyHealthy(upper);
+export function hasHealthyProxy(): boolean {
+  const pool = getPool();
+  if (pool.length === 0) return false;
+  return pool.some(e => isProxyHealthyByIndex(e.index));
 }
 
 export function getHiveProxyHealth(): HiveProxyStatus {
-  const map = getProxyMap();
+  const pool = getPool();
   const byProtocol: Record<string, number> = {};
   let healthy = 0;
   let cooldown = 0;
-  const states: HiveProxyStatus["states"] = {};
+  const proxies: HiveProxyStatus["proxies"] = [];
 
-  for (const [state, entry] of map) {
+  for (const entry of pool) {
     byProtocol[entry.protocol] = (byProtocol[entry.protocol] || 0) + 1;
-    const h = healthMap.get(state);
+    const h = healthMap.get(entry.index);
     if (h) {
-      const isHealthy = isProxyHealthy(state);
+      const isHealthy = isProxyHealthyByIndex(entry.index);
       if (isHealthy) {
         healthy++;
       } else {
         cooldown++;
       }
-      states[state] = {
+      const proxyInfo: HiveProxyStatus["proxies"][number] = {
+        index: entry.index,
+        maskedUrl: h.maskedUrl,
+        protocol: h.protocol,
         status: isHealthy ? "healthy" : "cooldown",
         requests: h.totalRequests,
         failures: h.totalFailures,
         lastUsed: h.lastUsed ? new Date(h.lastUsed).toISOString() : "",
       };
       if (!isHealthy) {
-        states[state].cooldownRemaining = Math.ceil((h.cooldownUntil - Date.now()) / 1000);
-        states[state].lastFailure = h.lastFailureReason;
+        proxyInfo.cooldownRemaining = Math.ceil((h.cooldownUntil - Date.now()) / 1000);
+        proxyInfo.lastFailure = h.lastFailureReason;
       }
+      proxies.push(proxyInfo);
     } else {
       healthy++;
-      states[state] = { status: "healthy", requests: 0, failures: 0, lastUsed: "" };
+      proxies.push({
+        index: entry.index,
+        maskedUrl: maskUrl(entry.proxyUrl),
+        protocol: entry.protocol,
+        status: "healthy",
+        requests: 0,
+        failures: 0,
+        lastUsed: "",
+      });
     }
   }
 
   let unused = 0;
-  for (const [, info] of Object.entries(states)) {
+  for (const info of proxies) {
     if (info.status === "healthy" && info.requests === 0) unused++;
   }
 
   return {
-    configured: map.size > 0,
-    loaded: map.size,
+    configured: pool.length > 0,
+    loaded: pool.length,
     healthy,
     cooldown,
     unused,
     byProtocol,
-    states,
-    domainGateParams: computeDomainGateParams(map.size),
+    proxies,
+    domainGateParams: computeDomainGateParams(pool.length),
   };
 }
 
@@ -465,15 +476,16 @@ export function reloadHiveProxies(): HiveProxyStatus {
   }
   agentCache.clear();
   healthMap.clear();
-  proxyMap = null;
-  getProxyMap();
+  proxyPool = null;
+  roundRobinCounter = 0;
+  getPool();
   return getHiveProxyHealth();
 }
 
 export function computeDomainGateParams(proxyCount: number): { maxConcurrent: number; minGapMs: number } {
   if (proxyCount >= 10) {
-    const maxConcurrent = Math.min(Math.ceil(proxyCount / 5), 10);
-    const minGapMs = Math.max(Math.floor(26400 / Math.ceil(proxyCount / 10)), 4000);
+    const maxConcurrent = Math.min(Math.ceil(proxyCount / 5), 80);
+    const minGapMs = Math.max(Math.floor(26400 / Math.ceil(proxyCount / 10)), 500);
     return { maxConcurrent, minGapMs };
   }
   return { maxConcurrent: 2, minGapMs: 26400 };

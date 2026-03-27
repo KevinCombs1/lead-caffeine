@@ -1,7 +1,7 @@
 import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
-import { SCRAPERS, classifyResults, setStopSignal, runWithProxyState, setProxyMode, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
-import { getHiveProxyCount, isHiveProxyActive, hasHealthyProxyForState, computeDomainGateParams } from "./hive-proxy";
+import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
+import { getHiveProxyCount, isHiveProxyActive, hasHealthyProxy, computeDomainGateParams } from "./hive-proxy";
 
 const US_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
@@ -352,7 +352,6 @@ export class RayOfGraceEngine {
     }
     this.dirTracker = new DirectoryTracker(5, 180000);
     this.metrics = new MetricsCollector();
-    setProxyMode(proxyCount > 0);
     activeEngine = this;
 
     const limitMsg = this.maxResults ? ` (limit: ${this.maxResults} flowers)` : " (unlimited)";
@@ -465,8 +464,8 @@ export class RayOfGraceEngine {
       if (!combo) break;
 
       const scraperKey = combo.directory.scraperKey;
-      const isProxied = hasHealthyProxyForState(combo.location.state);
-      const gateKey = isProxied ? `${scraperKey}:${combo.location.state}` : scraperKey;
+      const isProxied = hasHealthyProxy();
+      const gateKey = scraperKey;
       const gate = isProxied && this.proxyGate ? this.proxyGate : this.domainGate;
 
       if (this.dirTracker.isSuspended(scraperKey)) {
@@ -624,7 +623,7 @@ export class RayOfGraceEngine {
 
       let output: ScraperResponse;
       try {
-        output = await runWithProxyState(location.state, () => scraperFn([alias], loc));
+        output = await scraperFn([alias], loc);
       } catch (scraperErr: any) {
         if (cancelFlag.cancelled) break;
         this.log(`[W${workerId}] ${directory.name}: Scraper threw on "${alias}": ${scraperErr.message || scraperErr}`);

@@ -1,5 +1,4 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-import { hiveProxyFetch, isHiveProxyActive, hasHealthyProxyForState } from "./hive-proxy";
+import { hiveProxyFetch, isHiveProxyActive, hasHealthyProxy } from "./hive-proxy";
 
 export interface ScraperLocation {
   city: string;
@@ -31,15 +30,6 @@ export type ScraperFn = (searchTerms: string[], location: ScraperLocation) => Pr
 let globalStopSignal = false;
 export function setStopSignal(val: boolean) { globalStopSignal = val; }
 export function isStopRequested(): boolean { return globalStopSignal; }
-
-const proxyStateStorage = new AsyncLocalStorage<string>();
-
-export function runWithProxyState<T>(stateCode: string, fn: () => T): T {
-  return proxyStateStorage.run(stateCode, fn);
-}
-
-let _proxyModeActive = false;
-export function setProxyMode(active: boolean): void { _proxyModeActive = active; }
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -127,8 +117,7 @@ function sleep(ms: number): Promise<void> {
 
 async function randomDelay(): Promise<void> {
   if (globalStopSignal) return;
-  const stateCode = proxyStateStorage.getStore();
-  const usingProxy = _proxyModeActive && stateCode && hasHealthyProxyForState(stateCode);
+  const usingProxy = isHiveProxyActive() && hasHealthyProxy();
   const ms = usingProxy
     ? 6000 + Math.random() * 6000
     : 15400 + Math.random() * 8800;
@@ -727,9 +716,8 @@ class FetchError extends Error {
 }
 
 async function doFetch(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<{ response: Response; proxyRoute: string }> {
-  const stateCode = proxyStateStorage.getStore();
-  if (stateCode && isHiveProxyActive()) {
-    const result = await hiveProxyFetch(url, { headers, signal, redirect: "follow" }, stateCode);
+  if (isHiveProxyActive()) {
+    const result = await hiveProxyFetch(url, { headers, signal, redirect: "follow" });
     return { response: result.response, proxyRoute: result.routeLabel };
   }
   const response = await fetch(url, { headers, signal, redirect: "follow" });
@@ -922,7 +910,7 @@ export async function testScraper(
   _testMetaCollector = collected;
 
   try {
-    const response = await runWithProxyState(state, () => scraper([searchTerm], location));
+    const response = await scraper([searchTerm], location);
     globalStopSignal = oldStop;
     _testMetaCollector = null;
 
