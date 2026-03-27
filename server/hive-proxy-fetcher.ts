@@ -173,12 +173,12 @@ async function fetchFromGeonode(): Promise<ProxyCandidate[]> {
         const port = entry.port;
         const protocols: string[] = entry.protocols || [];
         if (ip && port) {
-          const proto = protocols.includes("socks5") ? "socks5" :
-                        protocols.includes("socks4") ? "socks4" :
-                        protocols.includes("https") ? "http" : "http";
+          const proto: ProxyCandidate["protocol"] = protocols.includes("socks5") ? "socks5" :
+                        protocols.includes("socks4") ? "socks4" : "http";
+          const scheme = proto === "socks5" ? "socks5" : proto === "socks4" ? "socks4" : "http";
           candidates.push({
-            url: `${proto === "socks5" ? "socks5" : proto === "socks4" ? "socks4" : "http"}://${ip}:${port}`,
-            protocol: proto as any,
+            url: `${scheme}://${ip}:${port}`,
+            protocol: proto,
             source: "geonode",
           });
         }

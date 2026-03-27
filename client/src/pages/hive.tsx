@@ -202,8 +202,8 @@ export default function HivePage() {
         toast({ title: "Auto-fetch skipped", description: data.reason });
       } else if (data.inProgress) {
         toast({ title: "Fetch already in progress", description: `${data.phase}: ${data.detail}` });
-      } else {
-        toast({ title: "Proxy fetch started", description: "Fetching and validating free proxies..." });
+      } else if (data.success) {
+        toast({ title: "Proxy fetch complete", description: `Found ${data.found}, validated ${data.validated}, loaded ${data.loaded} proxies (${(data.durationMs / 1000).toFixed(1)}s)` });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/hive/proxy-status"] });
     },

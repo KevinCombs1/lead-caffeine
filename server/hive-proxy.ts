@@ -129,6 +129,8 @@ function parseProxies(): ProxyEntry[] {
   return pool;
 }
 
+let autoFetchTriggered = false;
+
 function getPool(): ProxyEntry[] {
   if (proxyPool === null) {
     proxyPool = parseProxies();
@@ -149,8 +151,36 @@ function getPool(): ProxyEntry[] {
         });
       }
     }
+    if (proxyPool.length === 0 && !autoFetchTriggered) {
+      autoFetchTriggered = true;
+      triggerAutoFetch();
+    }
   }
   return proxyPool;
+}
+
+function triggerAutoFetch(): void {
+  import("./hive-proxy-fetcher").then(({ fetchAndValidateProxies }) => {
+    fetchAndValidateProxies(false).then((result) => {
+      if (result.validatedProxies.length > 0) {
+        loadAutoFetchedProxies(
+          result.validatedProxies.map(p => ({ url: p.url, protocol: p.protocol }))
+        );
+        setAutoFetchStats({
+          totalFound: result.totalFound,
+          totalValidated: result.totalValidated,
+          totalFailed: result.totalFailed,
+          sources: result.sources.map(s => ({ source: s.source, found: s.found, validated: s.validated })),
+          durationMs: result.durationMs,
+        });
+        console.log(`[hive-proxy] Auto-fetch on startup: ${result.validatedProxies.length} proxies loaded`);
+      } else {
+        console.log(`[hive-proxy] Auto-fetch on startup: no valid proxies found`);
+      }
+    }).catch((err: any) => {
+      console.log(`[hive-proxy] Auto-fetch on startup failed: ${err.message}`);
+    });
+  }).catch(() => {});
 }
 
 function getOrCreateAgent(proxyUrl: string): http.Agent {
@@ -502,6 +532,7 @@ export function reloadHiveProxies(): HiveProxyStatus {
   roundRobinCounter = 0;
   proxySource = "none";
   autoFetchStatsCache = null;
+  autoFetchTriggered = false;
   getPool();
   return getHiveProxyHealth();
 }
@@ -560,6 +591,29 @@ export function setAutoFetchStatusRef(status: { inProgress: boolean; phase: stri
 export function isManualProxyConfigured(): boolean {
   const raw = process.env.HIVE_PROXIES || "";
   return raw.trim().length > 0;
+}
+
+export async function fetchAndLoadProxies(force: boolean = false): Promise<{ loaded: number; stats: HiveProxyStatus["autoFetchStats"] }> {
+  const { fetchAndValidateProxies } = await import("./hive-proxy-fetcher");
+  const result = await fetchAndValidateProxies(force);
+
+  const stats: HiveProxyStatus["autoFetchStats"] = {
+    totalFound: result.totalFound,
+    totalValidated: result.totalValidated,
+    totalFailed: result.totalFailed,
+    sources: result.sources.map(s => ({ source: s.source, found: s.found, validated: s.validated })),
+    durationMs: result.durationMs,
+  };
+  setAutoFetchStats(stats);
+
+  let loaded = 0;
+  if (result.validatedProxies.length > 0) {
+    loaded = loadAutoFetchedProxies(
+      result.validatedProxies.map(p => ({ url: p.url, protocol: p.protocol }))
+    );
+  }
+
+  return { loaded, stats };
 }
 
 export function computeDomainGateParams(proxyCount: number): { maxConcurrent: number; minGapMs: number } {

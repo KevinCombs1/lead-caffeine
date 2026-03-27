@@ -3112,8 +3112,8 @@ export async function registerRoutes(
 
   app.post("/api/hive/proxy-fetch", requireAuth, async (_req: Request, res: Response) => {
     try {
-      const { isManualProxyConfigured, loadAutoFetchedProxies, setAutoFetchStats } = await import("./hive-proxy");
-      const { fetchAndValidateProxies, getAutoFetchStatus } = await import("./hive-proxy-fetcher");
+      const { isManualProxyConfigured, fetchAndLoadProxies } = await import("./hive-proxy");
+      const { getAutoFetchStatus } = await import("./hive-proxy-fetcher");
 
       if (isManualProxyConfigured()) {
         return res.json({ skipped: true, reason: "manual proxies configured via HIVE_PROXIES — auto-fetch skipped" });
@@ -3124,28 +3124,17 @@ export async function registerRoutes(
         return res.json({ inProgress: true, phase: status.phase, detail: status.detail });
       }
 
-      fetchAndValidateProxies(true).then((result) => {
-        setAutoFetchStats({
-          totalFound: result.totalFound,
-          totalValidated: result.totalValidated,
-          totalFailed: result.totalFailed,
-          sources: result.sources.map(s => ({ source: s.source, found: s.found, validated: s.validated })),
-          durationMs: result.durationMs,
-        });
+      const { loaded, stats } = await fetchAndLoadProxies(true);
 
-        if (result.validatedProxies.length > 0) {
-          const loaded = loadAutoFetchedProxies(
-            result.validatedProxies.map(p => ({ url: p.url, protocol: p.protocol }))
-          );
-          console.log(`[proxy-fetch] Auto-fetch complete: ${loaded} proxies loaded into pool`);
-        } else {
-          console.log(`[proxy-fetch] Auto-fetch found no valid proxies — pool unchanged`);
-        }
-      }).catch((err: any) => {
-        console.error(`[proxy-fetch] Auto-fetch failed:`, err.message);
+      res.json({
+        success: true,
+        found: stats?.totalFound ?? 0,
+        validated: stats?.totalValidated ?? 0,
+        failed: stats?.totalFailed ?? 0,
+        loaded,
+        sources: stats?.sources ?? [],
+        durationMs: stats?.durationMs ?? 0,
       });
-
-      res.json({ started: true, message: "Proxy fetch started in background" });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
