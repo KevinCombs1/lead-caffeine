@@ -375,7 +375,10 @@ export async function hiveProxyFetch(
   } catch (proxyErr: any) {
     const reason = proxyErr?.message || String(proxyErr);
     const safeReason = sanitizeErrorReason(reason);
-    recordFailure(normalizedState, reason);
+    const isTargetDnsFailure = proxyErr?.code === "ENOTFOUND" || reason.includes("ENOTFOUND");
+    if (!isTargetDnsFailure) {
+      recordFailure(normalizedState, reason);
+    }
     try {
       const response = await fetch(url, init);
       return {
