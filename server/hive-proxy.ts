@@ -838,7 +838,7 @@ export async function triggerImmediateRefresh(): Promise<{ added: number; skippe
     return { added: 0, skippedBlacklist: 0, skippedDuplicate: 0, totalValidated: 0, skipped: true, reason: "manual proxies configured via HIVE_PROXIES" };
   }
   if (refreshCycleActive) {
-    return { added: 0, skippedBlacklist: 0, skippedDuplicate: 0, totalValidated: 0 };
+    return { added: 0, skippedBlacklist: 0, skippedDuplicate: 0, totalValidated: 0, skipped: true, reason: "refresh cycle already in progress" };
   }
 
   refreshCycleActive = true;
