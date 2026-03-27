@@ -668,13 +668,41 @@ export async function hiveProxyFetch(
   const psConfigured = isPacketStreamConfigured();
 
   if ((options?.forceResidential || domainProtected) && psConfigured) {
-    try {
-      return await packetStreamFetch(url, init, {
-        countryCode: options?.countryCode,
-        sessionId: options?.sessionId,
-      });
-    } catch (psErr: any) {
-      console.log(`[hive-proxy] PacketStream failed for ${url}: ${psErr.message}, falling back`);
+    const maxPsAttempts = 3;
+    for (let psAttempt = 0; psAttempt < maxPsAttempts; psAttempt++) {
+      const sessionId = psAttempt === 0 && options?.sessionId
+        ? options.sessionId
+        : generateSessionId();
+      try {
+        const psResult = await packetStreamFetch(url, init, {
+          countryCode: options?.countryCode,
+          sessionId,
+        });
+        const blocked = isBlockResponse(psResult.response);
+        if (blocked) {
+          console.log(`[hive-proxy] PacketStream attempt ${psAttempt + 1}/${maxPsAttempts} blocked (${psResult.response.status}) for ${url}, ${psAttempt < maxPsAttempts - 1 ? "retrying with fresh session" : "giving up"}`);
+          if (psAttempt < maxPsAttempts - 1) {
+            await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000));
+            continue;
+          }
+          return psResult;
+        }
+        return psResult;
+      } catch (psErr: any) {
+        console.log(`[hive-proxy] PacketStream attempt ${psAttempt + 1}/${maxPsAttempts} failed for ${url}: ${psErr.message}${psAttempt < maxPsAttempts - 1 ? ", retrying with fresh session" : ", giving up"}`);
+        if (psAttempt < maxPsAttempts - 1) {
+          await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000));
+          continue;
+        }
+      }
+    }
+    if (domainProtected) {
+      console.log(`[hive-proxy] All PacketStream attempts exhausted for protected domain ${url}, NOT falling back to free proxy`);
+      return {
+        response: new Response("All PacketStream attempts exhausted for protected domain", { status: 403 }),
+        route: "residential",
+        routeLabel: "packetstream exhausted (protected domain)",
+      };
     }
   }
 

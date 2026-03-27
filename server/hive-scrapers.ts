@@ -1045,7 +1045,8 @@ export async function scrapeYellowPages(
   const results: ScraperResult[] = [];
   const log: string[] = [];
   const locationStr = `${location.city}, ${location.state}`;
-  const pOpts: HiveProxyFetchOptions | undefined = ctx ? { sessionId: ctx.sessionId, countryCode: ctx.countryCode } : undefined;
+  const sessionId = ctx?.sessionId || generateSessionId();
+  const pOpts: HiveProxyFetchOptions = { sessionId, countryCode: ctx?.countryCode || "US" };
 
   for (const term of searchTerms) {
     if (globalStopSignal) break;
