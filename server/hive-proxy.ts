@@ -22,6 +22,14 @@ const PROTECTED_DOMAINS: Set<string> = new Set([
   "kompass.com",
   "bbb.org",
   "chamberofcommerce.com",
+  "yellowpages.com",
+  "superpages.com",
+  "hotfrog.com",
+  "ezlocal.com",
+  "n49.com",
+  "europages.co.uk",
+  "europages.com",
+  "wlw.de",
 ]);
 
 function isDomainProtected(url: string): boolean {
