@@ -127,7 +127,9 @@ function sleep(ms: number): Promise<void> {
 
 async function randomDelay(): Promise<void> {
   if (globalStopSignal) return;
-  const ms = _proxyModeActive
+  const stateCode = proxyStateStorage.getStore();
+  const usingProxy = _proxyModeActive && stateCode && isHiveProxyActive();
+  const ms = usingProxy
     ? 6000 + Math.random() * 6000
     : 15400 + Math.random() * 8800;
   const chunks = Math.ceil(ms / 1000);
