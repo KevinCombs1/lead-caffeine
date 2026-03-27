@@ -857,7 +857,8 @@ async function fetchPage(url: string, log?: string[]): Promise<string> {
         proxyRoute: err.meta.proxyRoute || "unknown",
       });
       if (log) {
-        log.push(`[fetch] ${url} → ${err.meta.status || "ERR"} | ${err.meta.bodyLength || 0} bytes | ${err.message}`);
+        const errRoutePrefix = err.meta.proxyRoute && err.meta.proxyRoute !== "direct" && err.meta.proxyRoute !== "unknown" ? `${err.meta.proxyRoute}: ` : "";
+        log.push(`[fetch] ${errRoutePrefix}${url} → ${err.meta.status || "ERR"} | ${err.meta.bodyLength || 0} bytes | ${err.message}`);
       }
     } else if (log) {
       log.push(`[fetch] ${url} → ERR | ${err.message || err}`);
