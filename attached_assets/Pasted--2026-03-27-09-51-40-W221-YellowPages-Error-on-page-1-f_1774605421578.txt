@@ -1,0 +1,500 @@
+[2026-03-27 09:51:40] [W221] YellowPages: Error on page 1 for "guaranteed LTL delivery service": HTTP 405: Not Allowed (157 bytes, server: nginx/1.29.7)
+[2026-03-27 09:51:40] [W221] YellowPages: Completed "guaranteed LTL delivery service": 0 results
+[2026-03-27 09:51:40] [W221] YellowPages: Total: 0 results
+[2026-03-27 09:51:40] [W221] YellowPages: Searching "cross dock LTL terminal carrier" in El Paso, TX...
+[2026-03-27 09:51:40] [W221] YellowPages: Error on page 1 for "cross dock LTL terminal carrier": HTTP 400: Bad Request (157 bytes, server: nginx/1.26.1)
+[2026-03-27 09:51:40] [W221] YellowPages: Completed "cross dock LTL terminal carrier": 0 results
+[2026-03-27 09:51:40] [W221] YellowPages: Total: 0 results
+[2026-03-27 09:51:42] [W241] YellowPages: Searching "guaranteed LTL delivery service" in Carrollton, TX...
+[2026-03-27 09:51:42] [W241] YellowPages: Error on page 2 for "guaranteed LTL delivery service": HTTP 404 — Page not found (0 bytes, server: envoy)
+[2026-03-27 09:51:42] [W241] YellowPages: Completed "guaranteed LTL delivery service": 31 results
+[2026-03-27 09:51:42] [W241] YellowPages: Total: 31 results
+[2026-03-27 09:51:42] [W241] YellowPages/LTL (Less-Than-Truckload)/Carrollton [12/15]: +14 flowers, +15 pollen
+[2026-03-27 09:51:42] [W241] YellowPages: Searching "cross dock LTL terminal carrier" in Carrollton, TX...
+[2026-03-27 09:51:42] [W241] YellowPages: Error on page 1 for "cross dock LTL terminal carrier": HTTP 400: Bad Request (157 bytes, server: nginx/1.23.1)
+[2026-03-27 09:51:42] [W241] YellowPages: Completed "cross dock LTL terminal carrier": 0 results
+[2026-03-27 09:51:42] [W241] YellowPages: Total: 0 results
+[2026-03-27 09:51:43] [W215] YellowPages: Searching "threshold delivery carrier" in Longview, TX...
+[2026-03-27 09:51:43] [W215] YellowPages: Error on page 1 for "threshold delivery carrier": HTTP 404 — Page not found (96937 bytes, server: cloudflare)
+[2026-03-27 09:51:43] [W215] YellowPages: Completed "threshold delivery carrier": 0 results
+[2026-03-27 09:51:43] [W215] YellowPages: Total: 0 results
+[2026-03-27 09:51:44] [W215] YellowPages: Searching "local appliance delivery trucking" in Longview, TX...
+[2026-03-27 09:51:44] [W215] YellowPages: Error on page 1 for "local appliance delivery trucking": HTTP 400: Bad Request (573 bytes, server: Tengine)
+[2026-03-27 09:51:44] [W215] YellowPages: Completed "local appliance delivery trucking": 0 results
+[2026-03-27 09:51:44] [W215] YellowPages: Total: 0 results
+[2026-03-27 09:51:45] [W215] YellowPages: Searching "short haul box truck delivery" in Longview, TX...
+[2026-03-27 09:51:45] [W215] YellowPages: Error on page 1 for "short haul box truck delivery": HTTP 400: Bad Request (166 bytes, server: nginx/1.24.0 (Ubuntu))
+[2026-03-27 09:51:45] [W215] YellowPages: Completed "short haul box truck delivery": 0 results
+[2026-03-27 09:51:45] [W215] YellowPages: Total: 0 results
+[2026-03-27 09:51:45] [W215] Done: YellowPages/Longview,TX — 0f/0p (236/270)
+[2026-03-27 09:51:48] [W254] YellowPages: Searching "LTL freight carrier" in New Braunfels, TX...
+[2026-03-27 09:51:48] [W254] YellowPages: Error on page 1 for "LTL freight carrier": HTTP 400: Bad Request (166 bytes, server: nginx/1.24.0 (Ubuntu))
+[2026-03-27 09:51:48] [W254] YellowPages: Completed "LTL freight carrier": 0 results
+[2026-03-27 09:51:48] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:48] [W254] YellowPages: Searching "less than truckload shipping" in New Braunfels, TX...
+[2026-03-27 09:51:48] [W254] YellowPages: Error on page 1 for "less than truckload shipping": HTTP 400: Bad Request (166 bytes, server: nginx/1.24.0 (Ubuntu))
+[2026-03-27 09:51:48] [W254] YellowPages: Completed "less than truckload shipping": 0 results
+[2026-03-27 09:51:48] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "LTL trucking company" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "LTL trucking company": HTTP 400: Bad Request (166 bytes, server: nginx/1.18.0 (Ubuntu))
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "LTL trucking company": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "partial load freight" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "partial load freight": HTTP 400: Bad Request (173 bytes, server: nginx/1.15.3)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "partial load freight": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "shared load trucking" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "shared load trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "shared load trucking": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "LTL logistics company" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "LTL logistics company": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "LTL logistics company": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "small freight shipping" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "small freight shipping": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "small freight shipping": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "LTL delivery service" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "LTL delivery service": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "LTL delivery service": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "consolidated freight carrier" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "consolidated freight carrier": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "consolidated freight carrier": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "pallet shipping carrier" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "pallet shipping carrier": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "pallet shipping carrier": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "next day LTL regional freight" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "next day LTL regional freight": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "next day LTL regional freight": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "guaranteed LTL delivery service" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "guaranteed LTL delivery service": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "guaranteed LTL delivery service": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "cross dock LTL terminal carrier" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "cross dock LTL terminal carrier": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "cross dock LTL terminal carrier": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "volume LTL freight pricing" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "volume LTL freight pricing": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "volume LTL freight pricing": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Searching "hotshot partial load trucking" in New Braunfels, TX...
+[2026-03-27 09:51:49] [W254] YellowPages: Error on page 1 for "hotshot partial load trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:49] [W254] YellowPages: Completed "hotshot partial load trucking": 0 results
+[2026-03-27 09:51:49] [W254] YellowPages: Total: 0 results
+[2026-03-27 09:51:49] [W254] Done: YellowPages/New Braunfels,TX — 0f/0p (237/270)
+[2026-03-27 09:51:50] [W256] YellowPages: Searching "LTL freight carrier" in Georgetown, TX...
+[2026-03-27 09:51:50] [W256] YellowPages: Error on page 2 for "LTL freight carrier": HTTP 405: Method Not Allowed (388 bytes, server: Apache)
+[2026-03-27 09:51:50] [W256] YellowPages: Completed "LTL freight carrier": 30 results
+[2026-03-27 09:51:50] [W256] YellowPages: Total: 30 results
+[2026-03-27 09:51:50] [W256] YellowPages/LTL (Less-Than-Truckload)/Georgetown [1/15]: +0 flowers, +4 pollen
+[2026-03-27 09:51:54] [W241] YellowPages: Searching "volume LTL freight pricing" in Carrollton, TX...
+[2026-03-27 09:51:54] [W241] YellowPages: Error on page 1 for "volume LTL freight pricing": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:54] [W241] YellowPages: Completed "volume LTL freight pricing": 0 results
+[2026-03-27 09:51:54] [W241] YellowPages: Total: 0 results
+[2026-03-27 09:51:54] [W241] YellowPages: Searching "hotshot partial load trucking" in Carrollton, TX...
+[2026-03-27 09:51:54] [W241] YellowPages: Error on page 1 for "hotshot partial load trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:54] [W241] YellowPages: Completed "hotshot partial load trucking": 0 results
+[2026-03-27 09:51:54] [W241] YellowPages: Total: 0 results
+[2026-03-27 09:51:54] [W241] Done: YellowPages/Carrollton,TX — 30f/28p (238/270)
+[2026-03-27 09:51:54] [W230] YellowPages: Searching "hotshot partial load trucking" in Amarillo, TX...
+[2026-03-27 09:51:54] [W230] YellowPages: Error on page 1 for "hotshot partial load trucking": HTTP 403 — Access blocked (5971 bytes, server: cloudflare)
+[2026-03-27 09:51:54] [W230] YellowPages: Completed "hotshot partial load trucking": 0 results
+[2026-03-27 09:51:54] [W230] YellowPages: Total: 0 results
+[2026-03-27 09:51:54] [W230] Done: YellowPages/Amarillo,TX — 0f/0p (239/270)
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "last mile delivery trucking" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "last mile delivery trucking": Request timed out after 30s — site too slow or blocking
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "last mile delivery trucking": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "local delivery trucking" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "local delivery trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "local delivery trucking": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "final mile freight" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "final mile freight": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "final mile freight": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "same day freight delivery" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "same day freight delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "same day freight delivery": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "local freight delivery" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "local freight delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "local freight delivery": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "city trucking delivery" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "city trucking delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "city trucking delivery": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "residential freight delivery" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "residential freight delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "residential freight delivery": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "retail delivery trucking" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "retail delivery trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "retail delivery trucking": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "local logistics delivery" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "local logistics delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "local logistics delivery": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "small load delivery" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "small load delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "small load delivery": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "white glove home delivery trucking" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "white glove home delivery trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "white glove home delivery trucking": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "inside delivery freight service" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "inside delivery freight service": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "inside delivery freight service": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "threshold delivery carrier" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "threshold delivery carrier": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "threshold delivery carrier": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "local appliance delivery trucking" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "local appliance delivery trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "local appliance delivery trucking": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Searching "short haul box truck delivery" in Bryan, TX...
+[2026-03-27 09:51:55] [W213] YellowPages: Error on page 1 for "short haul box truck delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:55] [W213] YellowPages: Completed "short haul box truck delivery": 0 results
+[2026-03-27 09:51:55] [W213] YellowPages: Total: 0 results
+[2026-03-27 09:51:55] [W213] Done: YellowPages/Bryan,TX — 0f/0p (240/270)
+[2026-03-27 09:51:58] [W221] YellowPages: Searching "volume LTL freight pricing" in El Paso, TX...
+[2026-03-27 09:51:58] [W221] YellowPages: Error on page 1 for "volume LTL freight pricing": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:58] [W221] YellowPages: Completed "volume LTL freight pricing": 0 results
+[2026-03-27 09:51:58] [W221] YellowPages: Total: 0 results
+[2026-03-27 09:51:58] [W221] YellowPages: Searching "hotshot partial load trucking" in El Paso, TX...
+[2026-03-27 09:51:58] [W221] YellowPages: Error on page 1 for "hotshot partial load trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:51:58] [W221] YellowPages: Completed "hotshot partial load trucking": 0 results
+[2026-03-27 09:51:58] [W221] YellowPages: Total: 0 results
+[2026-03-27 09:51:58] [W221] Done: YellowPages/El Paso,TX — 0f/0p (241/270)
+[2026-03-27 09:52:00] [W209] YellowPages: Searching "short haul box truck delivery" in North Richland Hills, TX...
+[2026-03-27 09:52:00] [W209] YellowPages: Error on page 1 for "short haul box truck delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:00] [W209] YellowPages: Completed "short haul box truck delivery": 0 results
+[2026-03-27 09:52:00] [W209] YellowPages: Total: 0 results
+[2026-03-27 09:52:00] [W209] Done: YellowPages/North Richland Hills,TX — 4f/20p (242/270)
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "same day freight delivery" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "same day freight delivery": Request timed out after 30s — site too slow or blocking
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "same day freight delivery": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "local freight delivery" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "local freight delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "local freight delivery": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "city trucking delivery" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "city trucking delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "city trucking delivery": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "residential freight delivery" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "residential freight delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "residential freight delivery": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "retail delivery trucking" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "retail delivery trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "retail delivery trucking": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "local logistics delivery" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "local logistics delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "local logistics delivery": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "small load delivery" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "small load delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "small load delivery": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "white glove home delivery trucking" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "white glove home delivery trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "white glove home delivery trucking": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "inside delivery freight service" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "inside delivery freight service": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "inside delivery freight service": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "threshold delivery carrier" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "threshold delivery carrier": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "threshold delivery carrier": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "local appliance delivery trucking" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "local appliance delivery trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "local appliance delivery trucking": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Searching "short haul box truck delivery" in Beaumont, TX...
+[2026-03-27 09:52:03] [W211] YellowPages: Error on page 1 for "short haul box truck delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:03] [W211] YellowPages: Completed "short haul box truck delivery": 0 results
+[2026-03-27 09:52:03] [W211] YellowPages: Total: 0 results
+[2026-03-27 09:52:03] [W211] Done: YellowPages/Beaumont,TX — 2f/5p (243/270)
+[2026-03-27 09:52:03] [W202] Combo timeout (300s): YellowPages/Local Delivery / Last-Mile/Georgetown
+[2026-03-27 09:52:03] [W202] Done: YellowPages/Georgetown,TX — 0f/0p (244/270)
+[2026-03-27 09:52:04] [W203] Combo timeout (300s): YellowPages/Local Delivery / Last-Mile/Sugar Land
+[2026-03-27 09:52:04] [W203] Done: YellowPages/Sugar Land,TX — 0f/0p (245/270)
+[2026-03-27 09:52:04] [W212] YellowPages: Searching "residential freight delivery" in Odessa, TX...
+[2026-03-27 09:52:04] [W212] YellowPages: Error on page 1 for "residential freight delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:04] [W212] YellowPages: Completed "residential freight delivery": 0 results
+[2026-03-27 09:52:04] [W212] YellowPages: Total: 0 results
+[2026-03-27 09:52:04] [W204] Combo timeout (300s): YellowPages/Local Delivery / Last-Mile/League City
+[2026-03-27 09:52:04] [W204] Done: YellowPages/League City,TX — 0f/0p (246/270)
+[2026-03-27 09:52:04] [W212] YellowPages: Searching "retail delivery trucking" in Odessa, TX...
+[2026-03-27 09:52:04] [W212] YellowPages: Error on page 1 for "retail delivery trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:04] [W212] YellowPages: Completed "retail delivery trucking": 0 results
+[2026-03-27 09:52:04] [W212] YellowPages: Total: 0 results
+[2026-03-27 09:52:05] [W212] YellowPages: Searching "local logistics delivery" in Odessa, TX...
+[2026-03-27 09:52:05] [W212] YellowPages: Error on page 1 for "local logistics delivery": HTTP 400: Bad Request (157 bytes, server: nginx/1.20.1)
+[2026-03-27 09:52:05] [W212] YellowPages: Completed "local logistics delivery": 0 results
+[2026-03-27 09:52:05] [W212] YellowPages: Total: 0 results
+[2026-03-27 09:52:05] [W212] YellowPages: Searching "small load delivery" in Odessa, TX...
+[2026-03-27 09:52:05] [W212] YellowPages: Error on page 1 for "small load delivery": HTTP 404 — Page not found (89219 bytes, server: cloudflare)
+[2026-03-27 09:52:05] [W212] YellowPages: Completed "small load delivery": 0 results
+[2026-03-27 09:52:05] [W212] YellowPages: Total: 0 results
+[2026-03-27 09:52:08] [W212] YellowPages: Searching "white glove home delivery trucking" in Odessa, TX...
+[2026-03-27 09:52:08] [W212] YellowPages: Completed "white glove home delivery trucking": 30 results
+[2026-03-27 09:52:08] [W212] YellowPages: Total: 30 results
+[2026-03-27 09:52:08] [W212] YellowPages/Local Delivery / Last-Mile/Odessa [11/15]: +1 flowers, +11 pollen
+[2026-03-27 09:52:08] [W262] YellowPages: Searching "next day LTL regional freight" in Flower Mound, TX...
+[2026-03-27 09:52:08] [W262] YellowPages: Error on page 1 for "next day LTL regional freight": HTTP 400: Bad Request (157 bytes, server: nginx/1.24.0)
+[2026-03-27 09:52:08] [W262] YellowPages: Completed "next day LTL regional freight": 0 results
+[2026-03-27 09:52:08] [W262] YellowPages: Total: 0 results
+[2026-03-27 09:52:09] [W262] YellowPages: Searching "guaranteed LTL delivery service" in Flower Mound, TX...
+[2026-03-27 09:52:09] [W262] YellowPages: Error on page 1 for "guaranteed LTL delivery service": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:09] [W262] YellowPages: Completed "guaranteed LTL delivery service": 0 results
+[2026-03-27 09:52:09] [W262] YellowPages: Total: 0 results
+[2026-03-27 09:52:13] [W208] Combo timeout (300s): YellowPages/Local Delivery / Last-Mile/Flower Mound
+[2026-03-27 09:52:13] [W208] Done: YellowPages/Flower Mound,TX — 0f/0p (247/270)
+[2026-03-27 09:52:16] [W244] YellowPages: Searching "cross dock LTL terminal carrier" in Beaumont, TX...
+[2026-03-27 09:52:16] [W244] YellowPages: Error on page 1 for "cross dock LTL terminal carrier": HTTP 403 — Access blocked (5961 bytes, server: cloudflare)
+[2026-03-27 09:52:16] [W244] YellowPages: Completed "cross dock LTL terminal carrier": 0 results
+[2026-03-27 09:52:16] [W244] YellowPages: Total: 0 results
+[2026-03-27 09:52:17] [W244] YellowPages: Searching "volume LTL freight pricing" in Beaumont, TX...
+[2026-03-27 09:52:17] [W244] YellowPages: Error on page 1 for "volume LTL freight pricing": HTTP 400: Bad Request (157 bytes, server: nginx/1.24.0)
+[2026-03-27 09:52:17] [W244] YellowPages: Completed "volume LTL freight pricing": 0 results
+[2026-03-27 09:52:17] [W244] YellowPages: Total: 0 results
+[2026-03-27 09:52:19] [W250] YellowPages: Searching "less than truckload shipping" in Allen, TX...
+[2026-03-27 09:52:19] [W250] YellowPages: Error on page 1 for "less than truckload shipping": HTTP 400: Bad Request (157 bytes, server: nginx/1.22.0)
+[2026-03-27 09:52:19] [W250] YellowPages: Completed "less than truckload shipping": 0 results
+[2026-03-27 09:52:19] [W250] YellowPages: Total: 0 results
+[2026-03-27 09:52:20] [W212] Combo timeout (300s): YellowPages/Local Delivery / Last-Mile/Odessa
+[2026-03-27 09:52:20] [W212] *** YellowPages SUSPENDED for 3min after consecutive timeouts ***
+[2026-03-27 09:52:20] [W212] Done: YellowPages/Odessa,TX — 0f/0p (248/270)
+[2026-03-27 09:52:21] [W245] YellowPages: Searching "LTL trucking company" in Richardson, TX...
+[2026-03-27 09:52:21] [W245] YellowPages: Error on page 2 for "LTL trucking company": HTTP 403 — Access blocked (5963 bytes, server: cloudflare)
+[2026-03-27 09:52:21] [W245] YellowPages: Completed "LTL trucking company": 32 results
+[2026-03-27 09:52:21] [W245] YellowPages: Total: 32 results
+[2026-03-27 09:52:21] [W245] YellowPages/LTL (Less-Than-Truckload)/Richardson [3/15]: +0 flowers, +3 pollen
+[2026-03-27 09:52:22] [W214] YellowPages: Searching "local appliance delivery trucking" in Harlingen, TX...
+[2026-03-27 09:52:22] [W214] YellowPages: Error on page 1 for "local appliance delivery trucking": HTTP 403 — Access blocked (5964 bytes, server: cloudflare)
+[2026-03-27 09:52:22] [W214] YellowPages: Completed "local appliance delivery trucking": 0 results
+[2026-03-27 09:52:22] [W214] YellowPages: Total: 0 results
+[2026-03-27 09:52:27] [W262] YellowPages: Searching "cross dock LTL terminal carrier" in Flower Mound, TX...
+[2026-03-27 09:52:27] [W262] YellowPages: Error on page 1 for "cross dock LTL terminal carrier": HTTP 403 — Access blocked (5964 bytes, server: cloudflare)
+[2026-03-27 09:52:27] [W262] YellowPages: Completed "cross dock LTL terminal carrier": 0 results
+[2026-03-27 09:52:27] [W262] YellowPages: Total: 0 results
+[2026-03-27 09:52:30] [W266] YellowPages: Searching "guaranteed LTL delivery service" in Odessa, TX...
+[2026-03-27 09:52:30] [W266] YellowPages: Error on page 1 for "guaranteed LTL delivery service": HTTP 403 — Access blocked (5962 bytes, server: cloudflare)
+[2026-03-27 09:52:30] [W266] YellowPages: Completed "guaranteed LTL delivery service": 0 results
+[2026-03-27 09:52:30] [W266] YellowPages: Total: 0 results
+[2026-03-27 09:52:32] [W250] YellowPages: Searching "LTL trucking company" in Allen, TX...
+[2026-03-27 09:52:32] [W250] YellowPages: Error on page 1 for "LTL trucking company": HTTP 403 — Access blocked (5972 bytes, server: cloudflare)
+[2026-03-27 09:52:32] [W250] YellowPages: Completed "LTL trucking company": 0 results
+[2026-03-27 09:52:32] [W250] YellowPages: Total: 0 results
+[2026-03-27 09:52:33] [W245] YellowPages: Searching "partial load freight" in Richardson, TX...
+[2026-03-27 09:52:33] [W245] YellowPages: Error on page 1 for "partial load freight": HTTP 403 — Access blocked (5961 bytes, server: cloudflare)
+[2026-03-27 09:52:33] [W245] YellowPages: Completed "partial load freight": 0 results
+[2026-03-27 09:52:33] [W245] YellowPages: Total: 0 results
+[2026-03-27 09:52:34] [W214] YellowPages: Searching "short haul box truck delivery" in Harlingen, TX...
+[2026-03-27 09:52:34] [W214] YellowPages: Error on page 1 for "short haul box truck delivery": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:52:34] [W214] YellowPages: Completed "short haul box truck delivery": 0 results
+[2026-03-27 09:52:34] [W214] YellowPages: Total: 0 results
+[2026-03-27 09:52:34] [W214] Done: YellowPages/Harlingen,TX — 0f/0p (249/270)
+[2026-03-27 09:52:35] [W248] YellowPages: Searching "volume LTL freight pricing" in Edinburg, TX...
+[2026-03-27 09:52:35] [W248] YellowPages: Error on page 3 for "volume LTL freight pricing": HTTP 400: Bad Request (173 bytes, server: nginx/1.12.2)
+[2026-03-27 09:52:35] [W248] YellowPages: Completed "volume LTL freight pricing": 60 results
+[2026-03-27 09:52:35] [W248] YellowPages: Total: 60 results
+[2026-03-27 09:52:35] [W248] YellowPages/LTL (Less-Than-Truckload)/Edinburg [14/15]: +4 flowers, +19 pollen
+[2026-03-27 09:52:35] [W248] YellowPages: Searching "hotshot partial load trucking" in Edinburg, TX...
+[2026-03-27 09:52:35] [W248] YellowPages: Error on page 1 for "hotshot partial load trucking": HTTP 400: Bad Request (166 bytes, server: nginx/1.24.0 (Ubuntu))
+[2026-03-27 09:52:35] [W248] YellowPages: Completed "hotshot partial load trucking": 0 results
+[2026-03-27 09:52:35] [W248] YellowPages: Total: 0 results
+[2026-03-27 09:52:35] [W248] Done: YellowPages/Edinburg,TX — 4f/19p (250/270)
+[2026-03-27 09:52:36] [W222] YellowPages: Searching "LTL freight carrier" in Arlington, TX...
+[2026-03-27 09:52:36] [W222] YellowPages: Error on page 1 for "LTL freight carrier": Request timed out after 30s — site too slow or blocking
+[2026-03-27 09:52:36] [W222] YellowPages: Completed "LTL freight carrier": 0 results
+[2026-03-27 09:52:36] [W222] YellowPages: Total: 0 results
+[2026-03-27 09:52:36] [W220] YellowPages: Searching "LTL logistics company" in Fort Worth, TX...
+[2026-03-27 09:52:36] [W220] YellowPages: Error on page 1 for "LTL logistics company": Request timed out after 30s — site too slow or blocking
+[2026-03-27 09:52:36] [W220] YellowPages: Completed "LTL logistics company": 0 results
+[2026-03-27 09:52:36] [W220] YellowPages: Total: 0 results
+[2026-03-27 09:52:41] [W251] YellowPages: Searching "volume LTL freight pricing" in San Marcos, TX...
+[2026-03-27 09:52:41] [W251] YellowPages: Error on page 1 for "volume LTL freight pricing": HTTP 403 — Access blocked (5963 bytes, server: cloudflare)
+[2026-03-27 09:52:41] [W251] YellowPages: Completed "volume LTL freight pricing": 0 results
+[2026-03-27 09:52:41] [W251] YellowPages: Total: 0 results
+[2026-03-27 09:52:45] [W217] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/San Antonio
+[2026-03-27 09:52:45] [W217] Done: YellowPages/San Antonio,TX — 0f/0p (251/270)
+[2026-03-27 09:52:54] [W268] YellowPages: Searching "LTL logistics company" in Harlingen, TX...
+[2026-03-27 09:52:54] [W268] YellowPages: Error on page 1 for "LTL logistics company": Request timed out after 30s — site too slow or blocking
+[2026-03-27 09:52:54] [W268] YellowPages: Completed "LTL logistics company": 0 results
+[2026-03-27 09:52:54] [W268] YellowPages: Total: 0 results
+[2026-03-27 09:53:00] [W220] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Fort Worth
+[2026-03-27 09:53:00] [W220] Done: YellowPages/Fort Worth,TX — 0f/0p (252/270)
+[2026-03-27 09:53:01] [W222] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Arlington
+[2026-03-27 09:53:01] [W222] Done: YellowPages/Arlington,TX — 0f/0p (253/270)
+[2026-03-27 09:53:01] [W244] YellowPages: Searching "hotshot partial load trucking" in Beaumont, TX...
+[2026-03-27 09:53:01] [W244] YellowPages: Error on page 1 for "hotshot partial load trucking": Request timed out after 30s — site too slow or blocking
+[2026-03-27 09:53:01] [W244] YellowPages: Completed "hotshot partial load trucking": 0 results
+[2026-03-27 09:53:01] [W244] YellowPages: Total: 0 results
+[2026-03-27 09:53:01] [W244] Done: YellowPages/Beaumont,TX — 0f/0p (254/270)
+[2026-03-27 09:53:03] [W268] YellowPages: Searching "small freight shipping" in Harlingen, TX...
+[2026-03-27 09:53:03] [W268] YellowPages: Completed "small freight shipping": 150 results
+[2026-03-27 09:53:03] [W268] YellowPages: Total: 150 results
+[2026-03-27 09:53:03] [W268] YellowPages/LTL (Less-Than-Truckload)/Harlingen [7/15]: +8 flowers, +27 pollen
+[2026-03-27 09:53:04] [W257] YellowPages: Searching "small freight shipping" in Sugar Land, TX...
+[2026-03-27 09:53:04] [W257] YellowPages: Error on page 1 for "small freight shipping": Request timed out after 30s — site too slow or blocking
+[2026-03-27 09:53:04] [W257] YellowPages: Completed "small freight shipping": 0 results
+[2026-03-27 09:53:04] [W257] YellowPages: Total: 0 results
+[2026-03-27 09:53:04] [W240] YellowPages: Searching "partial load freight" in Waco, TX...
+[2026-03-27 09:53:04] [W240] YellowPages: Error on page 1 for "partial load freight": Request timed out after 30s — site too slow or blocking
+[2026-03-27 09:53:04] [W240] YellowPages: Completed "partial load freight": 0 results
+[2026-03-27 09:53:04] [W240] YellowPages: Total: 0 results
+[2026-03-27 09:53:05] [W262] YellowPages: Searching "volume LTL freight pricing" in Flower Mound, TX...
+[2026-03-27 09:53:05] [W262] YellowPages: Completed "volume LTL freight pricing": 30 results
+[2026-03-27 09:53:05] [W262] YellowPages: Total: 30 results
+[2026-03-27 09:53:05] [W262] YellowPages/LTL (Less-Than-Truckload)/Flower Mound [14/15]: +0 flowers, +13 pollen
+[2026-03-27 09:53:08] [W231] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/McKinney
+[2026-03-27 09:53:08] [W231] Done: YellowPages/McKinney,TX — 0f/0p (255/270)
+[2026-03-27 09:53:09] [W250] YellowPages: Searching "partial load freight" in Allen, TX...
+[2026-03-27 09:53:09] [W250] YellowPages: Completed "partial load freight": 30 results
+[2026-03-27 09:53:09] [W250] YellowPages: Total: 30 results
+[2026-03-27 09:53:09] [W250] YellowPages/LTL (Less-Than-Truckload)/Allen [4/15]: +1 flowers, +22 pollen
+[2026-03-27 09:53:10] [W268] YellowPages: Searching "LTL delivery service" in Harlingen, TX...
+[2026-03-27 09:53:10] [W268] YellowPages: Error on page 4 for "LTL delivery service": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:53:10] [W268] YellowPages: Completed "LTL delivery service": 91 results
+[2026-03-27 09:53:10] [W268] YellowPages: Total: 91 results
+[2026-03-27 09:53:10] [W268] YellowPages/LTL (Less-Than-Truckload)/Harlingen [8/15]: +19 flowers, +31 pollen
+[2026-03-27 09:53:10] [W268] YellowPages: Searching "consolidated freight carrier" in Harlingen, TX...
+[2026-03-27 09:53:10] [W268] YellowPages: Error on page 1 for "consolidated freight carrier": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:53:10] [W268] YellowPages: Completed "consolidated freight carrier": 0 results
+[2026-03-27 09:53:10] [W268] YellowPages: Total: 0 results
+[2026-03-27 09:53:10] [W268] YellowPages: Searching "pallet shipping carrier" in Harlingen, TX...
+[2026-03-27 09:53:10] [W268] YellowPages: Error on page 1 for "pallet shipping carrier": HTTP 400: Bad Request (1165 bytes, server: ZTE web server 1.0 ZTE corp 2015.)
+[2026-03-27 09:53:10] [W268] YellowPages: Completed "pallet shipping carrier": 0 results
+[2026-03-27 09:53:10] [W268] YellowPages: Total: 0 results
+[2026-03-27 09:53:12] [W262] YellowPages: Searching "hotshot partial load trucking" in Flower Mound, TX...
+[2026-03-27 09:53:12] [W262] YellowPages: Error on page 4 for "hotshot partial load trucking": HTTP 400: Bad Request (573 bytes, server: Tengine)
+[2026-03-27 09:53:12] [W262] YellowPages: Completed "hotshot partial load trucking": 93 results
+[2026-03-27 09:53:12] [W262] YellowPages: Total: 93 results
+[2026-03-27 09:53:12] [W262] YellowPages/LTL (Less-Than-Truckload)/Flower Mound [15/15]: +2 flowers, +46 pollen
+[2026-03-27 09:53:12] [W262] Done: YellowPages/Flower Mound,TX — 2f/59p (256/270)
+[2026-03-27 09:53:12] [W233] YellowPages: Searching "consolidated freight carrier" in Brownsville, TX...
+[2026-03-27 09:53:12] [W233] YellowPages: Error on page 2 for "consolidated freight carrier": HTTP 400: Bad Request (150 bytes, server: nginx)
+[2026-03-27 09:53:12] [W233] YellowPages: Completed "consolidated freight carrier": 30 results
+[2026-03-27 09:53:12] [W233] YellowPages: Total: 30 results
+[2026-03-27 09:53:12] [W233] YellowPages/LTL (Less-Than-Truckload)/Brownsville [9/15]: +4 flowers, +17 pollen
+[2026-03-27 09:53:12] [W237] YellowPages: Searching "less than truckload shipping" in McAllen, TX...
+[2026-03-27 09:53:12] [W237] YellowPages: Error on page 1 for "less than truckload shipping": Request timed out after 30s — site too slow or blocking
+[2026-03-27 09:53:12] [W237] YellowPages: Completed "less than truckload shipping": 0 results
+[2026-03-27 09:53:12] [W237] YellowPages: Total: 0 results
+[2026-03-27 09:53:15] [W233] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Brownsville
+[2026-03-27 09:53:15] [W233] Done: YellowPages/Brownsville,TX — 0f/0p (257/270)
+[2026-03-27 09:53:15] [W234] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Pasadena
+[2026-03-27 09:53:15] [W234] Done: YellowPages/Pasadena,TX — 0f/0p (258/270)
+[2026-03-27 09:53:27] [W237] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/McAllen
+[2026-03-27 09:53:27] [W237] Done: YellowPages/McAllen,TX — 0f/0p (259/270)
+[2026-03-27 09:53:29] [W240] YellowPages: Searching "shared load trucking" in Waco, TX...
+[2026-03-27 09:53:29] [W240] YellowPages: Error on page 2 for "shared load trucking": HTTP 403 — Access blocked (5962 bytes, server: cloudflare)
+[2026-03-27 09:53:29] [W240] YellowPages: Completed "shared load trucking": 35 results
+[2026-03-27 09:53:29] [W240] YellowPages: Total: 35 results
+[2026-03-27 09:53:31] [W240] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Waco
+[2026-03-27 09:53:31] [W240] Done: YellowPages/Waco,TX — 0f/0p (260/270)
+[2026-03-27 09:53:35] [W250] YellowPages: Searching "shared load trucking" in Allen, TX...
+[2026-03-27 09:53:35] [W250] YellowPages: Error on page 2 for "shared load trucking": HTTP 403 — Access blocked (5961 bytes, server: cloudflare)
+[2026-03-27 09:53:35] [W250] YellowPages: Completed "shared load trucking": 33 results
+[2026-03-27 09:53:35] [W250] YellowPages: Total: 33 results
+[2026-03-27 09:53:35] [W250] YellowPages/LTL (Less-Than-Truckload)/Allen [5/15]: +0 flowers, +16 pollen
+[2026-03-27 09:54:02] [W267] YellowPages: Searching "less than truckload shipping" in Bryan, TX...
+[2026-03-27 09:54:02] [W267] YellowPages: Error on page 1 for "less than truckload shipping": Request timed out after 30s — site too slow or blocking
+[2026-03-27 09:54:02] [W267] YellowPages: Completed "less than truckload shipping": 0 results
+[2026-03-27 09:54:02] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:02] [W267] YellowPages: Searching "LTL trucking company" in Bryan, TX...
+[2026-03-27 09:54:02] [W267] YellowPages: Error on page 1 for "LTL trucking company": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:02] [W267] YellowPages: Completed "LTL trucking company": 0 results
+[2026-03-27 09:54:02] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:10] [W267] YellowPages: Searching "partial load freight" in Bryan, TX...
+[2026-03-27 09:54:10] [W267] YellowPages: Error on page 4 for "partial load freight": HTTP 400: Bad Request (166 bytes, server: nginx/1.18.0 (Ubuntu))
+[2026-03-27 09:54:10] [W267] YellowPages: Completed "partial load freight": 90 results
+[2026-03-27 09:54:10] [W267] YellowPages: Total: 90 results
+[2026-03-27 09:54:10] [W267] YellowPages/LTL (Less-Than-Truckload)/Bryan [4/15]: +3 flowers, +7 pollen
+[2026-03-27 09:54:15] [W267] YellowPages: Searching "shared load trucking" in Bryan, TX...
+[2026-03-27 09:54:15] [W267] YellowPages: Error on page 2 for "shared load trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:15] [W267] YellowPages: Completed "shared load trucking": 33 results
+[2026-03-27 09:54:15] [W267] YellowPages: Total: 33 results
+[2026-03-27 09:54:15] [W267] YellowPages: Searching "LTL logistics company" in Bryan, TX...
+[2026-03-27 09:54:15] [W267] YellowPages: Error on page 1 for "LTL logistics company": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:15] [W267] YellowPages: Completed "LTL logistics company": 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Searching "small freight shipping" in Bryan, TX...
+[2026-03-27 09:54:15] [W267] YellowPages: Error on page 1 for "small freight shipping": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:15] [W267] YellowPages: Completed "small freight shipping": 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Searching "LTL delivery service" in Bryan, TX...
+[2026-03-27 09:54:15] [W267] YellowPages: Error on page 1 for "LTL delivery service": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:15] [W267] YellowPages: Completed "LTL delivery service": 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Searching "consolidated freight carrier" in Bryan, TX...
+[2026-03-27 09:54:15] [W267] YellowPages: Error on page 1 for "consolidated freight carrier": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:15] [W267] YellowPages: Completed "consolidated freight carrier": 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Searching "pallet shipping carrier" in Bryan, TX...
+[2026-03-27 09:54:15] [W267] YellowPages: Error on page 1 for "pallet shipping carrier": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:15] [W267] YellowPages: Completed "pallet shipping carrier": 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Searching "next day LTL regional freight" in Bryan, TX...
+[2026-03-27 09:54:15] [W267] YellowPages: Error on page 1 for "next day LTL regional freight": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:15] [W267] YellowPages: Completed "next day LTL regional freight": 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Searching "guaranteed LTL delivery service" in Bryan, TX...
+[2026-03-27 09:54:15] [W267] YellowPages: Error on page 1 for "guaranteed LTL delivery service": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:15] [W267] YellowPages: Completed "guaranteed LTL delivery service": 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Searching "cross dock LTL terminal carrier" in Bryan, TX...
+[2026-03-27 09:54:15] [W267] YellowPages: Error on page 1 for "cross dock LTL terminal carrier": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:15] [W267] YellowPages: Completed "cross dock LTL terminal carrier": 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Searching "volume LTL freight pricing" in Bryan, TX...
+[2026-03-27 09:54:15] [W267] YellowPages: Error on page 1 for "volume LTL freight pricing": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:15] [W267] YellowPages: Completed "volume LTL freight pricing": 0 results
+[2026-03-27 09:54:15] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:16] [W267] YellowPages: Searching "hotshot partial load trucking" in Bryan, TX...
+[2026-03-27 09:54:16] [W267] YellowPages: Error on page 1 for "hotshot partial load trucking": HTTP 400: Bad Request (155 bytes, server: cloudflare)
+[2026-03-27 09:54:16] [W267] YellowPages: Completed "hotshot partial load trucking": 0 results
+[2026-03-27 09:54:16] [W267] YellowPages: Total: 0 results
+[2026-03-27 09:54:16] [W267] Done: YellowPages/Bryan,TX — 3f/7p (261/270)
+[2026-03-27 09:54:26] [W250] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Allen
+[2026-03-27 09:54:26] [W250] Done: YellowPages/Allen,TX — 0f/0p (262/270)
+[2026-03-27 09:54:26] [W251] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/San Marcos
+[2026-03-27 09:54:26] [W251] Done: YellowPages/San Marcos,TX — 0f/0p (263/270)
+[2026-03-27 09:54:26] [W256] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Georgetown
+[2026-03-27 09:54:26] [W256] Done: YellowPages/Georgetown,TX — 0f/0p (264/270)
+[2026-03-27 09:54:26] [W257] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Sugar Land
+[2026-03-27 09:54:26] [W257] Done: YellowPages/Sugar Land,TX — 0f/0p (265/270)
+[2026-03-27 09:54:26] [W263] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/North Richland Hills
+[2026-03-27 09:54:26] [W263] *** YellowPages SUSPENDED for 3min after consecutive timeouts ***
+[2026-03-27 09:54:26] [W263] Done: YellowPages/North Richland Hills,TX — 0f/0p (266/270)
+[2026-03-27 09:54:26] [W266] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Odessa
+[2026-03-27 09:54:26] [W266] Done: YellowPages/Odessa,TX — 0f/0p (267/270)
+[2026-03-27 09:54:26] [W268] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Harlingen
+[2026-03-27 09:54:26] [W268] Done: YellowPages/Harlingen,TX — 0f/0p (268/270)
+[2026-03-27 09:54:27] [W245] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Richardson
+[2026-03-27 09:54:27] [W245] Done: YellowPages/Richardson,TX — 0f/0p (269/270)
+[2026-03-27 09:54:27] [W246] Combo timeout (300s): YellowPages/LTL (Less-Than-Truckload)/Tyler
+[2026-03-27 09:54:27] [W246] Done: YellowPages/Tyler,TX — 0f/0p (270/270)
+[2026-03-27 09:54:27] === per-directory crawl metrics ===
+[2026-03-27 09:54:27] yellowpages: 270 combos (24% hit), 751f/2589p, 161 errors, 28 suspensions, 0 skipped
+[2026-03-27 09:54:27] errors: timeout:161
+[2026-03-27 09:54:27] === end metrics ===
+[2026-03-27 09:54:27] Ray of Grace completed: 1514 flowers, 6503 pollen from 270 combos
