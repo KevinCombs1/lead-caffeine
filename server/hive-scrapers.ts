@@ -1,4 +1,4 @@
-import { hiveProxyFetch, isHiveProxyActive, hasHealthyProxy, getHealthyProxyCount, getDelayTier } from "./hive-proxy";
+import { getSpeedParams } from "./hive-speed";
 
 export interface ScraperLocation {
   city: string;
@@ -117,9 +117,8 @@ function sleep(ms: number): Promise<void> {
 
 async function randomDelay(): Promise<void> {
   if (globalStopSignal) return;
-  const usingProxy = isHiveProxyActive() && hasHealthyProxy();
-  const tier = usingProxy ? getDelayTier(getHealthyProxyCount()) : getDelayTier(0);
-  const ms = tier.minMs + Math.random() * (tier.maxMs - tier.minMs);
+  const params = getSpeedParams();
+  const ms = params.delayMin + Math.random() * (params.delayMax - params.delayMin);
   const chunks = Math.ceil(ms / 1000);
   for (let i = 0; i < chunks; i++) {
     if (globalStopSignal) return;
@@ -701,29 +700,20 @@ export interface FetchPageMeta {
   redirected: boolean;
 }
 
-interface FetchPageMetaExtended extends FetchPageMeta {
-  proxyRoute: string;
-}
-
 class FetchError extends Error {
-  meta: Partial<FetchPageMetaExtended>;
-  constructor(message: string, meta: Partial<FetchPageMetaExtended>) {
+  meta: Partial<FetchPageMeta>;
+  constructor(message: string, meta: Partial<FetchPageMeta>) {
     super(message);
     this.name = "FetchError";
     this.meta = meta;
   }
 }
 
-async function doFetch(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<{ response: Response; proxyRoute: string }> {
-  if (isHiveProxyActive()) {
-    const result = await hiveProxyFetch(url, { headers, signal, redirect: "follow" });
-    return { response: result.response, proxyRoute: result.routeLabel };
-  }
-  const response = await fetch(url, { headers, signal, redirect: "follow" });
-  return { response, proxyRoute: "direct" };
+async function doFetch(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<Response> {
+  return fetch(url, { headers, signal, redirect: "follow" });
 }
 
-async function fetchPageWithMeta(url: string): Promise<FetchPageMetaExtended> {
+async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
   if (globalStopSignal) throw new Error("Stop signal received");
   const RETRYABLE = new Set([403, 429, 503]);
 
@@ -732,7 +722,7 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMetaExtended> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {
-      const { response, proxyRoute } = await doFetch(url, getRandomHeaders(), controller.signal);
+      const response = await doFetch(url, getRandomHeaders(), controller.signal);
 
       const respHeaders: Record<string, string> = {};
       response.headers.forEach((v, k) => { respHeaders[k] = v; });
@@ -752,7 +742,7 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMetaExtended> {
         let errBodyLen = 0;
         try { errBodyLen = (await response.text()).length; } catch {}
         const server = respHeaders["server"] || "unknown";
-        const errMeta: Partial<FetchPageMetaExtended> = { status: response.status, headers: respHeaders, bodyLength: errBodyLen, redirected: response.redirected, proxyRoute };
+        const errMeta: Partial<FetchPageMeta> = { status: response.status, headers: respHeaders, bodyLength: errBodyLen, redirected: response.redirected };
         if (response.status === 403 || response.status === 429) {
           throw new FetchError(`HTTP ${response.status} — Access blocked (${errBodyLen} bytes, server: ${server})`, errMeta);
         } else if (response.status === 404) {
@@ -767,10 +757,10 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMetaExtended> {
       const bodyLength = html.length;
 
       if (bodyLength === 0) {
-        throw new FetchError("Empty response body — site may require JavaScript rendering", { status: response.status, headers: respHeaders, bodyLength: 0, redirected: response.redirected, proxyRoute });
+        throw new FetchError("Empty response body — site may require JavaScript rendering", { status: response.status, headers: respHeaders, bodyLength: 0, redirected: response.redirected });
       }
       if (bodyLength < 500) {
-        throw new FetchError(`Minimal response (${bodyLength} chars) — may be a block page or CAPTCHA`, { status: response.status, headers: respHeaders, bodyLength, redirected: response.redirected, proxyRoute });
+        throw new FetchError(`Minimal response (${bodyLength} chars) — may be a block page or CAPTCHA`, { status: response.status, headers: respHeaders, bodyLength, redirected: response.redirected });
       }
 
       return {
@@ -779,7 +769,6 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMetaExtended> {
         headers: respHeaders,
         bodyLength,
         redirected: response.redirected,
-        proxyRoute,
       };
     } catch (err: any) {
       if (err?.name === "AbortError" || err?.message?.includes("abort")) {
@@ -792,10 +781,10 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMetaExtended> {
           }
           continue;
         }
-        throw new FetchError(`Request timed out after 30s — site too slow or blocking`, { status: 0, headers: {}, bodyLength: 0, redirected: false, proxyRoute: "unknown" });
+        throw new FetchError(`Request timed out after 30s — site too slow or blocking`, { status: 0, headers: {}, bodyLength: 0, redirected: false });
       }
       if (err instanceof FetchError) throw err;
-      const netMeta: Partial<FetchPageMetaExtended> = { status: 0, headers: {}, bodyLength: 0, redirected: false, proxyRoute: "unknown" };
+      const netMeta: Partial<FetchPageMeta> = { status: 0, headers: {}, bodyLength: 0, redirected: false };
       if (err?.code === "ENOTFOUND" || err?.message?.includes("ENOTFOUND")) {
         throw new FetchError(`DNS failure — domain not found: ${err.message}`, netMeta);
       }
@@ -822,15 +811,14 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMetaExtended> {
   throw new Error("fetchPage: max retries reached");
 }
 
-let _testMetaCollector: FetchPageMetaExtended[] | null = null;
+let _testMetaCollector: FetchPageMeta[] | null = null;
 
 async function fetchPage(url: string, log?: string[]): Promise<string> {
   try {
     const meta = await fetchPageWithMeta(url);
     if (_testMetaCollector) _testMetaCollector.push(meta);
     if (log) {
-      const routePrefix = meta.proxyRoute !== "direct" ? `${meta.proxyRoute}: ` : isHiveProxyActive() ? "direct: " : "";
-      log.push(`[fetch] ${routePrefix}${url} → ${meta.status} | ${meta.bodyLength} bytes | server: ${meta.headers["server"] || "n/a"}${meta.redirected ? " | redirected" : ""}`);
+      log.push(`[fetch] ${url} → ${meta.status} | ${meta.bodyLength} bytes | server: ${meta.headers["server"] || "n/a"}${meta.redirected ? " | redirected" : ""}`);
     }
     return meta.html;
   } catch (err: any) {
@@ -841,11 +829,9 @@ async function fetchPage(url: string, log?: string[]): Promise<string> {
         headers: err.meta.headers || {},
         bodyLength: err.meta.bodyLength || 0,
         redirected: err.meta.redirected || false,
-        proxyRoute: err.meta.proxyRoute || "unknown",
       });
       if (log) {
-        const errRoutePrefix = err.meta.proxyRoute && err.meta.proxyRoute !== "direct" && err.meta.proxyRoute !== "unknown" ? `${err.meta.proxyRoute}: ` : "";
-        log.push(`[fetch] ${errRoutePrefix}${url} → ${err.meta.status || "ERR"} | ${err.meta.bodyLength || 0} bytes | ${err.message}`);
+        log.push(`[fetch] ${url} → ${err.meta.status || "ERR"} | ${err.meta.bodyLength || 0} bytes | ${err.message}`);
       }
     } else if (log) {
       log.push(`[fetch] ${url} → ERR | ${err.message || err}`);
@@ -905,7 +891,7 @@ export async function testScraper(
   const location: ScraperLocation = { city, state };
   const oldStop = globalStopSignal;
   globalStopSignal = false;
-  const collected: FetchPageMetaExtended[] = [];
+  const collected: FetchPageMeta[] = [];
   _testMetaCollector = collected;
 
   try {
@@ -923,7 +909,6 @@ export async function testScraper(
         if (urlMatch) fetchedUrl = urlMatch[1].split(" ")[0];
       }
     }
-    const proxyUsed = firstMeta?.proxyRoute || "direct";
     return {
       scraperKey,
       url: fetchedUrl,
@@ -939,7 +924,7 @@ export async function testScraper(
       results,
       sample: results.slice(0, 3),
       log: response.log,
-      proxyUsed,
+      proxyUsed: "direct",
     };
   } catch (err: any) {
     globalStopSignal = oldStop;
@@ -961,7 +946,7 @@ export async function testScraper(
       results: [],
       sample: [],
       log: [`Test failed: ${err.message || err}`],
-      proxyUsed: firstMeta?.proxyRoute || "none",
+      proxyUsed: "direct",
       error: err.message || String(err),
     };
   }

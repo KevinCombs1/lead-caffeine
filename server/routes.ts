@@ -3101,51 +3101,24 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hive/proxy-status", requireAuth, async (_req: Request, res: Response) => {
+  app.get("/api/hive/speed-mode", requireAuth, async (_req: Request, res: Response) => {
     try {
-      const { getHiveProxyHealth } = await import("./hive-proxy");
-      res.json(getHiveProxyHealth());
+      const { getSpeedMode, getSpeedParams, getAllSpeedModes } = await import("./hive-speed");
+      res.json({ current: getSpeedMode(), params: getSpeedParams(), modes: getAllSpeedModes() });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post("/api/hive/proxy-fetch", requireAuth, async (_req: Request, res: Response) => {
+  app.post("/api/hive/speed-mode", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { isManualProxyConfigured, fetchAndLoadProxies } = await import("./hive-proxy");
-      const { getAutoFetchStatus } = await import("./hive-proxy-fetcher");
-
-      if (isManualProxyConfigured()) {
-        return res.json({ skipped: true, reason: "manual proxies configured via HIVE_PROXIES — auto-fetch skipped" });
+      const { setSpeedMode, getSpeedMode, getSpeedParams } = await import("./hive-speed");
+      const { mode } = req.body;
+      if (!mode || !["turtle", "steady", "blitz"].includes(mode)) {
+        return res.status(400).json({ error: "Invalid speed mode. Must be: turtle, steady, or blitz" });
       }
-
-      const status = getAutoFetchStatus();
-      if (status.inProgress) {
-        return res.json({ inProgress: true, phase: status.phase, detail: status.detail });
-      }
-
-      const { loaded, stats } = await fetchAndLoadProxies(true);
-
-      res.json({
-        success: true,
-        found: stats?.totalFound ?? 0,
-        validated: stats?.totalValidated ?? 0,
-        failed: stats?.totalFailed ?? 0,
-        loaded,
-        sources: stats?.sources ?? [],
-        durationMs: stats?.durationMs ?? 0,
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.post("/api/hive/proxy-reload", requireAuth, async (_req: Request, res: Response) => {
-    try {
-      const { reloadHiveProxies } = await import("./hive-proxy");
-      const { clearCache } = await import("./hive-proxy-fetcher");
-      clearCache();
-      res.json({ reloaded: true, ...reloadHiveProxies() });
+      setSpeedMode(mode);
+      res.json({ current: getSpeedMode(), params: getSpeedParams() });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

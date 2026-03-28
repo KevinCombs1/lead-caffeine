@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Flower2, Search, Play, Square, Download, Trash2, Heart, Phone, Globe,
   ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw, Palmtree, Building2, Plane,
-  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall, Shield
+  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall
 } from "lucide-react";
 
 interface HiveDirectory {
@@ -94,36 +94,10 @@ interface HiveStats {
   locationCount: number;
 }
 
-interface ProxyStatus {
-  configured: boolean;
-  loaded: number;
-  healthy: number;
-  cooldown: number;
-  unused: number;
-  byProtocol: Record<string, number>;
-  domainGateParams: { maxConcurrent: number; minGapMs: number };
-  delayTier: { name: string; minMs: number; maxMs: number };
-  activeWorkers: number;
-  source: "manual" | "auto-fetched" | "none";
-  autoFetchStats: {
-    totalFound: number;
-    totalValidated: number;
-    totalFailed: number;
-    sources: Array<{ source: string; found: number; validated: number }>;
-    durationMs: number;
-  } | null;
-  autoFetchStatus: { inProgress: boolean; phase: string; detail: string; cached: boolean };
-  proxies: Array<{
-    index: number;
-    maskedUrl: string;
-    protocol: string;
-    status: string;
-    requests: number;
-    failures: number;
-    lastUsed: string;
-    cooldownRemaining?: number;
-    lastFailure?: string;
-  }>;
+interface SpeedModeInfo {
+  current: "turtle" | "steady" | "blitz";
+  params: { name: string; label: string; delayMin: number; delayMax: number; maxConcurrent: number; minGapMs: number; workerCount: number };
+  modes: Array<{ name: string; label: string; delayMin: number; delayMax: number; maxConcurrent: number; minGapMs: number; workerCount: number }>;
 }
 
 const US_STATES = [
@@ -184,28 +158,13 @@ export default function HivePage() {
   const { data: locations = [] } = useQuery<HiveLocation[]>({ queryKey: ["/api/hive/locations"] });
   const { data: stats } = useQuery<HiveStats>({ queryKey: ["/api/hive/stats"], refetchInterval: 10000 });
   const { data: crawlStatus, refetch: refetchStatus } = useQuery<CrawlStatus>({ queryKey: ["/api/hive/crawl/status"], refetchInterval: 3000 });
-  const { data: proxyStatus } = useQuery<ProxyStatus>({ queryKey: ["/api/hive/proxy-status"], refetchInterval: 3000 });
+  const { data: speedMode } = useQuery<SpeedModeInfo>({ queryKey: ["/api/hive/speed-mode"], refetchInterval: 5000 });
 
-  const proxyReload = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/hive/proxy-reload"),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/hive/proxy-status"] });
-      toast({ title: "Proxy configuration reloaded" });
-    },
-  });
-
-  const proxyFetch = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/hive/proxy-fetch"),
-    onSuccess: async (res) => {
-      const data = await res.json();
-      if (data.skipped) {
-        toast({ title: "Auto-fetch skipped", description: data.reason });
-      } else if (data.inProgress) {
-        toast({ title: "Fetch already in progress", description: `${data.phase}: ${data.detail}` });
-      } else if (data.success) {
-        toast({ title: "Proxy fetch complete", description: `Found ${data.found}, validated ${data.validated}, loaded ${data.loaded} proxies (${(data.durationMs / 1000).toFixed(1)}s)` });
-      }
-      queryClient.invalidateQueries({ queryKey: ["/api/hive/proxy-status"] });
+  const setSpeedMode = useMutation({
+    mutationFn: (mode: string) => apiRequest("POST", "/api/hive/speed-mode", { mode }),
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hive/speed-mode"] });
+      toast({ title: "Speed mode updated" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -756,130 +715,36 @@ export default function HivePage() {
               );
             })()}
 
-            {proxyStatus && (
-              <div className="flex items-center gap-3 px-3 py-2 rounded text-xs border border-gray-800 bg-gray-900/50" data-testid="proxy-status-panel">
-                {proxyStatus.configured ? (
-                  <div className="flex flex-col gap-2 w-full">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <div className="flex items-center gap-1.5">
-                        <Shield className="w-3.5 h-3.5 text-green-400" />
-                        <span className="text-green-400 font-semibold" data-testid="text-proxy-count">{proxyStatus.loaded} proxies</span>
-                      </div>
-                      <span className="text-gray-600">|</span>
-                      <span className="text-green-400" data-testid="text-proxy-healthy">{proxyStatus.healthy} healthy</span>
-                      {proxyStatus.cooldown > 0 && (
-                        <span className="text-yellow-400" data-testid="text-proxy-cooldown">{proxyStatus.cooldown} cooldown</span>
-                      )}
-                      {(proxyStatus.unused ?? 0) > 0 && (
-                        <span className="text-gray-500" data-testid="text-proxy-unused">{proxyStatus.unused} unused</span>
-                      )}
-                      <span className="text-gray-600">|</span>
-                      <span className="text-gray-500">gate: {proxyStatus.domainGateParams.maxConcurrent} concurrent, {proxyStatus.domainGateParams.minGapMs < 1000 ? `${proxyStatus.domainGateParams.minGapMs}ms` : `${(proxyStatus.domainGateParams.minGapMs / 1000).toFixed(1)}s`} gap</span>
-                      <span className="text-gray-600">|</span>
-                      {proxyStatus.delayTier && (
-                        <>
-                          <span className={`font-semibold ${
-                            proxyStatus.delayTier.name === "industrial" ? "text-cyan-400" :
-                            proxyStatus.delayTier.name === "fast" ? "text-blue-400" :
-                            proxyStatus.delayTier.name === "comfortable" ? "text-green-400" :
-                            proxyStatus.delayTier.name === "moderate" ? "text-yellow-400" :
-                            "text-orange-400"
-                          }`} data-testid="text-delay-tier">{proxyStatus.delayTier.name} ({proxyStatus.delayTier.minMs < 1000 ? `${proxyStatus.delayTier.minMs}ms` : `${(proxyStatus.delayTier.minMs / 1000).toFixed(1)}s`}-{proxyStatus.delayTier.maxMs < 1000 ? `${proxyStatus.delayTier.maxMs}ms` : `${(proxyStatus.delayTier.maxMs / 1000).toFixed(1)}s`})</span>
-                          <span className="text-gray-600">|</span>
-                        </>
-                      )}
-                      <span className="text-gray-500" data-testid="text-active-workers">{proxyStatus.activeWorkers} workers</span>
-                      <span className="text-gray-600">|</span>
-                      <span className="text-gray-500">{Object.entries(proxyStatus.byProtocol).map(([p, n]) => `${p}:${n}`).join(" ")}</span>
-                      {proxyStatus.source === "auto-fetched" && (
-                        <span className="text-cyan-400 text-[10px] border border-cyan-700/40 px-1.5 py-0.5 rounded" data-testid="badge-auto-fetched">auto-fetched</span>
-                      )}
-                      {proxyStatus.source === "manual" && (
-                        <span className="text-purple-400 text-[10px] border border-purple-700/40 px-1.5 py-0.5 rounded" data-testid="badge-manual">manual</span>
-                      )}
-                      <button
-                        onClick={() => proxyFetch.mutate()}
-                        disabled={proxyFetch.isPending || proxyStatus.autoFetchStatus?.inProgress}
-                        className="flex items-center gap-1 text-gray-500 hover:text-cyan-400 transition-colors"
-                        data-testid="button-proxy-fetch"
-                      >
-                        {proxyStatus.autoFetchStatus?.inProgress ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Download className="w-3 h-3" />
-                        )}
-                        <span>{proxyStatus.autoFetchStatus?.inProgress ? proxyStatus.autoFetchStatus.detail : "fetch"}</span>
-                      </button>
-                      <button
-                        onClick={() => proxyReload.mutate()}
-                        disabled={proxyReload.isPending}
-                        className="ml-auto flex items-center gap-1 text-gray-500 hover:text-blue-400 transition-colors"
-                        data-testid="button-proxy-reload"
-                      >
-                        <RefreshCw className={`w-3 h-3 ${proxyReload.isPending ? "animate-spin" : ""}`} />
-                        <span>reload</span>
-                      </button>
-                    </div>
-                    {proxyStatus.proxies.length > 0 && (
-                      <div className="max-h-40 overflow-y-auto" data-testid="proxy-pool-list">
-                        <div className="flex flex-wrap gap-1">
-                          {proxyStatus.proxies.map((p) => (
-                            <span
-                              key={p.index}
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold ${
-                                p.status === "healthy"
-                                  ? p.requests > 0 ? "bg-green-900/50 text-green-400 border border-green-800/50" : "bg-gray-800/50 text-gray-500 border border-gray-700/50"
-                                  : "bg-yellow-900/50 text-yellow-400 border border-yellow-800/50"
-                              }`}
-                              title={`#${p.index} ${p.maskedUrl} (${p.protocol}) | ${p.status} | ${p.requests} req, ${p.failures} fail${p.cooldownRemaining ? ` | cooldown ${p.cooldownRemaining}s` : ""}${p.lastFailure ? ` | ${p.lastFailure}` : ""}`}
-                              data-testid={`proxy-idx-${p.index}`}
-                            >
-                              #{p.index}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {proxyStatus.autoFetchStats && (
-                      <div className="flex items-center gap-2 flex-wrap text-[10px] text-gray-500 border-t border-gray-800/50 pt-1" data-testid="auto-fetch-stats">
-                        <span className="text-cyan-400/70">fetch stats:</span>
-                        <span>found {proxyStatus.autoFetchStats.totalFound}</span>
-                        <span className="text-green-400/70">validated {proxyStatus.autoFetchStats.totalValidated}</span>
-                        <span className="text-red-400/70">failed {proxyStatus.autoFetchStats.totalFailed}</span>
-                        <span className="text-gray-600">|</span>
-                        {proxyStatus.autoFetchStats.sources.map(s => (
-                          <span key={s.source} className="text-gray-600">{s.source}: {s.validated}/{s.found}</span>
-                        ))}
-                        <span className="text-gray-600">| {(proxyStatus.autoFetchStats.durationMs / 1000).toFixed(1)}s</span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2 w-full">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Shield className="w-3.5 h-3.5" />
-                      <span className="text-xs">no proxies configured — using direct fetch</span>
-                      <button
-                        onClick={() => proxyFetch.mutate()}
-                        disabled={proxyFetch.isPending || proxyStatus.autoFetchStatus?.inProgress}
-                        className="ml-auto flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
-                        data-testid="button-proxy-fetch"
-                      >
-                        {proxyStatus.autoFetchStatus?.inProgress ? (
-                          <>
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            <span>{proxyStatus.autoFetchStatus.phase}: {proxyStatus.autoFetchStatus.detail}</span>
-                          </>
-                        ) : (
-                          <>
-                            <Download className="w-3 h-3" />
-                            <span>fetch free proxies</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
+            {speedMode && (
+              <div className="flex items-center gap-3 px-3 py-2 rounded text-xs border border-gray-800 bg-gray-900/50" data-testid="speed-mode-panel">
+                <div className="flex items-center gap-3 flex-wrap w-full">
+                  <span className="text-gray-400 font-medium">speed:</span>
+                  {speedMode.modes.map((m) => (
+                    <button
+                      key={m.name}
+                      onClick={() => setSpeedMode.mutate(m.name)}
+                      disabled={setSpeedMode.isPending}
+                      className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
+                        speedMode.current === m.name
+                          ? m.name === "turtle" ? "bg-orange-900/60 text-orange-300 border border-orange-600/50"
+                          : m.name === "steady" ? "bg-green-900/60 text-green-300 border border-green-600/50"
+                          : "bg-cyan-900/60 text-cyan-300 border border-cyan-600/50"
+                          : "bg-gray-800/50 text-gray-500 border border-gray-700/50 hover:text-gray-300"
+                      }`}
+                      data-testid={`button-speed-${m.name}`}
+                    >
+                      {m.name}
+                    </button>
+                  ))}
+                  <span className="text-gray-600">|</span>
+                  <span className="text-gray-500" data-testid="text-speed-delay">
+                    delay: {speedMode.params.delayMin < 1000 ? `${speedMode.params.delayMin}ms` : `${(speedMode.params.delayMin / 1000).toFixed(1)}s`}-{speedMode.params.delayMax < 1000 ? `${speedMode.params.delayMax}ms` : `${(speedMode.params.delayMax / 1000).toFixed(1)}s`}
+                  </span>
+                  <span className="text-gray-600">|</span>
+                  <span className="text-gray-500" data-testid="text-speed-gate">gate: {speedMode.params.maxConcurrent} concurrent, {speedMode.params.minGapMs < 1000 ? `${speedMode.params.minGapMs}ms` : `${(speedMode.params.minGapMs / 1000).toFixed(1)}s`} gap</span>
+                  <span className="text-gray-600">|</span>
+                  <span className="text-gray-500" data-testid="text-speed-workers">{speedMode.params.workerCount} workers</span>
+                </div>
               </div>
             )}
 
