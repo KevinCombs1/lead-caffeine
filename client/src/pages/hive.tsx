@@ -798,6 +798,11 @@ export default function HivePage() {
                   <span data-testid="text-progress">{crawlStatus.active.progress}% ({crawlStatus.active.completedCombos}/{crawlStatus.active.totalCombos})</span>
                   <span className="text-pink-400" data-testid="text-flowers-found">Flowers: {crawlStatus.active.flowersFound}{crawlStatus.active.maxResults ? ` / ${crawlStatus.active.maxResults}` : ""}</span>
                   <span className="text-yellow-400" data-testid="text-pollen-found">Pollen: {crawlStatus.active.pollenFound}</span>
+                  {speedMode && (
+                    <span className={`font-mono px-1.5 py-0.5 rounded border ${speedMode.current === "blitz" ? "text-red-400 border-red-500/30 bg-red-500/10" : speedMode.current === "turtle" ? "text-blue-400 border-blue-500/30 bg-blue-500/10" : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"}`} data-testid="text-crawl-speed-mode">
+                      {speedMode.current}
+                    </span>
+                  )}
                 </div>
               )}
 
