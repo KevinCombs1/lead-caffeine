@@ -228,8 +228,7 @@ export default function HivePage() {
 
   useEffect(() => {
     if (directories.length > 0 && selectedDirs.size === 0) {
-      const autoDeselect = new Set(["mapquest", "hotfrog", "ezlocal", "n49"]);
-      setSelectedDirs(new Set(directories.filter(d => d.enabled && !autoDeselect.has(d.scraperKey)).map(d => d.id)));
+      setSelectedDirs(new Set(directories.filter(d => d.enabled && d.scraperKey === "yellowpages").map(d => d.id)));
     }
   }, [directories]);
 
