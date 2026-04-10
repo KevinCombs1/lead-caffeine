@@ -1029,6 +1029,11 @@ const CATEGORIES: CategorySeed[] = [
   cat("Solar Consultants", "Solar", ["solar energy consultant", "solar power advisor", "solar feasibility study", "solar project consultant", "renewable energy consultant", "solar site assessment", "solar ROI analysis", "photovoltaic consultant", "solar design consultant", "solar permit consultant", "solar energy auditor"]),
   cat("Solar Installers", "Solar", ["solar panel installer", "solar installation company", "residential solar installer", "commercial solar installer", "rooftop solar installer", "solar mounting installer", "solar array installation", "PV system installer", "ground mount solar installer", "solar retrofit installer", "off grid solar installer"]),
   cat("Solar Companies", "Solar", ["solar energy company", "solar power provider", "solar panel company", "solar electricity provider", "full service solar company", "solar EPC contractor", "turnkey solar provider", "solar developer", "community solar company", "solar farm company", "solar lease provider"]),
+
+  // Restaurant (3)
+  cat("Family Owned Restaurant", "Restaurant", ["family owned restaurant", "mom and pop restaurant", "family run dining", "neighborhood eatery", "locally owned restaurant", "independent family restaurant", "small family diner", "home cooking restaurant", "family style dining", "multigenerational restaurant", "heritage family restaurant"]),
+  cat("Local Restaurant", "Restaurant", ["local chef owned restaurant", "farm to table restaurant", "independent bistro", "neighborhood cafe", "locally sourced restaurant", "boutique restaurant", "artisan dining", "craft kitchen restaurant", "small batch restaurant", "seasonal menu restaurant", "local scratch kitchen"]),
+  cat("Food Truck", "Restaurant", ["gourmet food truck", "local food truck", "mobile kitchen", "street food vendor", "food truck catering", "independent food truck", "artisan food truck", "specialty food truck", "mobile food business", "food cart vendor", "pop up food truck"]),
 ];
 
 const LOCATIONS: LocationSeed[] = [
