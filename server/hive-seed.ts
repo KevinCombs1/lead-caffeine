@@ -143,6 +143,18 @@ const CATEGORIES: CategorySeed[] = [
   cat("Pawn Shop", "Financial Services", ["Pawn Shop", "Pawnbroker", "Collateral Lending"]),
   cat("Check Cashing", "Financial Services", ["Check Cashing Store", "Payday Loans", "Cash Advance"]),
 
+  // Lending (10)
+  cat("Merchant Cash Advance", "Lending", ["MCA Provider", "Merchant Cash Advance Company", "Business Cash Advance Lender", "MCA Broker", "MCA Funding Company", "MCA Lender", "Business Cash Advance", "Short Term Business Cash Advance", "MCA ISO", "Revenue Purchase Agreement", "Cash Advance Provider", "Merchant Financing"]),
+  cat("Fast Business Loans", "Lending", ["Fast Business Loan Provider", "Quick Business Loan", "Same Day Business Loan", "Fast Business Funding", "Rapid Business Financing", "Emergency Business Loan", "Instant Business Loan", "Next Day Business Funding"]),
+  cat("Revenue-Based Financing", "Lending", ["Revenue Based Financing Company", "Revenue Based Lender", "RBF Provider", "Revenue Based Funding", "Percentage of Revenue Loan", "Revenue Advance", "Sales Based Financing", "Revenue Share Financing"]),
+  cat("Working Capital Loans", "Lending", ["Working Capital Loan Provider", "Working Capital Financing", "Working Capital Lender", "Business Working Capital", "Short Term Working Capital", "Working Capital Advance", "Operating Capital Loan", "Cash Flow Financing"]),
+  cat("Short-Term Business Loans", "Lending", ["Short Term Business Loan Provider", "Bridge Loan Company", "Short Term Commercial Loan", "Short Duration Business Loan", "Micro Business Loan", "Small Business Bridge Loan", "Interim Business Financing", "Gap Financing"]),
+  cat("Business Line of Credit", "Lending", ["Business Line of Credit Provider", "Business Credit Line", "Revolving Business Credit", "Commercial Line of Credit", "Flex Business Credit Line", "Unsecured Business Line of Credit", "Business Revolving Loan", "Draw Down Credit Facility"]),
+  cat("Invoice Factoring & Financing", "Lending", ["Invoice Factoring Company", "Accounts Receivable Factoring", "Factoring Services", "Invoice Financing", "AR Factoring", "Freight Factoring", "Invoice Discounting", "Receivables Financing"]),
+  cat("SBA Loans", "Lending", ["SBA Loan Provider", "SBA Lender", "SBA 7a Loan", "SBA 504 Loan", "Small Business Administration Loan", "SBA Preferred Lender", "Government Backed Business Loan", "SBA Express Loan"]),
+  cat("Hard Money Lending", "Lending", ["Hard Money Lender", "Private Money Lender", "Hard Money Loan Company", "Asset Based Lender", "Bridge Lender", "Fix and Flip Lender", "Commercial Hard Money Loan", "Real Estate Hard Money"]),
+  cat("Alternative Lending", "Lending", ["Alternative Business Lender", "Online Business Lender", "Fintech Lender", "Non Bank Business Loan", "Marketplace Lender", "Payday Alternative Loan", "Cash Advance Lender", "High Risk Business Loan"]),
+
   // Legal (18)
   cat("Corporate Law", "Legal", ["Corporate Law Firm", "Business Attorney", "Corporate Lawyer"]),
   cat("Business Litigation", "Legal", ["Business Litigation Attorney", "Commercial Litigation", "Civil Litigation"]),
@@ -840,11 +852,10 @@ const CATEGORIES: CategorySeed[] = [
   cat("Sewer Camera Inspection", "Skilled Trades & Specialty Contractors", ["Sewer Camera Service", "Pipe Video Inspection", "Drain Camera"]),
   cat("Manhole Rehabilitation", "Skilled Trades & Specialty Contractors", ["Manhole Repair", "Manhole Lining", "Underground Utility Repair"]),
 
-  // High Ticket Closing (8)
+  // High Ticket Closing (7)
   cat("Solar Sales Closer", "High Ticket Closing", ["Solar Sales Closer", "Solar Appointment Setter", "Door to Door Solar Sales"]),
   cat("Roofing Sales", "High Ticket Closing", ["Roofing Sales Rep", "Storm Damage Sales", "Insurance Restoration Sales"]),
   cat("Timeshare Exit", "High Ticket Closing", ["Timeshare Exit Company", "Timeshare Cancellation", "Timeshare Relief"]),
-  cat("Merchant Cash Advance", "High Ticket Closing", ["MCA Broker", "Business Cash Advance", "Revenue Based Financing"]),
   cat("Business Coaching", "High Ticket Closing", ["High Ticket Business Coach", "Mastermind Group", "Business Mentorship"]),
   cat("Life Coaching", "High Ticket Closing", ["Life Coach", "Transformation Coach", "High Performance Coach"]),
   cat("Sales Training", "High Ticket Closing", ["Sales Trainer", "Closer Training", "High Ticket Sales Program"]),
@@ -2155,6 +2166,17 @@ export async function seedHiveData(): Promise<void> {
         await db.insert(hiveCategories).values(batch);
       }
       console.log(`[hive-seed] Added ${newCategories.length} new categories.`);
+    }
+
+    const existingCategories = CATEGORIES.filter(c => existingCatSlugs.has(c.slug));
+    if (existingCategories.length > 0) {
+      console.log(`[hive-seed] Syncing ${existingCategories.length} existing categories...`);
+      for (const c of existingCategories) {
+        await db.update(hiveCategories)
+          .set({ bundle: c.bundle, searchAliases: c.searchAliases, isConsultingVariant: c.isConsultingVariant, name: c.name })
+          .where(sql`${hiveCategories.slug} = ${c.slug}`);
+      }
+      console.log(`[hive-seed] Synced ${existingCategories.length} existing categories.`);
     }
 
     const existingDirKeys = new Set(
