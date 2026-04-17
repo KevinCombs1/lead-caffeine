@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { hiveDirectories, hiveCategories, hiveLocations } from "@shared/schema";
+import { EXPANDED_US_CITIES } from "./data/us-cities-expanded";
 import { sql, inArray } from "drizzle-orm";
 
 interface DirectorySeed {
@@ -2123,6 +2124,7 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Batam", state: "ID", slug: "batam-id", population: 1196396, tag: "intl" },
   { city: "Labuan", state: "MY", slug: "labuan-my", population: 95120, tag: "intl" },
   { city: "Manaus", state: "BR", slug: "manaus-br", population: 2219580, tag: "intl" },
+  ...EXPANDED_US_CITIES,
 ];
 
 export async function seedHiveData(): Promise<void> {
