@@ -3114,8 +3114,8 @@ export async function registerRoutes(
     try {
       const { setSpeedMode, getSpeedMode, getSpeedParams } = await import("./hive-speed");
       const { mode } = req.body;
-      if (!mode || !["turtle", "steady", "blitz"].includes(mode)) {
-        return res.status(400).json({ error: "Invalid speed mode. Must be: turtle, steady, or blitz" });
+      if (!mode || !["turtle", "energation", "caligratos", "steady", "blitz"].includes(mode)) {
+        return res.status(400).json({ error: "Invalid speed mode. Must be: turtle, energation, caligratos, steady, or blitz" });
       }
       setSpeedMode(mode);
       res.json({ current: getSpeedMode(), params: getSpeedParams() });

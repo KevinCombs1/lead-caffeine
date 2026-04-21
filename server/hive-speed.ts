@@ -1,4 +1,4 @@
-export type SpeedModeName = "turtle" | "steady" | "blitz";
+export type SpeedModeName = "turtle" | "energation" | "caligratos" | "steady" | "blitz";
 
 export interface SpeedParams {
   name: SpeedModeName;
@@ -18,6 +18,24 @@ const SPEED_MODES: Record<SpeedModeName, SpeedParams> = {
     delayMax: 25000,
     maxConcurrent: 2,
     minGapMs: 15000,
+    workerCount: 640,
+  },
+  energation: {
+    name: "energation",
+    label: "energation — slow",
+    delayMin: 5000,
+    delayMax: 11000,
+    maxConcurrent: 6,
+    minGapMs: 5000,
+    workerCount: 640,
+  },
+  caligratos: {
+    name: "caligratos",
+    label: "caligratos — varied",
+    delayMin: 3000,
+    delayMax: 18000,
+    maxConcurrent: 6,
+    minGapMs: 3000,
     workerCount: 640,
   },
   steady: {

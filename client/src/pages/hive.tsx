@@ -95,7 +95,7 @@ interface HiveStats {
 }
 
 interface SpeedModeInfo {
-  current: "turtle" | "steady" | "blitz";
+  current: "turtle" | "energation" | "caligratos" | "steady" | "blitz";
   params: { name: string; label: string; delayMin: number; delayMax: number; maxConcurrent: number; minGapMs: number; workerCount: number };
   modes: Array<{ name: string; label: string; delayMin: number; delayMax: number; maxConcurrent: number; minGapMs: number; workerCount: number }>;
 }
@@ -726,6 +726,8 @@ export default function HivePage() {
                       className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
                         speedMode.current === m.name
                           ? m.name === "turtle" ? "bg-orange-900/60 text-orange-300 border border-orange-600/50"
+                          : m.name === "energation" ? "bg-yellow-900/60 text-yellow-300 border border-yellow-600/50"
+                          : m.name === "caligratos" ? "bg-purple-900/60 text-purple-300 border border-purple-600/50"
                           : m.name === "steady" ? "bg-green-900/60 text-green-300 border border-green-600/50"
                           : "bg-cyan-900/60 text-cyan-300 border border-cyan-600/50"
                           : "bg-gray-800/50 text-gray-500 border border-gray-700/50 hover:text-gray-300"
@@ -798,7 +800,7 @@ export default function HivePage() {
                   <span className="text-pink-400" data-testid="text-flowers-found">Flowers: {crawlStatus.active.flowersFound}{crawlStatus.active.maxResults ? ` / ${crawlStatus.active.maxResults}` : ""}</span>
                   <span className="text-yellow-400" data-testid="text-pollen-found">Pollen: {crawlStatus.active.pollenFound}</span>
                   {speedMode && (
-                    <span className={`font-mono px-1.5 py-0.5 rounded border ${speedMode.current === "blitz" ? "text-red-400 border-red-500/30 bg-red-500/10" : speedMode.current === "turtle" ? "text-blue-400 border-blue-500/30 bg-blue-500/10" : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"}`} data-testid="text-crawl-speed-mode">
+                    <span className={`font-mono px-1.5 py-0.5 rounded border ${speedMode.current === "blitz" ? "text-red-400 border-red-500/30 bg-red-500/10" : speedMode.current === "turtle" ? "text-blue-400 border-blue-500/30 bg-blue-500/10" : speedMode.current === "energation" ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/10" : speedMode.current === "caligratos" ? "text-purple-400 border-purple-500/30 bg-purple-500/10" : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"}`} data-testid="text-crawl-speed-mode">
                       {speedMode.current}
                     </span>
                   )}
