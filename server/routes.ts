@@ -6,8 +6,8 @@ import session from "express-session";
 import { z } from "zod";
 import { storage } from "./storage";
 import { db } from "./db";
-import { sql, eq } from "drizzle-orm";
-import { scrapedResults, scrapeJobs, domainSecurityProfiles, fiscalLeads } from "@shared/schema";
+import { sql, eq, inArray } from "drizzle-orm";
+import { scrapedResults, scrapeJobs, domainSecurityProfiles, fiscalLeads, hiveCategories } from "@shared/schema";
 import { TAX_CREDIT_UNIVERSE, matchLeadCredits, analyzeCompanyCreditPosition, analyzeMultiYearTrends, analyzeCreditInteractions, applyInteractionAdjustments, computeIndustryBenchmarks, compareToIndustryPeers } from "./credit-universe";
 import { scanSingleLead, type SingleLeadGapResult } from "./credit-gap-engine";
 import { SIC_INDUSTRIES, findCompaniesBySIC, findCompaniesByFormD, findCompaniesByFilingText, getCompanyDetails, loadAllCompanies, companyIndex, type RecentEvent } from "./gradient-sweep";
@@ -2876,6 +2876,38 @@ export async function registerRoutes(
     }
   });
 
+  async function buildHiveCsvFilename(type: string, categoryParam?: string, categoriesParam?: string): Promise<string> {
+    const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    let industrySlug = "all";
+    let subindustrySlug = "";
+    try {
+      if (categoryParam) {
+        const rows = await db.select({ name: hiveCategories.name, bundle: hiveCategories.bundle })
+          .from(hiveCategories).where(eq(hiveCategories.name, categoryParam)).limit(1);
+        if (rows.length > 0) {
+          industrySlug = toSlug(rows[0].bundle);
+          subindustrySlug = toSlug(rows[0].name);
+        }
+      } else if (categoriesParam) {
+        const names = categoriesParam.split(",").map(s => s.trim()).filter(Boolean);
+        if (names.length > 0) {
+          const rows = await db.select({ name: hiveCategories.name, bundle: hiveCategories.bundle })
+            .from(hiveCategories).where(inArray(hiveCategories.name, names));
+          const bundles = [...new Set(rows.map(r => r.bundle))];
+          if (bundles.length === 1) {
+            industrySlug = toSlug(bundles[0]);
+            if (names.length === 1 && rows.length === 1) subindustrySlug = toSlug(rows[0].name);
+          } else if (bundles.length > 1) {
+            industrySlug = "multi";
+          }
+        }
+      }
+    } catch (_) {}
+    const parts = ["beauteous-brigade", type, industrySlug];
+    if (subindustrySlug && subindustrySlug !== industrySlug) parts.push(subindustrySlug);
+    return parts.join("-") + ".csv";
+  }
+
   app.get("/api/hive/coverage", requireAuth, async (_req: Request, res: Response) => {
     try {
       const coverage = await storage.getHiveCoverage();
@@ -2916,8 +2948,9 @@ export async function registerRoutes(
           .map(csvEscape).join(",")
       ).join("\n");
 
+      const flowerFilename = await buildHiveCsvFilename("flowers", req.query.category as string | undefined, req.query.categories as string | undefined);
       res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", "attachment; filename=beauteous-brigade-flowers.csv");
+      res.setHeader("Content-Disposition", `attachment; filename=${flowerFilename}`);
       res.send(header + rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -2951,8 +2984,9 @@ export async function registerRoutes(
           .map(csvEscape).join(",")
       ).join("\n");
 
+      const pollenFilename = await buildHiveCsvFilename("pollen", req.query.category as string | undefined, req.query.categories as string | undefined);
       res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", "attachment; filename=beauteous-brigade-pollen.csv");
+      res.setHeader("Content-Disposition", `attachment; filename=${pollenFilename}`);
       res.send(header + rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
