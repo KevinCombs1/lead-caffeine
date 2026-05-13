@@ -2882,29 +2882,62 @@ export async function registerRoutes(
     let subindustrySlug = "";
     try {
       if (categoryParam) {
-        const rows = await db.select({ name: hiveCategories.name, bundle: hiveCategories.bundle })
-          .from(hiveCategories).where(eq(hiveCategories.name, categoryParam)).limit(1);
+        // Try ID lookup first, fall back to name match
+        let rows = await db.select({ name: hiveCategories.name, bundle: hiveCategories.bundle })
+          .from(hiveCategories).where(eq(hiveCategories.id, categoryParam)).limit(1);
+        if (rows.length === 0) {
+          rows = await db.select({ name: hiveCategories.name, bundle: hiveCategories.bundle })
+            .from(hiveCategories).where(eq(hiveCategories.name, categoryParam)).limit(1);
+        }
         if (rows.length > 0) {
           industrySlug = toSlug(rows[0].bundle);
           subindustrySlug = toSlug(rows[0].name);
         }
       } else if (categoriesParam) {
         const names = categoriesParam.split(",").map(s => s.trim()).filter(Boolean);
-        if (names.length > 0) {
+        if (names.length === 1) {
+          // Single name in the list — treat as a single category
+          const rows = await db.select({ name: hiveCategories.name, bundle: hiveCategories.bundle })
+            .from(hiveCategories).where(eq(hiveCategories.name, names[0])).limit(1);
+          if (rows.length > 0) {
+            industrySlug = toSlug(rows[0].bundle);
+            subindustrySlug = toSlug(rows[0].name);
+          }
+        } else if (names.length > 1) {
           const rows = await db.select({ name: hiveCategories.name, bundle: hiveCategories.bundle })
             .from(hiveCategories).where(inArray(hiveCategories.name, names));
           const bundles = [...new Set(rows.map(r => r.bundle))];
           if (bundles.length === 1) {
-            industrySlug = toSlug(bundles[0]);
-            if (names.length === 1 && rows.length === 1) subindustrySlug = toSlug(rows[0].name);
-          } else if (bundles.length > 1) {
+            // All selected categories share one bundle — only use <bundle>-all if ALL categories in that bundle are selected
+            const totalInBundle = await db.select({ count: sql<number>`cast(count(*) as int)` })
+              .from(hiveCategories).where(eq(hiveCategories.bundle, bundles[0]));
+            const total = Number(totalInBundle[0]?.count ?? 0);
+            if (total > 0 && rows.length >= total) {
+              industrySlug = toSlug(bundles[0]);
+              // subindustrySlug stays empty → filename composition adds "all"
+            } else {
+              // Partial bundle selection → multi
+              industrySlug = "multi";
+            }
+          } else {
+            // Multiple bundles → multi
             industrySlug = "multi";
           }
         }
       }
     } catch (_) {}
-    const parts = ["beauteous-brigade", type, industrySlug];
-    if (subindustrySlug && subindustrySlug !== industrySlug) parts.push(subindustrySlug);
+    // Compose filename segments
+    // - "all" and "multi" are terminal — no subindustry appended
+    // - named industry with subindustry: <industry>-<subindustry>
+    // - named industry without subindustry: <industry>-all
+    const parts = ["beauteous-brigade", type];
+    if (industrySlug === "all" || industrySlug === "multi") {
+      parts.push(industrySlug);
+    } else if (subindustrySlug) {
+      parts.push(industrySlug, subindustrySlug);
+    } else {
+      parts.push(industrySlug, "all");
+    }
     return parts.join("-") + ".csv";
   }
 
