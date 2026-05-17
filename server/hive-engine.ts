@@ -281,10 +281,24 @@ export class RayOfGraceEngine {
     return this.logBuffer.slice(-limit);
   }
 
-  async start(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number): Promise<string> {
+  async start(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number, customKeywords?: string[]): Promise<string> {
     const directories = (await storage.getHiveDirectories()).filter(d => directoryIds.includes(d.id) && d.enabled);
-    const categories = (await storage.getHiveCategories()).filter(c => categoryIds.includes(c.id));
     const locations = (await storage.getHiveLocations()).filter(l => locationIds.includes(l.id));
+
+    const hasCustom = Array.isArray(customKeywords) && customKeywords.length > 0;
+    let categories: HiveCategory[];
+    if (hasCustom) {
+      categories = [{
+        id: "custom-keywords",
+        name: "Custom Keywords",
+        slug: "custom-keywords",
+        bundle: "Custom",
+        searchAliases: customKeywords!,
+        isConsultingVariant: false,
+      }];
+    } else {
+      categories = (await storage.getHiveCategories()).filter(c => categoryIds.includes(c.id));
+    }
 
     if (directories.length === 0 || categories.length === 0 || locations.length === 0) {
       throw new Error("Must select at least one directory, category, and location");
@@ -774,12 +788,12 @@ export async function cleanupOrphanedCrawlJobs(): Promise<void> {
   activeEngine = null;
 }
 
-export async function startRayOfGrace(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number): Promise<string> {
+export async function startRayOfGrace(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number, customKeywords?: string[]): Promise<string> {
   if (activeEngine) {
     throw new Error("A crawl is already running. Stop it first.");
   }
   const engine = new RayOfGraceEngine();
-  return engine.start(directoryIds, categoryIds, locationIds, maxResults);
+  return engine.start(directoryIds, categoryIds, locationIds, maxResults, customKeywords);
 }
 
 export async function stopRayOfGrace(): Promise<void> {

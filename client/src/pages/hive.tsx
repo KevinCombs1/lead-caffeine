@@ -135,6 +135,7 @@ export default function HivePage() {
   const [pollenSortBy, setPollenSortBy] = useState("");
   const [flowerPage, setFlowerPage] = useState(1);
   const [pollenPage, setPollenPage] = useState(1);
+  const [customKeywords, setCustomKeywords] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const [expandedBundles, setExpandedBundles] = useState<Set<string>>(new Set());
   const [locationSearch, setLocationSearch] = useState("");
@@ -244,12 +245,18 @@ export default function HivePage() {
     }
   }, [crawlStatus?.active?.jobId]);
 
+  const parsedCustomKeywords = customKeywords.trim()
+    ? customKeywords.split(",").map(s => s.trim()).filter(Boolean)
+    : [];
+  const hasCustomKeywords = parsedCustomKeywords.length > 0;
+
   const startCrawl = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hive/crawl", {
       directoryIds: Array.from(selectedDirs),
       categoryIds: Array.from(selectedCats),
       locationIds: Array.from(selectedLocs),
       maxResults: maxResults ? Number(maxResults) : undefined,
+      ...(hasCustomKeywords ? { customKeywords: parsedCustomKeywords } : {}),
     }),
     onSuccess: async (res) => {
       const data = await res.json();
@@ -469,11 +476,26 @@ export default function HivePage() {
                 </label>
                 <input
                   type="text"
+                  placeholder="Custom keywords — overrides categories (e.g. plumber, hvac technician)"
+                  value={customKeywords}
+                  onChange={e => setCustomKeywords(e.target.value)}
+                  className={`w-full text-xs rounded px-2 py-1 text-gray-200 placeholder-gray-600 border ${hasCustomKeywords ? "bg-pink-950/40 border-pink-600/60 text-pink-200" : "bg-gray-900 border-gray-700"}`}
+                  data-testid="input-custom-keywords"
+                />
+                {hasCustomKeywords && (
+                  <div className="text-[10px] text-pink-400/80 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    {parsedCustomKeywords.length} custom {parsedCustomKeywords.length === 1 ? "keyword" : "keywords"} — category selection ignored
+                  </div>
+                )}
+                <input
+                  type="text"
                   placeholder="Search categories..."
                   value={categorySearch}
                   onChange={e => setCategorySearch(e.target.value)}
-                  className="w-full text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-200 placeholder-gray-600"
+                  className={`w-full text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1 placeholder-gray-600 ${hasCustomKeywords ? "text-gray-600 opacity-50" : "text-gray-200"}`}
                   data-testid="input-category-search"
+                  disabled={hasCustomKeywords}
                 />
                 <div className="max-h-64 overflow-y-auto border border-gray-800 rounded bg-gray-900/50">
                   {bundles.map(b => {
@@ -774,7 +796,7 @@ export default function HivePage() {
                   </div>
                   <button
                     onClick={() => startCrawl.mutate()}
-                    disabled={selectedDirs.size === 0 || selectedCats.size === 0 || selectedLocs.size === 0 || startCrawl.isPending}
+                    disabled={selectedDirs.size === 0 || (!hasCustomKeywords && selectedCats.size === 0) || selectedLocs.size === 0 || startCrawl.isPending}
                     className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold rounded transition-colors"
                     data-testid="button-send-ray"
                   >

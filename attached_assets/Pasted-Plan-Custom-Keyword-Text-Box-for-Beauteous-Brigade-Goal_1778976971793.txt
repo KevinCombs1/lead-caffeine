@@ -1,0 +1,35 @@
+Plan: Custom Keyword Text Box for Beauteous Brigade
+Goal: A free-text input in the Ray of Grace panel. When it has content, those typed terms are used as the search phrases sent to the scrapers — overriding the aliases of the selected categories. Nothing is removed; everything else is untouched.
+
+What happens today (in 3 lines)
+User selects category IDs → frontend posts { categoryIds, directoryIds, locationIds } to /api/hive/crawl
+Engine fetches those categories from DB, extracts category.searchAliases (or category.name) as the search terms
+Scraper gets ([alias], location) per alias and runs the search
+What changes (3 small additions)
+1. client/src/pages/hive.tsx
+
+Add one state variable: customKeywords: string (default "")
+Add a text input in the Ray of Grace panel, below or beside the category picker, labeled something like "Custom keywords (overrides selected categories)"
+In the startCrawl mutation payload: when customKeywords.trim() is non-empty, include customKeywords: customKeywords.split(",").map(s => s.trim()).filter(Boolean) in the POST body
+No validation changes needed — categories can stay required for normal flow, but when custom keywords are present, the "Send Ray of Grace" button stays enabled even if no categories are selected (or the existing requirement is relaxed on the backend, which the backend change handles)
+2. server/routes.ts — POST /api/hive/crawl
+
+Accept an optional customKeywords?: string[] from req.body
+Pass it through to startRayOfGrace(directoryIds, categoryIds, locationIds, maxResults, customKeywords)
+Relax the categoryIds.length validation: allow empty categoryIds when customKeywords is non-empty
+3. server/hive-engine.ts
+
+Add customKeywords?: string[] parameter to startRayOfGrace() and start()
+Inside start(): if customKeywords is non-empty, build one in-memory synthetic HiveCategory object (no DB write) with searchAliases = customKeywords and name = "Custom Keywords", and use it as the categories list for combo-building — instead of whatever categories were passed in
+No other changes; all the worker/combo/scraper machinery is untouched
+What is completely unchanged
+All industry bundles, categories, aliases, DB tables
+All existing crawl behavior when no custom keywords are typed
+All scrapers, speed modes, locations, directories
+All flower/pollen storage, filtering, export
+Summary table
+File	Change size	What
+client/src/pages/hive.tsx	~10 lines	Add text input + pass keywords in POST body
+server/routes.ts	~5 lines	Accept + forward customKeywords, relax category validation
+server/hive-engine.ts	~10 lines	Build synthetic category from keywords when present
+That's the entire plan — roughly 25 lines of new code across 3 files, no schema changes, no new routes, nothing removed.

@@ -2743,12 +2743,13 @@ export async function registerRoutes(
 
   app.post("/api/hive/crawl", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { directoryIds, categoryIds, locationIds, maxResults } = req.body;
-      if (!directoryIds?.length || !categoryIds?.length || !locationIds?.length) {
-        return res.status(400).json({ error: "Must select directories, categories, and locations" });
+      const { directoryIds, categoryIds, locationIds, maxResults, customKeywords } = req.body;
+      const hasCustom = Array.isArray(customKeywords) && customKeywords.length > 0;
+      if (!directoryIds?.length || (!hasCustom && !categoryIds?.length) || !locationIds?.length) {
+        return res.status(400).json({ error: "Must select directories, categories (or enter custom keywords), and locations" });
       }
       const { startRayOfGrace } = await import("./hive-engine");
-      const jobId = await startRayOfGrace(directoryIds, categoryIds, locationIds, maxResults ? Number(maxResults) : undefined);
+      const jobId = await startRayOfGrace(directoryIds, categoryIds ?? [], locationIds, maxResults ? Number(maxResults) : undefined, hasCustom ? customKeywords : undefined);
       res.json({ jobId });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
