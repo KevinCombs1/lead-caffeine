@@ -3150,6 +3150,26 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/hive/clean-phones", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const result = await db.execute(sql`
+        UPDATE hive_flowers
+        SET phone = NULL
+        WHERE phone IS NOT NULL
+          AND phone IN (
+            SELECT phone FROM hive_flowers
+            WHERE phone IS NOT NULL
+            GROUP BY phone
+            HAVING COUNT(DISTINCT name) >= 5
+          )
+      `);
+      const cleaned = (result as any).rowCount ?? 0;
+      res.json({ success: true, cleaned });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/hive/delete-haul", requireAuth, async (_req: Request, res: Response) => {
     try {
       const deleted = await storage.deleteHaulData();

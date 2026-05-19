@@ -2,6 +2,7 @@ import { storage } from "./storage";
 import type { HiveCategory, HiveLocation, HiveDirectory, InsertHiveFlower, InsertHivePollen } from "@shared/schema";
 import { SCRAPERS, classifyResults, setStopSignal, type ScraperLocation, type ScraperResponse } from "./hive-scrapers";
 import { getSpeedParams, getSpeedMode } from "./hive-speed";
+import { sanitizePhone } from "./hive-phone-filter";
 
 const US_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
@@ -667,7 +668,7 @@ export class RayOfGraceEngine {
         name: f.name,
         website: f.website,
         normalizedUrl: f.normalizedUrl,
-        phone: f.phone || null,
+        phone: sanitizePhone(f.phone),
         address: f.address || null,
         city: f.city || location.city,
         state: f.state || location.state,
@@ -681,7 +682,7 @@ export class RayOfGraceEngine {
 
       const pollenInserts: InsertHivePollen[] = pollen.map(p => ({
         name: p.name,
-        phone: p.phone || null,
+        phone: sanitizePhone(p.phone),
         address: p.address || null,
         city: p.city || location.city,
         state: p.state || location.state,

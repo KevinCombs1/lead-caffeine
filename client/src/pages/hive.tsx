@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Flower2, Search, Play, Square, Download, Trash2, Heart, Phone, Globe,
   ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw, Palmtree, Building2, Plane,
-  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall
+  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall, PhoneOff
 } from "lucide-react";
 
 interface HiveDirectory {
@@ -339,6 +339,16 @@ export default function HivePage() {
     onSuccess: async (res) => {
       const data = await res.json();
       toast({ title: "Phone scan started", description: data.message || `${data.total} entries queued` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const cleanPhones = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hive/clean-phones"),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.includes?.("/api/hive/flowers") });
+      toast({ title: "Phone cleanup complete", description: `${data.cleaned.toLocaleString()} shared/corporate numbers nulled out` });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -1048,6 +1058,15 @@ export default function HivePage() {
             >
               {phoneScanStatus?.running && phoneScanStatus.type === "flowers" ? <Loader2 className="w-3 h-3 animate-spin" /> : <PhoneCall className="w-3 h-3" />}
               {phoneScanStatus?.running && phoneScanStatus.type === "flowers" ? `${phoneScanStatus.scanned}/${phoneScanStatus.total}` : "Phone Scan"}
+            </button>
+            <button
+              onClick={() => cleanPhones.mutate()}
+              disabled={cleanPhones.isPending}
+              className="flex items-center gap-1 text-xs px-2 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-red-300 transition-colors disabled:opacity-30"
+              data-testid="button-clean-phones"
+            >
+              {cleanPhones.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <PhoneOff className="w-3 h-3" />}
+              {cleanPhones.isPending ? "Cleaning..." : "Clean Phones"}
             </button>
             <a
               href={`/api/hive/export?${new URLSearchParams(Object.fromEntries(Object.entries(flowerFilters).filter(([k]) => k !== "page" && k !== "limit"))).toString()}`}
