@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { hiveDirectories, hiveCategories, hiveLocations } from "@shared/schema";
 import { EXPANDED_US_CITIES } from "./data/us-cities-expanded";
+import { US_CITIES_AFFLUENT } from "./data/us-cities-affluent";
 import { sql, inArray } from "drizzle-orm";
 
 interface DirectorySeed {
@@ -2672,6 +2673,7 @@ const LOCATIONS: LocationSeed[] = [
   { city: "Labuan", state: "MY", slug: "labuan-my", population: 95120, tag: "intl" },
   { city: "Manaus", state: "BR", slug: "manaus-br", population: 2219580, tag: "intl" },
   ...EXPANDED_US_CITIES,
+  ...US_CITIES_AFFLUENT,
 ];
 
 export async function seedHiveData(): Promise<void> {
@@ -2701,6 +2703,15 @@ export async function seedHiveData(): Promise<void> {
     if (intlSlugs.length > 0) {
       await db.update(hiveLocations).set({ tag: "intl" }).where(inArray(hiveLocations.slug, intlSlugs));
       console.log(`[hive-seed] Tagged ${intlSlugs.length} locations as intl.`);
+    }
+
+    const affluentSlugs = LOCATIONS.filter(l => l.tag === "affluent").map(l => l.slug);
+    if (affluentSlugs.length > 0) {
+      const BATCH = 200;
+      for (let i = 0; i < affluentSlugs.length; i += BATCH) {
+        await db.update(hiveLocations).set({ tag: "affluent" }).where(inArray(hiveLocations.slug, affluentSlugs.slice(i, i + BATCH)));
+      }
+      console.log(`[hive-seed] Tagged ${affluentSlugs.length} locations as affluent.`);
     }
 
     const existingCatSlugs = new Set(
