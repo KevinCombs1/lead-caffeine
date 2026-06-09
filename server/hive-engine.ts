@@ -264,7 +264,7 @@ export class RayOfGraceEngine {
   private totalPollen = 0;
   private completedCombos = 0;
   private workerCount = 640;
-  private maxResults: number | null = null;
+  // maxResults removed — always unlimited
   private logBuffer: string[] = [];
   private logFlushLock = false;
   private static readonly MAX_LOG_BUFFER = 500;
@@ -282,7 +282,7 @@ export class RayOfGraceEngine {
     return this.logBuffer.slice(-limit);
   }
 
-  async start(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number, customKeywords?: string[]): Promise<string> {
+  async start(directoryIds: string[], categoryIds: string[], locationIds: string[], customKeywords?: string[]): Promise<string> {
     const directories = (await storage.getHiveDirectories()).filter(d => directoryIds.includes(d.id) && d.enabled);
     const locations = (await storage.getHiveLocations()).filter(l => locationIds.includes(l.id));
 
@@ -305,7 +305,6 @@ export class RayOfGraceEngine {
       throw new Error("Must select at least one directory, category, and location");
     }
 
-    this.maxResults = (maxResults && maxResults > 0) ? maxResults : null;
     const allCombos: CrawlCombo[] = [];
     let incompatibleSkipped = 0;
     for (const dir of directories) {
@@ -324,17 +323,7 @@ export class RayOfGraceEngine {
     }
 
     const interleaved = interleaveByDirectory(allCombos);
-
-    this.combos = [];
-    let skippedCount = 0;
-    for (const combo of interleaved) {
-      const done = await storage.isComboCompleted(combo.directory.id, combo.category.id, combo.location.id);
-      if (done) {
-        skippedCount++;
-      } else {
-        this.combos.push(combo);
-      }
-    }
+    this.combos = interleaved;
 
     const job = await storage.createHiveCrawlJob({
       status: "running",
@@ -366,21 +355,11 @@ export class RayOfGraceEngine {
     this.metrics = new MetricsCollector();
     activeEngine = this;
 
-    const limitMsg = this.maxResults ? ` (limit: ${this.maxResults} flowers)` : " (unlimited)";
-    const skipMsg = skippedCount > 0 ? `, skipping ${skippedCount} already-scanned` : "";
-    this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${allCombos.length} combos${skipMsg}, ${this.combos.length} remaining${limitMsg}`);
+    this.log(`Ray of Grace started: ${directories.length} dirs × ${categories.length} cats × ${locations.length} locs = ${allCombos.length} combos, ${this.combos.length} queued (unlimited)`);
     this.log(`[engine] Combo queue interleaved across ${directories.length} directories (round-robin)`);
     this.log(`[engine] Speed mode: ${speedMode} | DomainGate: ${speedParams.maxConcurrent} concurrent, ${speedParams.minGapMs}ms gap | Delay: ${speedParams.delayMin}-${speedParams.delayMax}ms | Workers: ${this.workerCount}`);
     this.log(`[engine] Suspension: 5 consecutive failures → 3min cooldown`);
     await this.flushLogs();
-
-    if (this.combos.length === 0) {
-      this.log("All combos already scanned — nothing to do. Clear scan history to re-scan.");
-      await this.flushLogs();
-      await storage.updateHiveCrawlJob(this.jobId, { status: "completed", completedAt: new Date() });
-      activeEngine = null;
-      return this.jobId;
-    }
 
     this.runWorkersSafe();
 
@@ -403,7 +382,6 @@ export class RayOfGraceEngine {
       completedCombos: this.completedCombos,
       flowersFound: this.totalFlowers,
       pollenFound: this.totalPollen,
-      maxResults: this.maxResults,
       progress: this.combos.length > 0 ? Math.round((this.completedCombos / this.combos.length) * 100) : 0,
     };
   }
@@ -460,12 +438,6 @@ export class RayOfGraceEngine {
   private async worker(workerId: number): Promise<void> {
     while (true) {
       if (this.stopped) break;
-
-      if (this.maxResults && this.totalFlowers >= this.maxResults) {
-        this.log(`[W${workerId}] Flower limit reached (${this.maxResults}), stopping`);
-        this.stopped = true;
-        break;
-      }
 
       const combo = this.getNextCombo();
       if (!combo) break;
@@ -789,12 +761,12 @@ export async function cleanupOrphanedCrawlJobs(): Promise<void> {
   activeEngine = null;
 }
 
-export async function startRayOfGrace(directoryIds: string[], categoryIds: string[], locationIds: string[], maxResults?: number, customKeywords?: string[]): Promise<string> {
+export async function startRayOfGrace(directoryIds: string[], categoryIds: string[], locationIds: string[], customKeywords?: string[]): Promise<string> {
   if (activeEngine) {
     throw new Error("A crawl is already running. Stop it first.");
   }
   const engine = new RayOfGraceEngine();
-  return engine.start(directoryIds, categoryIds, locationIds, maxResults, customKeywords);
+  return engine.start(directoryIds, categoryIds, locationIds, customKeywords);
 }
 
 export async function stopRayOfGrace(): Promise<void> {

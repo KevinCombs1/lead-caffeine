@@ -6,7 +6,8 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Flower2, Search, Play, Square, Download, Trash2, Heart, Phone, Globe,
   ChevronDown, ChevronUp, CheckSquare, XSquare, RefreshCw, Palmtree, Building2, Plane,
-  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall, PhoneOff
+  Loader2, AlertTriangle, ExternalLink, Filter, Sparkles, ScanLine, RotateCcw, PhoneCall, PhoneOff,
+  Gem
 } from "lucide-react";
 
 interface HiveDirectory {
@@ -78,7 +79,6 @@ interface CrawlStatus {
     completedCombos: number;
     flowersFound: number;
     pollenFound: number;
-    maxResults: number | null;
     progress: number;
   } | null;
   recentJobs: any[];
@@ -151,7 +151,6 @@ export default function HivePage() {
   const [sortBy, setSortBy] = useState("");
   const [beauteousOnly, setBeauteousOnly] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
-  const [maxResults, setMaxResults] = useState<string>("");
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
 
   const { data: directories = [] } = useQuery<HiveDirectory[]>({ queryKey: ["/api/hive/directories"] });
@@ -255,7 +254,6 @@ export default function HivePage() {
       directoryIds: Array.from(selectedDirs),
       categoryIds: Array.from(selectedCats),
       locationIds: Array.from(selectedLocs),
-      maxResults: maxResults ? Number(maxResults) : undefined,
       ...(hasCustomKeywords ? { customKeywords: parsedCustomKeywords } : {}),
     }),
     onSuccess: async (res) => {
@@ -677,6 +675,29 @@ export default function HivePage() {
                   >
                     <Globe className="w-3 h-3 inline mr-0.5" />International ({locations.filter(l => l.tag === "intl").length})
                   </button>
+                  <button
+                    onClick={() => {
+                      const affluentLocs = locations.filter(l => l.tag === "affluent");
+                      const allSelected = affluentLocs.every(l => selectedLocs.has(l.id));
+                      const nextLocs = new Set(selectedLocs);
+                      affluentLocs.forEach(l => allSelected ? nextLocs.delete(l.id) : nextLocs.add(l.id));
+                      setSelectedLocs(nextLocs);
+                      if (!allSelected && selectedDirs.size === 0) {
+                        const nextDirs = new Set<string>();
+                        directories.filter(d => d.enabled && (d.region === "us" || d.region === "global")).forEach(d => nextDirs.add(d.id));
+                        setSelectedDirs(nextDirs);
+                      }
+                    }}
+                    className={`text-[10px] px-2 py-0.5 rounded border ${
+                      locations.filter(l => l.tag === "affluent").length > 0 &&
+                      locations.filter(l => l.tag === "affluent").every(l => selectedLocs.has(l.id))
+                        ? "border-yellow-500 bg-yellow-500/20 text-yellow-300"
+                        : "border-gray-700 text-gray-400 hover:text-gray-200"
+                    }`}
+                    data-testid="button-tag-affluent"
+                  >
+                    <Gem className="w-3 h-3 inline mr-0.5" />Affluent ({locations.filter(l => l.tag === "affluent").length})
+                  </button>
                 </div>
                 <div className="space-y-0.5 max-h-52 overflow-y-auto border border-gray-800 rounded p-2 bg-gray-900/50">
                   {filteredLocations.map(l => (
@@ -694,6 +715,7 @@ export default function HivePage() {
                       <span className="text-gray-200">{l.city}, {l.state}</span>
                       {l.tag === "intl" && <Globe className="w-3 h-3 text-emerald-500 inline" />}
                       {l.tag === "travel" && <Plane className="w-3 h-3 text-amber-500 inline" data-testid={`icon-travel-${l.slug}`} />}
+                      {l.tag === "affluent" && <Gem className="w-3 h-3 text-yellow-500 inline" data-testid={`icon-affluent-${l.slug}`} />}
                       <span className="text-gray-600 text-[10px]">{l.population.toLocaleString()}</span>
                     </label>
                   ))}
@@ -784,26 +806,6 @@ export default function HivePage() {
             <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
               {!crawlStatus?.active ? (
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-400 whitespace-nowrap">Max flowers:</label>
-                    <select
-                      value={maxResults}
-                      onChange={(e) => setMaxResults(e.target.value)}
-                      className="w-36 px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-pink-500 focus:outline-none"
-                      data-testid="input-max-results"
-                    >
-                      <option value="">Unlimited</option>
-                      <option value="100">100</option>
-                      <option value="500">500</option>
-                      <option value="1000">1,000</option>
-                      <option value="5000">5,000</option>
-                      <option value="10000">10,000</option>
-                      <option value="50000">50,000</option>
-                      <option value="100000">100,000</option>
-                      <option value="500000">500,000</option>
-                      <option value="1000000">1,000,000</option>
-                    </select>
-                  </div>
                   <button
                     onClick={() => startCrawl.mutate()}
                     disabled={selectedDirs.size === 0 || (!hasCustomKeywords && selectedCats.size === 0) || selectedLocs.size === 0 || startCrawl.isPending}
@@ -829,7 +831,7 @@ export default function HivePage() {
               {crawlStatus?.active && (
                 <div className="flex items-center gap-4 text-xs text-gray-400">
                   <span data-testid="text-progress">{crawlStatus.active.progress}% ({crawlStatus.active.completedCombos}/{crawlStatus.active.totalCombos})</span>
-                  <span className="text-pink-400" data-testid="text-flowers-found">Flowers: {crawlStatus.active.flowersFound}{crawlStatus.active.maxResults ? ` / ${crawlStatus.active.maxResults}` : ""}</span>
+                  <span className="text-pink-400" data-testid="text-flowers-found">Flowers: {crawlStatus.active.flowersFound}</span>
                   <span className="text-yellow-400" data-testid="text-pollen-found">Pollen: {crawlStatus.active.pollenFound}</span>
                   {speedMode && (
                     <span className={`font-mono px-1.5 py-0.5 rounded border ${speedMode.current === "blitz" ? "text-red-400 border-red-500/30 bg-red-500/10" : speedMode.current === "turtle" ? "text-blue-400 border-blue-500/30 bg-blue-500/10" : speedMode.current === "energation" ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/10" : speedMode.current === "caligratos" ? "text-purple-400 border-purple-500/30 bg-purple-500/10" : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"}`} data-testid="text-crawl-speed-mode">
