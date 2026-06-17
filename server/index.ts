@@ -128,6 +128,13 @@ app.use((req, res, next) => {
       } catch (err: any) {
         log(`carpenter orphan cleanup error: ${err.message}`);
       }
+      try {
+        const { startEmailQueue } = await import("./email-engine");
+        await startEmailQueue();
+        log(`email queue started`);
+      } catch (err: any) {
+        log(`email queue start error: ${err.message}`);
+      }
     },
   );
 })();

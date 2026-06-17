@@ -13,8 +13,9 @@ import HivePage from "@/pages/hive";
 import CarpenterAntsPage from "@/pages/carpenter-ants";
 import ManifestoPage from "@/pages/manifesto";
 import DocsPage from "@/pages/docs";
+import EmailPage from "@/pages/email";
 import NotFound from "@/pages/not-found";
-import { Loader2, Sun, LogOut, Box, Radio, Palette, Contrast, FolderOpen, Flower2, Bug, ScrollText, BookOpen } from "lucide-react";
+import { Loader2, Sun, LogOut, Box, Radio, Palette, Contrast, FolderOpen, Flower2, Bug, ScrollText, BookOpen, Mail } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { Link, useLocation } from "wouter";
 
@@ -84,6 +85,15 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
               <Bug className="w-3 h-3" />
               Carpenter Ants
             </Link>
+            <Link href="/email"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/email" ? `${theme.accentText} ${theme.accentBg}` : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-email"
+            >
+              <Mail className="w-3 h-3" />
+              Email
+            </Link>
             <Link href="/manifesto"
               className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
                 location === "/manifesto" ? `${theme.accentText} ${theme.accentBg}` : "text-muted-foreground/40 hover:text-muted-foreground/60"
@@ -147,6 +157,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
         <Route path="/hive" component={HivePage} />
         <Route path="/carpenter-ants" component={CarpenterAntsPage} />
         <Route path="/manifesto" component={ManifestoPage} />
+        <Route path="/email" component={EmailPage} />
         <Route path="/docs" component={DocsPage} />
         <Route component={NotFound} />
       </Switch>

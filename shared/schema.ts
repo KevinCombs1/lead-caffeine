@@ -1335,3 +1335,79 @@ export const legislativeCreditMap = pgTable("legislative_credit_map", {
   index("lcm_credit_idx").on(table.creditId),
   index("lcm_impact_idx").on(table.impactType),
 ]);
+
+// Email Outreach System
+export const emailTemplates = pgTable("email_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  variables: text("variables").array(),
+  isHtml: boolean("is_html").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const emailCampaigns = pgTable("email_campaigns", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  templateId: integer("template_id").references(() => emailTemplates.id),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("draft"),
+  senderName: text("sender_name"),
+  senderEmail: text("sender_email"),
+  recipientCount: integer("recipient_count").default(0),
+  sentCount: integer("sent_count").default(0),
+  deliveredCount: integer("delivered_count").default(0),
+  openedCount: integer("opened_count").default(0),
+  bouncedCount: integer("bounced_count").default(0),
+  dripSpeed: integer("drip_speed").default(60),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const emailRecipients = pgTable("email_recipients", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => emailCampaigns.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  company: text("company"),
+  variables: jsonb("variables"),
+  status: text("status").notNull().default("queued"),
+  provider: text("provider"),
+  sentAt: timestamp("sent_at"),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("email_recip_campaign_idx").on(table.campaignId),
+  index("email_recip_status_idx").on(table.status),
+  index("email_recip_email_idx").on(table.email),
+]);
+
+export const emailProviderConfigs = pgTable("email_provider_configs", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  host: text("host").notNull(),
+  port: integer("port").notNull(),
+  secure: boolean("secure").default(false),
+  authUser: text("auth_user").notNull(),
+  authPassword: text("auth_password").notNull(),
+  dailyLimit: integer("daily_limit").default(500),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEmailTemplateSchema = createInsertSchema(emailTemplates).omit({ id: true, createdAt: true });
+export const insertEmailCampaignSchema = createInsertSchema(emailCampaigns).omit({ id: true, createdAt: true, recipientCount: true, sentCount: true, deliveredCount: true, openedCount: true, bouncedCount: true });
+export const insertEmailRecipientSchema = createInsertSchema(emailRecipients).omit({ id: true, createdAt: true, status: true, provider: true, sentAt: true, error: true });
+export const insertEmailProviderConfigSchema = createInsertSchema(emailProviderConfigs).omit({ id: true, createdAt: true });
+
+export type EmailTemplate = typeof emailTemplates.$inferSelect;
+export type EmailCampaign = typeof emailCampaigns.$inferSelect;
+export type EmailRecipient = typeof emailRecipients.$inferSelect;
+export type EmailProviderConfig = typeof emailProviderConfigs.$inferSelect;
+export type InsertEmailTemplate = z.infer<typeof insertEmailTemplateSchema>;
+export type InsertEmailCampaign = z.infer<typeof insertEmailCampaignSchema>;
+export type InsertEmailRecipient = z.infer<typeof insertEmailRecipientSchema>;
+export type InsertEmailProviderConfig = z.infer<typeof insertEmailProviderConfigSchema>;

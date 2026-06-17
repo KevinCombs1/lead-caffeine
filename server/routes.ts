@@ -3373,5 +3373,217 @@ export async function registerRoutes(
     }
   });
 
+  // === EMAIL OUTREACH ===
+  const getEmailEngine = async () => {
+    const { getEmailEngine: getEng } = await import("./email-engine");
+    return getEng();
+  };
+
+  // Templates
+  app.get("/api/email/templates", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const templates = await storage.getEmailTemplates();
+      res.json(templates);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/email/templates", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { insertEmailTemplateSchema } = await import("@shared/schema");
+      const data = insertEmailTemplateSchema.parse(req.body);
+      const template = await storage.createEmailTemplate(data);
+      res.json(template);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/email/templates/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      await storage.deleteEmailTemplate(Number(req.params.id));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Campaigns
+  app.get("/api/email/campaigns", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const campaigns = await storage.getEmailCampaigns();
+      res.json(campaigns);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/email/campaigns", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { insertEmailCampaignSchema } = await import("@shared/schema");
+      const data = insertEmailCampaignSchema.parse(req.body);
+      const campaign = await storage.createEmailCampaign(data);
+      res.json(campaign);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/email/campaigns/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const campaign = await storage.getEmailCampaign(Number(req.params.id));
+      if (!campaign) return res.status(404).json({ error: "Not found" });
+      res.json(campaign);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/email/campaigns/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const campaign = await storage.updateEmailCampaign(Number(req.params.id), req.body);
+      if (!campaign) return res.status(404).json({ error: "Not found" });
+      res.json(campaign);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/email/campaigns/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      await storage.deleteEmailCampaign(Number(req.params.id));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Recipients
+  app.get("/api/email/campaigns/:id/recipients", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const recipients = await storage.getEmailRecipientsByCampaign(Number(req.params.id));
+      res.json(recipients);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/email/campaigns/:id/recipients", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const campaignId = Number(req.params.id);
+      const { rows, type = "csv" } = req.body;
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return res.status(400).json({ error: "No recipient rows provided" });
+      }
+      const { insertEmailRecipientSchema } = await import("@shared/schema");
+      const recipients: any[] = rows.map((row: any) => {
+        const parsed = insertEmailRecipientSchema.parse({
+          campaignId,
+          email: row.email,
+          firstName: row.firstName || row.first_name || row.firstName || row["First Name"] || row["firstName"] || "",
+          lastName: row.lastName || row.last_name || row.lastName || row["Last Name"] || row["lastName"] || "",
+          company: row.company || row.Company || row["Company"] || "",
+          variables: row.variables || {},
+        });
+        return parsed;
+      });
+      const created = await storage.createEmailRecipients(recipients);
+      const campaign = await storage.getEmailCampaign(campaignId);
+      if (campaign) {
+        const stats = await storage.getEmailRecipientStats(campaignId);
+        const total = stats.reduce((s, r) => s + r.count, 0);
+        await storage.updateEmailCampaign(campaignId, { recipientCount: total });
+      }
+      res.json({ added: created.length, recipients: created });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/email/campaigns/:id/stats", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const stats = await storage.getEmailRecipientStats(Number(req.params.id));
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Campaign actions
+  app.post("/api/email/campaigns/:id/start", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const campaign = await storage.updateEmailCampaign(Number(req.params.id), { status: "sending" });
+      if (!campaign) return res.status(404).json({ error: "Not found" });
+      const eng = await getEmailEngine();
+      await eng.start();
+      res.json({ ok: true, status: "sending" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/email/campaigns/:id/pause", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const campaign = await storage.updateEmailCampaign(Number(req.params.id), { status: "paused" });
+      if (!campaign) return res.status(404).json({ error: "Not found" });
+      res.json({ ok: true, status: "paused" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Provider configs
+  app.get("/api/email/providers", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const providers = await storage.getEmailProviderConfigs();
+      const safe = providers.map(p => ({
+        id: p.id,
+        name: p.name,
+        displayName: p.displayName,
+        host: p.host,
+        port: p.port,
+        secure: p.secure,
+        authUser: p.authUser,
+        hasPassword: !!p.authPassword,
+        dailyLimit: p.dailyLimit,
+        isActive: p.isActive,
+      }));
+      res.json(safe);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/email/providers", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { insertEmailProviderConfigSchema } = await import("@shared/schema");
+      const data = insertEmailProviderConfigSchema.parse(req.body);
+      const config = await storage.createEmailProviderConfig(data);
+      res.json(config);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/email/providers/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const config = await storage.updateEmailProviderConfig(Number(req.params.id), req.body);
+      if (!config) return res.status(404).json({ error: "Not found" });
+      res.json(config);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/email/providers/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      await storage.deleteEmailProviderConfig(Number(req.params.id));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return httpServer;
 }

@@ -20,6 +20,10 @@ import {
   hiveCompletedCombos, type HiveCompletedCombo,
   carpenterAntJobs, type CarpenterAntJob, type InsertCarpenterAntJob,
   carpenterAntResults, type CarpenterAntResult, type InsertCarpenterAntResult,
+  emailTemplates, type EmailTemplate, type InsertEmailTemplate,
+  emailCampaigns, type EmailCampaign, type InsertEmailCampaign,
+  emailRecipients, type EmailRecipient, type InsertEmailRecipient,
+  emailProviderConfigs, type EmailProviderConfig, type InsertEmailProviderConfig,
 } from "@shared/schema";
 import { ilike, or, count, inArray } from "drizzle-orm";
 
@@ -128,6 +132,29 @@ export interface IStorage {
   updateCarpenterResult(id: string, data: Partial<CarpenterAntResult>): Promise<void>;
   getCarpenterResults(jobId: string): Promise<CarpenterAntResult[]>;
   getCarpenterResult(id: string): Promise<CarpenterAntResult | undefined>;
+
+  // Email Outreach
+  createEmailTemplate(template: InsertEmailTemplate): Promise<EmailTemplate>;
+  getEmailTemplates(): Promise<EmailTemplate[]>;
+  getEmailTemplate(id: number): Promise<EmailTemplate | undefined>;
+  deleteEmailTemplate(id: number): Promise<void>;
+
+  createEmailCampaign(campaign: InsertEmailCampaign): Promise<EmailCampaign>;
+  getEmailCampaigns(): Promise<EmailCampaign[]>;
+  getEmailCampaign(id: number): Promise<EmailCampaign | undefined>;
+  updateEmailCampaign(id: number, updates: Partial<EmailCampaign>): Promise<EmailCampaign | undefined>;
+  deleteEmailCampaign(id: number): Promise<void>;
+
+  createEmailRecipients(recipients: InsertEmailRecipient[]): Promise<EmailRecipient[]>;
+  getEmailRecipientsByCampaign(campaignId: number): Promise<EmailRecipient[]>;
+  getEmailRecipientsByStatus(status: string, limit: number): Promise<EmailRecipient[]>;
+  updateEmailRecipient(id: number, updates: Partial<EmailRecipient>): Promise<EmailRecipient | undefined>;
+  getEmailRecipientStats(campaignId: number): Promise<{ status: string; count: number }[]>;
+
+  createEmailProviderConfig(config: InsertEmailProviderConfig): Promise<EmailProviderConfig>;
+  getEmailProviderConfigs(): Promise<EmailProviderConfig[]>;
+  updateEmailProviderConfig(id: number, updates: Partial<EmailProviderConfig>): Promise<EmailProviderConfig | undefined>;
+  deleteEmailProviderConfig(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -857,6 +884,89 @@ export class DatabaseStorage implements IStorage {
   async getCarpenterResult(id: string): Promise<CarpenterAntResult | undefined> {
     const [result] = await db.select().from(carpenterAntResults).where(eq(carpenterAntResults.id, id));
     return result;
+  }
+
+  // Email Outreach
+  async createEmailTemplate(template: InsertEmailTemplate): Promise<EmailTemplate> {
+    const [result] = await db.insert(emailTemplates).values(template).returning();
+    return result;
+  }
+
+  async getEmailTemplates(): Promise<EmailTemplate[]> {
+    return db.select().from(emailTemplates).orderBy(desc(emailTemplates.createdAt));
+  }
+
+  async getEmailTemplate(id: number): Promise<EmailTemplate | undefined> {
+    const [result] = await db.select().from(emailTemplates).where(eq(emailTemplates.id, id));
+    return result;
+  }
+
+  async deleteEmailTemplate(id: number): Promise<void> {
+    await db.delete(emailTemplates).where(eq(emailTemplates.id, id));
+  }
+
+  async createEmailCampaign(campaign: InsertEmailCampaign): Promise<EmailCampaign> {
+    const [result] = await db.insert(emailCampaigns).values(campaign).returning();
+    return result;
+  }
+
+  async getEmailCampaigns(): Promise<EmailCampaign[]> {
+    return db.select().from(emailCampaigns).orderBy(desc(emailCampaigns.createdAt));
+  }
+
+  async getEmailCampaign(id: number): Promise<EmailCampaign | undefined> {
+    const [result] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, id));
+    return result;
+  }
+
+  async updateEmailCampaign(id: number, updates: Partial<EmailCampaign>): Promise<EmailCampaign | undefined> {
+    const [result] = await db.update(emailCampaigns).set(updates).where(eq(emailCampaigns.id, id)).returning();
+    return result;
+  }
+
+  async deleteEmailCampaign(id: number): Promise<void> {
+    await db.delete(emailCampaigns).where(eq(emailCampaigns.id, id));
+  }
+
+  async createEmailRecipients(recipients: InsertEmailRecipient[]): Promise<EmailRecipient[]> {
+    if (recipients.length === 0) return [];
+    return db.insert(emailRecipients).values(recipients).returning();
+  }
+
+  async getEmailRecipientsByCampaign(campaignId: number): Promise<EmailRecipient[]> {
+    return db.select().from(emailRecipients).where(eq(emailRecipients.campaignId, campaignId)).orderBy(asc(emailRecipients.createdAt));
+  }
+
+  async getEmailRecipientsByStatus(status: string, limit: number): Promise<EmailRecipient[]> {
+    return db.select().from(emailRecipients).where(eq(emailRecipients.status, status)).limit(limit).orderBy(asc(emailRecipients.createdAt));
+  }
+
+  async updateEmailRecipient(id: number, updates: Partial<EmailRecipient>): Promise<EmailRecipient | undefined> {
+    const [result] = await db.update(emailRecipients).set(updates).where(eq(emailRecipients.id, id)).returning();
+    return result;
+  }
+
+  async getEmailRecipientStats(campaignId: number): Promise<{ status: string; count: number }[]> {
+    const stats = await db.select({ status: emailRecipients.status, count: count() }).from(emailRecipients).where(eq(emailRecipients.campaignId, campaignId)).groupBy(emailRecipients.status);
+    return stats.map(s => ({ status: s.status || "unknown", count: Number(s.count) }));
+  }
+
+  async createEmailProviderConfig(config: InsertEmailProviderConfig): Promise<EmailProviderConfig> {
+    const [result] = await db.insert(emailProviderConfigs).values(config).returning();
+    return result;
+  }
+
+  async getEmailProviderConfigs(): Promise<EmailProviderConfig[]> {
+    return db.select().from(emailProviderConfigs).orderBy(asc(emailProviderConfigs.name));
+  }
+
+  async updateEmailProviderConfig(id: number, updates: Partial<EmailProviderConfig>): Promise<EmailProviderConfig | undefined> {
+    const [result] = await db.update(emailProviderConfigs).set(updates).where(eq(emailProviderConfigs.id, id)).returning();
+    return result;
+  }
+
+  async deleteEmailProviderConfig(id: number): Promise<void> {
+    await db.delete(emailProviderConfigs).where(eq(emailProviderConfigs.id, id));
   }
 }
 
