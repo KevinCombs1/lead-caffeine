@@ -23,7 +23,7 @@ import {
 import {
   Mail, Send, Pause, Play, Trash2, Plus, Upload, Settings, FileText, Users,
   ChevronDown, ChevronUp, Clock, CheckCircle, AlertTriangle, XCircle,
-  Eye, Loader2
+  Eye, Loader2, HelpCircle
 } from "lucide-react";
 
 interface Campaign {
@@ -87,6 +87,7 @@ export default function EmailPage() {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [showProviderDialog, setShowProviderDialog] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [showGuideDialog, setShowGuideDialog] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [expandedCampaign, setExpandedCampaign] = useState<number | null>(null);
   const [csvText, setCsvText] = useState("");
@@ -278,9 +279,19 @@ export default function EmailPage() {
           <Mail className="w-5 h-5" />
           Email Outreach
         </h1>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Human Timing Algorithm — 1,000+ emails/day via Gmail, Outlook, Yahoo rotation
-        </p>
+        <div className="flex items-center justify-between mt-1">
+          <p className="text-xs text-muted-foreground">
+            Human Timing Algorithm — 1,000+ emails/day via Gmail, Outlook, Yahoo rotation
+          </p>
+          <button
+            onClick={() => setShowGuideDialog(true)}
+            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded border ${theme.accentBorder} ${theme.accentClass} hover:bg-accent/10 transition-colors`}
+            data-testid="button-email-guide"
+          >
+            <HelpCircle className="w-3 h-3" />
+            How-To Guide
+          </button>
+        </div>
       </div>
 
       <div className="p-4">
@@ -695,6 +706,97 @@ export default function EmailPage() {
               {uploadRecipients.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Upload className="w-3.5 h-3.5 mr-1" />}
               Upload {uploadRecipients.isPending ? "..." : ""}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* How-To Guide Dialog */}
+      <Dialog open={showGuideDialog} onOpenChange={setShowGuideDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-sm flex items-center gap-2">
+              <HelpCircle className="w-4 h-4" />
+              Email Outreach — How-To Guide
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-xs text-foreground">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">1. Configure Your SMTP Providers</h3>
+              <p className="text-muted-foreground">
+                Go to the <strong>Providers</strong> tab and add your Gmail, Outlook, and Yahoo app passwords. These are NOT your regular passwords — you must generate an app-specific password in your account settings.
+              </p>
+              <ul className="list-disc list-inside mt-1 space-y-0.5 text-muted-foreground">
+                <li><strong>Gmail:</strong> Google Account → Security → 2-Step Verification → App passwords → Generate for "Mail"</li>
+                <li><strong>Outlook:</strong> Account settings → Security → Advanced security options → App passwords</li>
+                <li><strong>Yahoo:</strong> Account Info → Account Security → Generate app password</li>
+              </ul>
+              <p className="text-muted-foreground mt-1">
+                Daily limits: Gmail 500/day, Outlook 300/day, Yahoo 500/day. Total: <strong>1,300/day</strong>.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">2. Create a Template</h3>
+              <p className="text-muted-foreground">
+                Go to the <strong>Templates</strong> tab and click <strong>New Template</strong>. Use variables like {"{"}{"{"}firstName{"}"}{"}"}, {"{"}{"{"}lastName{"}"}{"}"}, {"{"}{"{"}company{"}"}{"}"}, {"{"}{"{"}email{"}"}{"}"} in your subject and body. These get replaced with actual recipient data at send time.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">3. Create a Campaign</h3>
+              <p className="text-muted-foreground">
+                Go to the <strong>Campaigns</strong> tab and click <strong>New Campaign</strong>. Fill in the name, subject, body, sender name, and sender email. Set the <strong>drip speed</strong> (seconds between emails). 72 seconds is the sweet spot for looking human.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">4. Upload Recipients</h3>
+              <p className="text-muted-foreground">
+                Click the <strong>Upload</strong> icon on a campaign. Paste a CSV with header row and columns: <code>email,firstName,lastName,company</code>. The first row is the header. Example:
+              </p>
+              <pre className="bg-muted/50 rounded p-2 mt-1 font-mono text-[10px]">
+email,firstName,lastName,company
+alice@techcorp.com,Alice,Johnson,TechCorp
+bob@innovate.io,Bob,Williams,Innovate LLC
+charlie@startup.co,Charlie,Brown,StartupCo
+              </pre>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">5. Start Sending</h3>
+              <p className="text-muted-foreground">
+                Click the <strong>Play</strong> button on your campaign. The engine will:
+              </p>
+              <ul className="list-disc list-inside mt-1 space-y-0.5 text-muted-foreground">
+                <li>Rotate between Gmail, Outlook, and Yahoo based on who has the most daily capacity left</li>
+                <li>Wait the configured drip speed between each send (e.g., 72 seconds)</li>
+                <li>Skip any provider that has no credentials or hit its daily limit</li>
+                <li>Mark recipients as "sent" or "bounced" with error details</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">6. Monitor & Pause</h3>
+              <p className="text-muted-foreground">
+                Expand a campaign to see every recipient, their status, and any errors. Click the <strong>Pause</strong> button to stop sending. The engine resumes automatically when you click <strong>Play</strong> again.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">Human Timing Algorithm Tips</h3>
+              <ul className="list-disc list-inside mt-1 space-y-0.5 text-muted-foreground">
+                <li>Send only during business hours (9 AM – 5 PM) to avoid spam folders</li>
+                <li>Drip speed 60–120 seconds looks human. Under 30 seconds looks like a bot</li>
+                <li>Start with 50–100 test sends before a large blast</li>
+                <li>Keep the same sender name across all providers for consistency</li>
+                <li>Personalize with variables — emails with {"{"}{"{"}firstName{"}"}{"}"} get 2× the reply rate</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button size="sm">Got it</Button>
+            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
