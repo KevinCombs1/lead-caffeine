@@ -23,7 +23,7 @@ import {
 import {
   Mail, Send, Pause, Play, Trash2, Plus, Upload, Settings, FileText, Users,
   ChevronDown, ChevronUp, Clock, CheckCircle, AlertTriangle, XCircle,
-  Eye, Loader2, HelpCircle
+  Eye, Loader2, HelpCircle, Wand2, Download
 } from "lucide-react";
 
 interface Campaign {
@@ -88,6 +88,7 @@ export default function EmailPage() {
   const [showProviderDialog, setShowProviderDialog] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showGuideDialog, setShowGuideDialog] = useState(false);
+  const [showOptimizerDialog, setShowOptimizerDialog] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [expandedCampaign, setExpandedCampaign] = useState<number | null>(null);
   const [csvText, setCsvText] = useState("");
@@ -121,15 +122,15 @@ export default function EmailPage() {
     dailyLimit: 500,
   });
 
-  const { data: campaigns, isLoading: campaignsLoading } = useQuery({
+  const { data: campaigns, isLoading: campaignsLoading } = useQuery<Campaign[]>({
     queryKey: ["/api/email/campaigns"],
   });
 
-  const { data: templates } = useQuery({
+  const { data: templates } = useQuery<Template[]>({
     queryKey: ["/api/email/templates"],
   });
 
-  const { data: providers } = useQuery({
+  const { data: providers } = useQuery<Provider[]>({
     queryKey: ["/api/email/providers"],
   });
 
@@ -294,6 +295,20 @@ export default function EmailPage() {
         </div>
       </div>
 
+      <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+        <button
+          onClick={() => setShowOptimizerDialog(true)}
+          className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded border ${theme.accentBorder} ${theme.accentClass} hover:bg-accent/10 transition-colors`}
+          data-testid="button-csv-optimizer"
+        >
+          <Wand2 className="w-3.5 h-3.5" />
+          CSV Optimizer
+        </button>
+        <span className="text-[10px] text-muted-foreground">
+          Paste any messy contact CSV → get clean email-ready output
+        </span>
+      </div>
+
       <div className="p-4">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-4">
@@ -351,7 +366,7 @@ export default function EmailPage() {
                               <Play className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => setUploadingCampaign(campaign) || setShowUploadDialog(true)} data-testid={`button-upload-${campaign.id}`}>
+                          <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => { setUploadingCampaign(campaign); setShowUploadDialog(true); }} data-testid={`button-upload-${campaign.id}`}>
                             <Upload className="w-3.5 h-3.5" />
                           </Button>
                           <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => setExpandedCampaign(expandedCampaign === campaign.id ? null : campaign.id)} data-testid={`button-expand-${campaign.id}`}>
@@ -800,6 +815,189 @@ charlie@startup.co,Charlie,Brown,StartupCo
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* CSV Optimizer Dialog */}
+      <Dialog open={showOptimizerDialog} onOpenChange={setShowOptimizerDialog}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-sm flex items-center gap-2">
+              <Wand2 className="w-4 h-4" />
+              CSV List Optimizer
+            </DialogTitle>
+          </DialogHeader>
+          <CsvOptimizer />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function CsvOptimizer() {
+  const [input, setInput] = useState("");
+  const [output, setOutput] = useState("");
+  const [stats, setStats] = useState({
+    total: 0, clean: 0, dupes: 0, empty: 0, invalid: 0,
+  });
+
+  const BAD_EMAIL_TLDS = new Set([
+    "png", "jpg", "jpeg", "gif", "svg", "ico", "pdf", "doc", "zip",
+    "tar", "gz", "css", "js", "html", "json", "xml", "bmp", "webp", "mp4",
+  ]);
+  const isValidEmail = (email: string) => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
+    const domain = email.split("@")[1] || "";
+    const tld = domain.split(".").pop()?.toLowerCase() || "";
+    return !BAD_EMAIL_TLDS.has(tld);
+  };
+
+  const extractFirstName = (email: string) => {
+    const local = email.split("@")[0];
+    // Remove trailing digits and common separators
+    let name = local.replace(/[\d._+-]+$/, "");
+    // Handle patterns like jhiginbothom, mpipitone, shogan1
+    if (name.includes(".")) name = name.split(".")[0];
+    if (name.includes("_")) name = name.split("_")[0];
+    // Capitalize first letter
+    if (name.length > 1) return name.charAt(0).toUpperCase() + name.slice(1);
+    return name || local;
+  };
+
+  const handleOptimize = () => {
+    if (!input.trim()) return;
+
+    const lines = input.trim().split(/\r?\n/);
+    const headerLine = lines[0] || "";
+    const hasHeader = headerLine.toLowerCase().includes("email") || headerLine.includes("@");
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+
+    const seen = new Set<string>();
+    const clean: { email: string; firstName: string; lastName: string; company: string }[] = [];
+
+    let dupes = 0, empty = 0, invalid = 0;
+
+    // Map columns: try to find email, name, website, phone indices
+    const headers = hasHeader ? headerLine.split(",").map(h => h.trim().toLowerCase().replace(/"/g, "")) : [];
+    const emailIdx = headers.findIndex(h => h === "email" || h === "emails" || h === "e-mail" || h === "e-mail");
+    const nameIdx = headers.findIndex(h => h === "name" || h === "company" || h === "business" || h === "organization" || h === "title");
+
+    for (const line of dataLines) {
+      if (!line.trim()) continue;
+      const cols = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+      // If header identified, use indices; otherwise assume: name, website, phone, email (or email as first)
+      let email = emailIdx >= 0 ? cols[emailIdx] : cols[cols.length - 1];
+      if (!email || !email.includes("@")) {
+        // Try finding the email in any column
+        email = cols.find(c => c.includes("@")) || "";
+      }
+      if (!email.trim()) {
+        empty++;
+        continue;
+      }
+      if (!isValidEmail(email)) {
+        invalid++;
+        continue;
+      }
+      const lowerEmail = email.toLowerCase();
+      if (seen.has(lowerEmail)) {
+        dupes++;
+        continue;
+      }
+      seen.add(lowerEmail);
+      const company = nameIdx >= 0 ? cols[nameIdx] : (cols[0] || "");
+      clean.push({
+        email: lowerEmail,
+        firstName: extractFirstName(email),
+        lastName: "",
+        company: company || "",
+      });
+    }
+
+    const outLines = ["email,firstName,lastName,company", ...clean.map(c =>
+      `${c.email},${c.firstName},${c.lastName},${c.company}`
+    )];
+    setOutput(outLines.join("\n"));
+    setStats({
+      total: dataLines.length,
+      clean: clean.length,
+      dupes,
+      empty,
+      invalid,
+    });
+  };
+
+  const download = () => {
+    const blob = new Blob([output], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "optimized_contacts.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-4 text-xs">
+      <div className="space-y-2">
+        <Label className="text-xs">Paste your messy CSV here</Label>
+        <Textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder={
+            `name,website,phone,email\n` +
+            `Capital Commercial Real Estate,capitalcomre.com,(610) 359-9700,info@capitalcomre.com\n` +
+            `M&T Realty Capital Corp,mandtrealtycapital.com,(610) 341-0200,rbarry@mtb.com`
+          }
+          rows={8}
+          className="text-xs font-mono"
+          data-testid="csv-optimizer-input"
+        />
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={handleOptimize} className="text-xs" data-testid="button-optimize">
+            <Wand2 className="w-3 h-3 mr-1" />
+            Optimize
+          </Button>
+          {output && (
+            <Button size="sm" variant="outline" onClick={download} className="text-xs" data-testid="button-download-csv">
+              <Download className="w-3 h-3 mr-1" />
+              Download CSV
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {stats.total > 0 && (
+        <div className="grid grid-cols-4 gap-2">
+          <div className="border rounded p-2 text-center">
+            <div className="text-lg font-bold">{stats.total}</div>
+            <div className="text-[10px] text-muted-foreground">Total rows</div>
+          </div>
+          <div className="border rounded p-2 text-center">
+            <div className="text-lg font-bold text-green-500">{stats.clean}</div>
+            <div className="text-[10px] text-muted-foreground">Clean contacts</div>
+          </div>
+          <div className="border rounded p-2 text-center">
+            <div className="text-lg font-bold text-amber-500">{stats.dupes}</div>
+            <div className="text-[10px] text-muted-foreground">Duplicates removed</div>
+          </div>
+          <div className="border rounded p-2 text-center">
+            <div className="text-lg font-bold text-red-500">{stats.empty + stats.invalid}</div>
+            <div className="text-[10px] text-muted-foreground">Empty/invalid dropped</div>
+          </div>
+        </div>
+      )}
+
+      {output && (
+        <div className="space-y-2">
+          <Label className="text-xs">Clean output</Label>
+          <Textarea
+            value={output}
+            readOnly
+            rows={8}
+            className="text-xs font-mono bg-muted/50"
+            data-testid="csv-optimizer-output"
+          />
+        </div>
+      )}
     </div>
   );
 }
