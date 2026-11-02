@@ -242,17 +242,31 @@ export default function GeofencePage() {
                 as a polygon with a configurable radius in metres.
               </p>
               <div className="flex items-center gap-3">
-                <label className="text-xs font-medium">Radius (metres):</label>
+                <label className="text-xs font-medium">Radius:</label>
                 <select
                   value={radiusM}
                   onChange={(e) => setRadiusM(Number(e.target.value))}
                   className="bg-input border rounded px-2 py-1 text-xs"
                 >
-                  <option value={100}>100m</option>
-                  <option value={250}>250m</option>
-                  <option value={500}>500m</option>
-                  <option value={750}>750m</option>
-                  <option value={1000}>1000m</option>
+                  <option value={30}>100 ft (30m)</option>
+                  <option value={46}>150 ft (46m)</option>
+                  <option value={61}>200 ft (61m)</option>
+                  <option value={76}>250 ft (76m)</option>
+                  <option value={91}>300 ft (91m)</option>
+                  <option value={107}>350 ft (107m)</option>
+                  <option value={122}>400 ft (122m)</option>
+                  <option value={137}>450 ft (137m)</option>
+                  <option value={152}>500 ft (152m)</option>
+                  <option value={168}>550 ft (168m)</option>
+                  <option value={183}>600 ft (183m)</option>
+                  <option value={198}>650 ft (198m)</option>
+                  <option value={213}>700 ft (213m)</option>
+                  <option value={229}>750 ft (229m)</option>
+                  <option value={244}>800 ft (244m)</option>
+                  <option value={260}>850 ft (260m)</option>
+                  <option value={274}>900 ft (274m)</option>
+                  <option value={290}>950 ft (290m)</option>
+                  <option value={305}>1000 ft (305m)</option>
                 </select>
                 <button
                   onClick={() => generateMutation.mutate({ radiusM })}
@@ -363,7 +377,7 @@ export default function GeofencePage() {
                       <td className="p-2 text-muted-foreground">{g.address || "—"}, {g.city || ""}, {g.state || ""}</td>
                       <td className="p-2 text-right font-mono">{g.latitude.toFixed(6)}</td>
                       <td className="p-2 text-right font-mono">{g.longitude.toFixed(6)}</td>
-                      <td className="p-2 text-right">{g.radiusM}m</td>
+                      <td className="p-2 text-right">{g.radiusM}m ({Math.round(g.radiusM / 0.3048)}ft)</td>
                       <td className="p-2 text-center">
                         <button
                           onClick={() => toggleMutation.mutate({ id: g.id, active: !g.active })}

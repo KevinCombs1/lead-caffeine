@@ -4937,14 +4937,20 @@ export async function registerRoutes(
       const jobId = req.query.jobId as string;
       if (!jobId) return res.status(400).json({ error: "jobId required" });
       const onlyGeocoded = req.query.onlyGeocoded !== "false";
+      // Optional radius override in feet (converts all geofences to same radius)
+      const radiusFt = req.query.radiusFt ? parseFloat(req.query.radiusFt as string) : null;
+      const overrideRadiusM = radiusFt ? Math.round(radiusFt * 0.3048) : null;
       const companies = await storage.getSupremeCompaniesForExport(jobId, onlyGeocoded);
       const csvEscape = (s: string | null) => {
         if (!s) return "";
         if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
         return s;
       };
-      // Convert radius yards to metres (default 250m if no radius set)
-      const yardsToM = (yards: number | null) => yards ? (yards * 0.9144).toFixed(0) : "250";
+      // Convert radius yards to metres, or use override
+      const radiusToM = (yards: number | null) => {
+        if (overrideRadiusM) return String(overrideRadiusM);
+        return yards ? (yards * 0.9144).toFixed(0) : "250";
+      };
       const header = "name,latitude,longitude,radius_m,address,city,state\n";
       const rows = companies
         .filter(c => c.latitude != null && c.longitude != null)
@@ -4953,14 +4959,17 @@ export async function registerRoutes(
             csvEscape(c.name ?? ""),
             c.latitude !== null ? String(c.latitude) : "",
             c.longitude !== null ? String(c.longitude) : "",
-            yardsToM(c.radiusYards ?? null),
+            radiusToM(c.radiusYards ?? null),
             csvEscape(c.address ?? ""),
             csvEscape(c.city ?? ""),
             csvEscape(c.state ?? ""),
           ].join(",")
         ).join("\n");
+      const filename = overrideRadiusM
+        ? `supreme-line2-campaign-geofences-${radiusFt}ft.csv`
+        : `supreme-line2-campaign-geofences.csv`;
       res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", `attachment; filename=supreme-line2-campaign-geofences.csv`);
+      res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
       res.send(header + rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

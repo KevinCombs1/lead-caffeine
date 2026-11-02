@@ -256,6 +256,8 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
   // CSV paste state
   const [csvText, setCsvText] = useState("");
   const [showCsvPaste, setShowCsvPaste] = useState(false);
+  // Radius override for CSV uploads (in feet, converted to metres)
+  const [radiusOverride, setRadiusOverride] = useState(""); // empty = use CSV's radius_m column
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -308,7 +310,26 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
 
   const uploadCsvMutation = useMutation({
     mutationFn: async (csv: string) => {
-      const res = await apiRequest("POST", `/api/campaigns/${campaignId}/upload-csv`, { csv });
+      // If radius override is set, replace the radius_m column in every data row
+      let finalCsv = csv;
+      if (radiusOverride) {
+        const radiusM = Math.round(parseFloat(radiusOverride) * 0.3048); // feet to metres
+        const lines = csv.split(/\r?\n/);
+        if (lines.length > 0) {
+          // Find the header and radius_m column index
+          const header = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/[^a-z_]/g, ""));
+          const radiusIdx = header.findIndex((h) => h === "radiusm" || h === "radius_m" || h === "radius");
+          if (radiusIdx >= 0) {
+            finalCsv = lines.map((line, i) => {
+              if (i === 0) return line; // skip header
+              const fields = line.split(",");
+              if (fields.length > radiusIdx) fields[radiusIdx] = String(radiusM);
+              return fields.join(",");
+            }).join("\n");
+          }
+        }
+      }
+      const res = await apiRequest("POST", `/api/campaigns/${campaignId}/upload-csv`, { csv: finalCsv });
       return res.json();
     },
     onSuccess: (data) => {
@@ -406,7 +427,7 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
         <p className="text-xs text-muted-foreground">
           Upload a CSV with pre-geocoded businesses. Columns: <code className="text-primary">name, latitude, longitude, radius_m, address, city, state</code>
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <input
             ref={csvRef}
             type="file"
@@ -437,6 +458,38 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
           </button>
           {uploadCsvMutation.data && (
             <span className="text-xs text-green-400">✓ {uploadCsvMutation.data.created} created</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium whitespace-nowrap">Override Radius:</label>
+          <select
+            value={radiusOverride}
+            onChange={(e) => setRadiusOverride(e.target.value)}
+            className="bg-input border rounded px-2 py-1 text-xs"
+          >
+            <option value="">Use CSV's radius</option>
+            <option value="100">100 ft (30m)</option>
+            <option value="150">150 ft (46m)</option>
+            <option value="200">200 ft (61m)</option>
+            <option value="250">250 ft (76m)</option>
+            <option value="300">300 ft (91m)</option>
+            <option value="350">350 ft (107m)</option>
+            <option value="400">400 ft (122m)</option>
+            <option value="450">450 ft (137m)</option>
+            <option value="500">500 ft (152m)</option>
+            <option value="550">550 ft (168m)</option>
+            <option value="600">600 ft (183m)</option>
+            <option value="650">650 ft (198m)</option>
+            <option value="700">700 ft (213m)</option>
+            <option value="750">750 ft (229m)</option>
+            <option value="800">800 ft (244m)</option>
+            <option value="850">850 ft (260m)</option>
+            <option value="900">900 ft (274m)</option>
+            <option value="950">950 ft (290m)</option>
+            <option value="1000">1000 ft (305m)</option>
+          </select>
+          {radiusOverride && (
+            <span className="text-[10px] text-muted-foreground">All geofences will use {radiusOverride} ft ({Math.round(parseFloat(radiusOverride) * 0.3048)}m) regardless of CSV values</span>
           )}
         </div>
         {showCsvPaste && (
