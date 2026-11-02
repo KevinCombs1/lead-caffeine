@@ -5182,11 +5182,12 @@ export async function registerRoutes(
       if (!csvText) {
         return res.status(400).json({ error: "csv content required (send as {csv: '...'} JSON)" });
       }
+      const groupName: string | undefined = req.body?.groupName;
       const { rows, errors } = parseCsv(csvText);
       if (rows.length === 0) {
         return res.status(400).json({ created: 0, skipped: 0, errors: errors.length ? errors : ["no valid rows parsed"] });
       }
-      const result = await storage.createGeofencesFromCsv(rows);
+      const result = await storage.createGeofencesFromCsv(rows, undefined, groupName);
       res.json({ ...result, errors });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -5202,9 +5203,18 @@ export async function registerRoutes(
       for (const g of allGeofences) {
         const groupKey = g.jobId || g.source || "ungrouped";
         if (!groups[groupKey]) {
+          // Try to use a human-readable label
+          let label: string;
+          if (g.jobId) {
+            // If jobId looks like a UUID (Supreme job), truncate it
+            // If it's a custom group name, show it as-is
+            label = g.jobId.length > 20 ? `Supreme Job ${g.jobId.slice(0, 8)}` : g.jobId;
+          } else {
+            label = g.source === "csv_upload" ? "CSV Upload" : (g.source || "Manual");
+          }
           groups[groupKey] = {
             id: groupKey,
-            label: g.jobId ? `Supreme Job ${g.jobId.slice(0, 8)}` : (g.source === "csv_upload" ? "CSV Upload" : (g.source || "Manual")),
+            label,
             count: 0,
             source: g.source || "unknown",
           };

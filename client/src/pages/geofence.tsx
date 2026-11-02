@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MapPin, Radio, Users, Loader2, Power, Trash2, RefreshCw, Smartphone, Send, Zap, Megaphone, Upload, FileUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
@@ -122,25 +122,37 @@ export default function GeofencePage() {
     },
   });
 
-  const [csvText, setCsvText] = useState("");
   const [showCsvUpload, setShowCsvUpload] = useState(false);
+  const [csvGroupName, setCsvGroupName] = useState("");
+  const csvFileRef = useRef<HTMLInputElement>(null);
 
   const csvUploadMutation = useMutation({
-    mutationFn: async (csv: string) => {
-      const res = await apiRequest("POST", "/api/geofence/upload-csv", { csv });
+    mutationFn: async ({ csv, groupName }: { csv: string; groupName: string }) => {
+      const res = await apiRequest("POST", "/api/geofence/upload-csv", { csv, groupName: groupName || undefined });
       return res.json();
     },
     onSuccess: (data) => {
       toast({ title: `Created ${data.created} geofences (${data.skipped} skipped)` });
-      setCsvText("");
       setShowCsvUpload(false);
+      setCsvGroupName("");
+      if (csvFileRef.current) csvFileRef.current.value = "";
       queryClient.invalidateQueries({ queryKey: ["geofences"] });
       queryClient.invalidateQueries({ queryKey: ["geofence-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["geofence-groups"] });
     },
     onError: (err: any) => {
       toast({ title: `Upload failed: ${err.message}`, variant: "destructive" });
     },
   });
+
+  const handleCsvFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      csvUploadMutation.mutate({ csv: text, groupName: csvGroupName });
+    };
+    reader.readAsText(file);
+  };
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
@@ -314,27 +326,41 @@ export default function GeofencePage() {
                 </button>
                 {showCsvUpload && (
                   <div className="mt-2 space-y-2">
-                    <textarea
-                      value={csvText}
-                      onChange={(e) => setCsvText(e.target.value)}
-                      placeholder={"name,latitude,longitude,radius_m,address,city,state\nJ&J Auto Repair,41.681427,-73.855606,250,123 Main St,Poughkeepsie,NY"}
-                      className="bg-input border rounded px-2 py-1 text-xs w-full font-mono h-32"
-                    />
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => csvUploadMutation.mutate(csvText)}
-                        disabled={csvUploadMutation.isPending || !csvText.trim()}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
-                      >
-                        {csvUploadMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-                        Upload CSV
-                      </button>
-                      {csvUploadMutation.data && (
-                        <span className="text-xs text-muted-foreground">
-                          Created: {csvUploadMutation.data.created} | Skipped: {csvUploadMutation.data.skipped}
-                        </span>
-                      )}
+                    <div>
+                      <label className="text-[10px] font-medium block mb-0.5">Group Name (shows in Campaign Builder)</label>
+                      <input
+                        value={csvGroupName}
+                        onChange={(e) => setCsvGroupName(e.target.value)}
+                        placeholder="e.g. Poughkeepsie HVAC, Arlington Restaurants"
+                        className="bg-input border rounded px-2 py-1 text-xs w-full"
+                      />
                     </div>
+                    <input
+                      ref={csvFileRef}
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleCsvFile(file);
+                      }}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => csvFileRef.current?.click()}
+                      disabled={csvUploadMutation.isPending}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {csvUploadMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                      Choose CSV File
+                    </button>
+                    {csvUploadMutation.isPending && (
+                      <span className="text-xs text-muted-foreground">Uploading...</span>
+                    )}
+                    {csvUploadMutation.data && !csvUploadMutation.isPending && (
+                      <span className="text-xs text-muted-foreground">
+                        Created: {csvUploadMutation.data.created} | Skipped: {csvUploadMutation.data.skipped}
+                      </span>
+                    )}
                     <div className="bg-muted/30 rounded p-2 text-[10px] font-mono text-muted-foreground">
                       Required: name, latitude, longitude<br/>
                       Optional: radius_m (default 250m), address, city, state<br/>

@@ -270,7 +270,7 @@ export interface IStorage {
   getActiveCampaignsForGeofence(geofenceId: string): Promise<Campaign[]>;
 
   // CSV upload geofences
-  createGeofencesFromCsv(rows: Array<{ name: string; latitude: number; longitude: number; radiusM: number; address?: string; city?: string; state?: string }>, campaignId?: string): Promise<{ created: number; skipped: number }>;
+  createGeofencesFromCsv(rows: Array<{ name: string; latitude: number; longitude: number; radiusM: number; address?: string; city?: string; state?: string }>, campaignId?: string, groupName?: string): Promise<{ created: number; skipped: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1913,6 +1913,7 @@ export class DatabaseStorage implements IStorage {
   async createGeofencesFromCsv(
     rows: Array<{ name: string; latitude: number; longitude: number; radiusM: number; address?: string; city?: string; state?: string }>,
     campaignId?: string,
+    groupName?: string,
   ): Promise<{ created: number; skipped: number }> {
     if (rows.length === 0) return { created: 0, skipped: 0 };
 
@@ -1925,6 +1926,7 @@ export class DatabaseStorage implements IStorage {
       city: r.city,
       state: r.state,
       source: "csv_upload",
+      jobId: groupName || undefined,
     }));
 
     let created = 0;
