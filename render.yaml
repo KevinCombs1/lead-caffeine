@@ -1,12 +1,12 @@
 # Render Blueprint — Lead Caffeine Geofencing Platform
 # Docs: https://render.com/docs/blueprint-spec
 #
-# After pushing this file to GitHub, go to:
+# After pushing to GitHub, go to:
 # https://dashboard.render.com/blueprints → New Blueprint → connect repo
-# Render will create all services defined below automatically.
+# Render creates all services defined below automatically.
 #
-# IMPORTANT: After deploy, run scripts/init-production.sh to set up
-# database tables and ClickHouse schema.
+# After deploy: open a shell on the lead-caffeine web service and run:
+#   ./scripts/init-production.sh
 
 services:
   # ── Web Service (Node.js app) ──────────────────────────────────────────
@@ -26,9 +26,12 @@ services:
       - key: SERPER_API_KEY
         sync: false
       - key: DATABASE_URL
-        value: postgresql://leadcaffeine:leadcaffeine123@lead-caffeine-db:5432/leadcaffeine
+        value: postgresql://leadcaffeine:changeme@lead-caffeine-db:5432/leadcaffeine
       - key: REDIS_URL
-        value: redis://lead-caffeine-redis:6379
+        fromService:
+          type: pserv
+          name: lead-caffeine-redis
+          envVarKey: REDIS_URL
       - key: CLICKHOUSE_URL
         value: http://lead-caffeine-clickhouse:8123
       - key: CLICKHOUSE_PASSWORD
@@ -43,10 +46,9 @@ services:
   # ── PostgreSQL + PostGIS (private service) ──────────────────────────────
   - type: pserv
     name: lead-caffeine-db
-    runtime: docker
+    runtime: image
+    image: postgis/postgis:18-3.7
     plan: starter
-    dockerRepo: postgis/postgis
-    dockerTag: "18-3.7"
     envVars:
       - key: POSTGRES_USER
         value: leadcaffeine
@@ -54,22 +56,27 @@ services:
         sync: false
       - key: POSTGRES_DB
         value: leadcaffeine
+    disk:
+      name: pg-data
+      mountPath: /var/lib/postgresql/data
+      sizeGB: 10
 
   # ── Redis (private service) ────────────────────────────────────────────
   - type: pserv
     name: lead-caffeine-redis
-    runtime: docker
+    runtime: image
+    image: redis:7-alpine
     plan: starter
-    dockerRepo: redis
-    dockerTag: 7-alpine
+    envVars:
+      - key: REDIS_URL
+        value: redis://lead-caffeine-redis:6379
 
-  # ── ClickHouse (private service) ───────────────────────────────────────
+  # ── ClickHouse (private service) ────────────────────────────────────────
   - type: pserv
     name: lead-caffeine-clickhouse
-    runtime: docker
+    runtime: image
+    image: clickhouse/clickhouse-server:latest
     plan: starter
-    dockerRepo: clickhouse/clickhouse-server
-    dockerTag: latest
     envVars:
       - key: CLICKHOUSE_DB
         value: default
@@ -77,11 +84,14 @@ services:
         value: default
       - key: CLICKHOUSE_PASSWORD
         sync: false
+    disk:
+      name: ch-data
+      mountPath: /var/lib/clickhouse
+      sizeGB: 10
 
-  # ── FlareSolverr (private service) ─────────────────────────────────────
+  # ── FlareSolverr (private service) ──────────────────────────────────────
   - type: pserv
     name: lead-caffeine-flaresolverr
-    runtime: docker
+    runtime: image
+    image: ghcr.io/rix1337/flaresolverr-next:latest
     plan: starter
-    dockerRepo: ghcr.io/rix1337/flaresolverr-next
-    dockerTag: latest
