@@ -579,3 +579,319 @@ The endpoint returns whether the device was captured and which geofence it match
 2. Remember the geofence is a circle — if you're testing with coordinates near the edge, try the exact center coordinates
 3. Check that the geofence is active (ON)
 4. If the MAID was captured recently (within 5 minutes), Redis dedup may be blocking it — try a different MAID
+
+---
+
+## 11. Plain English Guide — How to Actually Use This Thing
+
+This section skips the technical jargon. If you just want to get your geofence advertising up and running, follow these steps in order.
+
+### What This Platform Does (In One Sentence)
+
+It draws invisible circles around businesses on a map, and when people's phones enter those circles, it grabs the phone's advertising ID so you can show ads to those people later.
+
+### The Big Picture (Why You Care)
+
+Imagine you own an auto repair shop. You want to show ads to people who visit your competitors' shops. This platform:
+
+1. Finds auto repair shops in your area (Supreme engine)
+2. Draws a circle around each one (geofence)
+3. When someone's phone enters that circle, it silently captures their phone's ad ID
+4. You take all those ad IDs and upload them to an ad platform (like Epom or SmartyAds)
+5. Now you can show ads to people who physically visited your competitors
+
+The best part? Steps 1-4 are **free**. You only pay when you start bidding on ads in Step 5.
+
+---
+
+### Step 1: Find Businesses (Supreme Tab)
+
+Before you can draw circles around businesses, you need to find them.
+
+1. Click on the **Supreme** tab (not the Geofence tab — that comes next)
+2. **Line 1 (Find Businesses):**
+   - Type a city and state (e.g., "Poughkeepsie, NY")
+   - Type keywords for the businesses you want (e.g., "auto repair, oil change, mechanic")
+   - Click Start
+   - The system searches the internet for matching businesses and saves their names, addresses, and websites
+   - Wait for it to finish — you'll see a list of companies
+
+3. **Line 2 (Get Coordinates):**
+   - Once Line 1 is done, run Line 2
+   - This looks up each business's address and converts it to exact GPS coordinates (latitude/longitude)
+   - This is what makes the "circles on a map" possible
+   - Wait for it to finish — each company should now have a latitude and longitude
+
+**How to know it worked:** The Supreme tab should show companies with coordinates (numbers like 41.681427, -73.855606). If the latitude/longitude columns are empty, Line 2 didn't finish or failed.
+
+---
+
+### Step 2: Draw the Circles (Geofence Tab → Dashboard)
+
+Now you turn those GPS coordinates into invisible circles on the map.
+
+1. Click on the **Geofence** tab
+2. Make sure you're on the **Dashboard** sub-tab (it's the default)
+3. Find the "Generate Geofences from Supreme Line 2" section
+4. Pick a radius from the dropdown:
+   - **250m** is a good starting point — it covers the business and its immediate area (about 2-3 football fields)
+   - Use **100m** if you only want to capture people who are basically inside the business
+   - Use **500m+** if you want to capture people in the surrounding shopping center
+5. Click **Generate Geofences**
+6. You'll see a message like "Created 196 geofences"
+
+**How to know it worked:** The "Total Geofences" number at the top should increase. Click the **Geofences** sub-tab to see the list — each row is one business with its address, coordinates, and radius.
+
+---
+
+### Step 3: Test It (Geofence Tab → Bidstream Test)
+
+Before connecting real ad exchanges, let's make sure the system actually captures phones.
+
+1. Click the **Bidstream Test** sub-tab
+2. You'll see three fields: Latitude, Longitude, and MAID
+3. The default coordinates (41.681427, -73.855606) are in Poughkeepsie, NY — if your geofences are there, great. If not:
+   - Go to the **Geofences** sub-tab
+   - Find a geofence near you
+   - Copy its Latitude and Longitude numbers
+   - Paste them into the Bidstream Test fields
+4. The MAID field already has a random test ID — leave it as is
+5. Click **Send Bid Request**
+6. You should see a toast message saying "Bid request sent"
+
+**How to know it worked:**
+- Click the **Captured Devices** sub-tab
+- You should see a device appear in the table within 5 seconds
+- The MAID, device info, and geofence name should all be filled in
+- If you don't see it, the coordinates might not be inside a geofence — try different ones
+
+---
+
+### Step 4: See Your Captures (Geofence Tab → Captured Devices)
+
+This is where you watch phones get captured in real-time.
+
+1. Click the **Captured Devices** sub-tab
+2. Every time a phone enters one of your geofences (either from the test or from real traffic), it shows up here
+3. The table auto-refreshes every 5 seconds
+4. Key things to look at:
+   - **MAID** — This is the phone's advertising ID. This is what you'll give to the ad platform.
+   - **Geofence** — Which business circle the phone was inside
+   - **Hits** — How many times this phone has been seen
+   - **Last Seen** — When the phone was last detected
+
+**The more phones that appear here, the bigger your audience gets.**
+
+---
+
+### Step 5: Check Your Stats (Geofence Tab → Dashboard)
+
+Go back to the Dashboard sub-tab and look at the top row of numbers:
+
+- **Total Geofences** — How many circles you've drawn
+- **Active Geofences** — How many are turned on (devices inside these get captured)
+- **Captured Devices** — How many unique phones you've grabbed
+- **Unsynced** — How many phones you haven't sent to the ad platform yet
+- **Segments** — How many audience groups you've created
+
+Scroll down to see the **Capture Analytics** table from ClickHouse — it shows which geofences are getting the most traffic and how many unique phones each one has captured.
+
+---
+
+### Step 6: Create an Audience Group (Geofence Tab → Segments)
+
+An audience segment is just a group of geofences that you want to target together.
+
+1. Click the **Segments** sub-tab
+2. Type a name like "Poughkeepsie Auto Repair Audience"
+3. Optionally type a description
+4. Click **Create Segment**
+5. The segment automatically includes ALL geofences that are currently turned ON
+6. All captured devices from those geofences become your audience
+
+**Think of it this way:** The segment is the bucket. The geofences fill the bucket with phone IDs. You'll give the bucket to the ad platform.
+
+---
+
+### Step 7: Send Phone IDs to an Ad Platform (Geofence Tab → DSP Sync)
+
+This is where you take all those captured phone IDs and push them to an ad platform so you can show ads to those people.
+
+#### Option A: Download a File (Easiest)
+
+1. Click the **DSP Sync** sub-tab
+2. Scroll down to "Manual MAID Export"
+3. Click **Download MAIDs CSV**
+4. A file downloads with all your captured phone IDs
+5. Upload that file to any ad platform (The Trade Desk, StackAdapt, etc.) using their bulk import feature
+
+#### Option B: Send Directly to Epom
+
+1. In the DSP Sync tab, make sure the **Epom** button is selected
+2. Type your Epom **API Key** (you get this from your Epom account)
+3. Type your Epom **Network Domain** (e.g., your-network.epom.com)
+4. Type a **Segment Name** (e.g., "Poughkeepsie Auto Audience")
+5. Click **Sync to Epom**
+6. Wait — it uploads in batches of 50,000 at a time
+7. Check the Sync History table below for the result
+
+#### Option C: Send Directly to SmartyAds
+
+1. Click the **SmartyAds** button
+2. Type your SmartyAds **API Token** (from your SmartyAds DSP account)
+3. Type a **Segment Name**
+4. Click **Sync to SmartyAds**
+5. Check Sync History for the result
+
+**Which should you pick?** If you don't have an Epom or SmartyAds account yet, use Option A (download the file) and upload it manually wherever you want.
+
+---
+
+### Step 8: Start Showing Ads (On the Ad Platform)
+
+This step happens on Epom, SmartyAds, or whichever ad platform you chose — not on Lead Caffeine. But here's the idea:
+
+1. Log into your ad platform (Epom, SmartyAds, etc.)
+2. Find the audience segment you uploaded (it contains all the phone IDs from your geofences)
+3. Create a campaign targeting that audience
+4. Set your budget and bid price
+5. Launch the campaign
+
+Now, when someone whose phone was captured in your geofence opens an app or visits a website, your ad platform recognizes their phone ID and shows them your ad.
+
+---
+
+### Step 9: Optional — Start Bidding Directly (Advanced)
+
+If you want Lead Caffeine to bid on ad impressions directly (instead of just harvesting IDs for free), you can add specific phone IDs to a "target list":
+
+1. Go to the **Captured Devices** sub-tab
+2. Find phone IDs you want to target
+3. Use the API to add them to the target list (this requires a technical person):
+   ```
+   POST https://leadcaffeine.com/api/geofence/targeting/add
+   { "maid": "the-phone-id-here" }
+   ```
+4. Now when that phone enters a geofence, Lead Caffeine will bid $0.50 per 1,000 impressions to show an ad
+5. You can see which bids won in the ClickHouse `bid_wins` table
+
+**This costs money.** The free harvest (steps 1-8) costs nothing. Only do Step 9 when you're ready to pay for impressions.
+
+---
+
+### Quick Reference: What Each Tab Does (Plain English)
+
+| Tab | What It Does | When to Use It |
+|-----|-------------|----------------|
+| **Dashboard** | Shows your stats and lets you generate geofences | First stop — check your numbers and create geofences |
+| **Geofences** | Lists all your circles with on/off switches | When you want to turn off a location or delete one |
+| **Captured Devices** | Shows every phone you've grabbed | When you want to see who's visiting your target businesses |
+| **Segments** | Lets you group geofences into audiences | Before sending phone IDs to an ad platform |
+| **Bidstream Test** | Lets you test with fake phone pings | When you want to verify the system works |
+| **DSP Sync** | Sends phone IDs to ad platforms | When you're ready to start showing ads |
+
+---
+
+### The Short Version (TL;DR)
+
+1. **Supreme tab** → Find businesses and get their GPS coordinates
+2. **Geofence → Dashboard** → Click "Generate Geofences" to draw circles around them
+3. **Geofence → Bidstream Test** → Test that it captures phones
+4. **Geofence → Captured Devices** → Watch phones get captured
+5. **Geofence → Segments** → Create an audience group
+6. **Geofence → DSP Sync** → Download the phone IDs or send them to an ad platform
+7. **Ad platform** → Create a campaign targeting those phone IDs
+
+That's it. You find businesses, draw circles around them, capture phones that enter those circles, and show ads to those people.
+
+---
+
+## 12. Which Routes Get What CPMs (Cost Per Thousand Impressions)
+
+Every route that touches the bidding pipeline has a specific cost (or no cost). Here's the complete breakdown:
+
+### The Two Outcomes
+
+| Route | Outcome | CPM | Who Pays | When |
+|-------|---------|-----|---------|------|
+| `POST /api/openrtb/auction` | **204 No-Bid** (free harvest) | $0.00 | Nobody | Device is inside a geofence but NOT on your target list |
+| `POST /api/openrtb/auction` | **200 Bid Response** | $0.50 | You | Device is inside a geofence AND on your target list |
+
+### How It Works
+
+There's only **one bidding route** — `POST /api/openrtb/auction`. But it has two possible outcomes depending on whether the phone's advertising ID is in your target list:
+
+**Outcome 1: Free Harvest (204 No-Bid) — $0.00 CPM**
+
+The phone enters a geofence. The system captures its MAID and stores it. But the system tells the ad exchange "no bid" (HTTP 204). The exchange shows someone else's ad. You pay nothing. You got the phone ID for free.
+
+This happens when:
+- The MAID is NOT in the `audience:target_maids` Redis set
+- The device is inside an active geofence
+- You're in harvest mode (collecting IDs for later)
+
+**Outcome 2: Paid Bid (200 Response) — $0.50 CPM**
+
+The phone enters a geofence. The system recognizes the MAID is on your target list. It submits a bid of $0.50 per 1,000 impressions. If you win the auction, the exchange charges you $0.50 and shows your ad.
+
+This happens when:
+- The MAID IS in the `audience:target_maids` Redis set (you added it via the targeting API)
+- The device is inside an active geofence
+- You're in targeting mode (actively buying impressions)
+
+### All Routes and Their Costs
+
+| Route | Method | Cost | What It Does |
+|-------|--------|------|-------------|
+| `/api/openrtb/auction` | POST | **$0.00 or $0.50** | The only bidding route. Free harvest (204) or $0.50 bid (200) depending on targeting |
+| `/api/openrtb/win` | GET | $0.00 | Win notice — called by the exchange after you win. Logs the actual price paid to ClickHouse |
+| `/api/openrtb/creative` | GET | $0.00 | Serves the 1x1 tracking pixel for your ad creative |
+| `/api/openrtb/click` | GET | $0.00 | Click redirect — tracks when someone clicks your ad |
+| `/api/ingest` | POST | **$0.00** | Direct SDK ingestion — captures a MAID without any bidding. Always free, never bids |
+| `/api/geofence/generate` | POST | $0.00 | Creates geofences from Supreme data |
+| `/api/geofence/capture` | POST | $0.00 | Manually captures a device |
+| `/api/geofence/export-maids` | GET | $0.00 | Downloads captured MAIDs as CSV |
+| `/api/dsp/sync` | POST | $0.00 | Pushes MAIDs to Epom/SmartyAds (the DSP charges you, not this platform) |
+| `/api/geofence/targeting/add` | POST | $0.00 | Adds a MAID to the target list (switches them from free to $0.50 bidding) |
+| `/api/geofence/targeting/remove` | POST | $0.00 | Removes a MAID from the target list (back to free harvest) |
+
+### Where the $0.50 Comes From
+
+The $0.50 CPM is hardcoded in the OpenRTB auction handler:
+
+```javascript
+const bidPrice = 0.50;  // $0.50 per 1,000 impressions
+```
+
+This means you pay $0.50 for every 1,000 ad impressions you win. To change the bid price, edit this value in `server/routes.ts` on line ~5301 and redeploy.
+
+### How to Control Who Gets the $0.50 Treatment
+
+Phones in your `audience:target_maids` Redis set get bids. Phones not in the set get free harvest. You manage the set through:
+
+```
+# Add a phone to the target list (they'll start getting $0.50 bids)
+POST /api/geofence/targeting/add
+{ "maid": "device-idfa-xxx" }
+
+# Remove a phone (back to free harvest, no bids)
+POST /api/geofence/targeting/remove
+{ "maid": "device-idfa-xxx" }
+
+# See how many phones are on the target list
+GET /api/geofence/targeting/count
+
+# List all targeted phones
+GET /api/geofence/targeting/list
+```
+
+### Cost Summary (Plain English)
+
+- **Finding businesses and drawing circles:** Free
+- **Capturing phone IDs that enter your circles:** Free
+- **Downloading the phone IDs:** Free
+- **Sending phone IDs to an ad platform:** Free (the ad platform may charge you separately)
+- **Direct SDK pings from mobile apps:** Free
+- **Bidding on ad impressions through the OpenRTB auction:** $0.50 per 1,000 impressions (only for phones you specifically add to the target list)
+
+You control the spending. The system harvests for free by default. You only spend money when you explicitly add a phone ID to the target list and the system bids on an ad impression for that phone.
