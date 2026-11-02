@@ -16,6 +16,7 @@ const allowlist = [
   "https-proxy-agent",
   "ioredis",
   "pg",
+  "socks-proxy-agent",
   "ws",
   "zod",
   "zod-validation-error",
