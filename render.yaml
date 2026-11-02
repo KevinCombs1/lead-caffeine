@@ -26,11 +26,13 @@ services:
       - key: SERPER_API_KEY
         sync: false
       - key: DATABASE_URL
-        value: postgresql://leadcaffeine:changeme@lead-caffeine-db:5432/leadcaffeine
+        sync: false
       - key: REDIS_URL
         value: redis://lead-caffeine-redis:6379
       - key: CLICKHOUSE_URL
         value: http://lead-caffeine-clickhouse:8123
+      - key: CLICKHOUSE_USER
+        value: default
       - key: CLICKHOUSE_PASSWORD
         sync: false
       - key: BIDDER_DOMAIN
@@ -45,7 +47,7 @@ services:
     name: lead-caffeine-db
     runtime: image
     image:
-      url: postgis/postgis:18-3.6
+      url: docker.io/postgis/postgis:18-3.6
     plan: starter
     envVars:
       - key: POSTGRES_USER
@@ -64,7 +66,7 @@ services:
     name: lead-caffeine-redis
     runtime: image
     image:
-      url: redis:7-alpine
+      url: docker.io/redis:7-alpine
     plan: starter
     envVars:
       - key: REDIS_URL
@@ -75,7 +77,7 @@ services:
     name: lead-caffeine-clickhouse
     runtime: image
     image:
-      url: clickhouse/clickhouse-server:latest
+      url: docker.io/clickhouse/clickhouse-server:latest
     plan: starter
     envVars:
       - key: CLICKHOUSE_DB
