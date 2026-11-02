@@ -84,29 +84,67 @@ function parseCsv(csvText: string): { rows: Array<{ name: string; latitude: numb
   // Detect header row
   const first = parseLine(lines[0]);
   const hasHeader = first.some((f) => isNaN(Number(f)) && /name|latitude|longitude|radius/i.test(f));
+
+  // Build column index map from header (if present) for flexible column detection
+  let colMap: Record<string, number> = {};
+  if (hasHeader) {
+    first.forEach((h, i) => {
+      const lower = h.toLowerCase().replace(/[^a-z]/g, "");
+      if (lower === "name" || lower === "company" || lower === "business") colMap.name = i;
+      else if (lower === "latitude" || lower === "lat") colMap.latitude = i;
+      else if (lower === "longitude" || lower === "lng" || lower === "lon" || lower === "long") colMap.longitude = i;
+      else if (lower === "radiusm" || lower === "radius_m" || lower === "radiusmeters" || lower === "radius_metres" || lower === "radius") colMap.radiusM = i;
+      else if (lower === "address" || lower === "street") colMap.address = i;
+      else if (lower === "city") colMap.city = i;
+      else if (lower === "state") colMap.state = i;
+      else if (lower === "radiusyards" || lower === "radius_yards") colMap.radiusYards = i;
+      else if (lower === "radiusmiles" || lower === "radius_miles") colMap.radiusMiles = i;
+      else if (lower === "radiuskm" || lower === "radius_km") colMap.radiusKm = i;
+    });
+  }
+
+  // If no header mapping found, use positional defaults: name, lat, lng, radius_m, address, city, state
+  if (Object.keys(colMap).length === 0) {
+    colMap = { name: 0, latitude: 1, longitude: 2, radiusM: 3, address: 4, city: 5, state: 6 };
+  }
+
   const dataLines = hasHeader ? lines.slice(1) : lines;
 
   for (let i = 0; i < dataLines.length; i++) {
     const line = dataLines[i];
     if (!line || line.trim() === "") continue;
     const fields = parseLine(line);
-    if (fields.length < 4) {
+    if (fields.length < 3) {
       errors.push(`row ${i + (hasHeader ? 2 : 1)}: not enough columns`);
       continue;
     }
-    const name = fields[0];
-    const lat = parseFloat(fields[1]);
-    const lng = parseFloat(fields[2]);
-    const radiusM = parseFloat(fields[3]) || 250;
-    const address = fields[4] || undefined;
-    const city = fields[5] || undefined;
-    const state = fields[6] || undefined;
+
+    const get = (key: string, fallback: number): string => fields[colMap[key] ?? fallback] || "";
+
+    const name = get("name", 0);
+    let lat = parseFloat(get("latitude", 1));
+    let lng = parseFloat(get("longitude", 2));
+
+    // Resolve radius: prefer radius_m, then convert from yards/miles/km
+    let radiusM = parseFloat(get("radiusM", 3)) || 250;
+    if (!radiusM || radiusM === 250) {
+      const yards = colMap.radiusYards !== undefined ? parseFloat(fields[colMap.radiusYards]) : NaN;
+      const miles = colMap.radiusMiles !== undefined ? parseFloat(fields[colMap.radiusMiles]) : NaN;
+      const km = colMap.radiusKm !== undefined ? parseFloat(fields[colMap.radiusKm]) : NaN;
+      if (!isNaN(yards) && yards > 0) radiusM = yards * 0.9144;
+      else if (!isNaN(miles) && miles > 0) radiusM = miles * 1609.344;
+      else if (!isNaN(km) && km > 0) radiusM = km * 1000;
+    }
+
+    const address = colMap.address !== undefined ? fields[colMap.address] : (fields[4] || undefined);
+    const city = colMap.city !== undefined ? fields[colMap.city] : (fields[5] || undefined);
+    const state = colMap.state !== undefined ? fields[colMap.state] : (fields[6] || undefined);
 
     if (!name || isNaN(lat) || isNaN(lng)) {
       errors.push(`row ${i + (hasHeader ? 2 : 1)}: invalid name/lat/lng`);
       continue;
     }
-    rows.push({ name, latitude: lat, longitude: lng, radiusM, address, city, state });
+    rows.push({ name, latitude: lat, longitude: lng, radiusM, address: address || undefined, city: city || undefined, state: state || undefined });
   }
   return { rows, errors };
 }
@@ -4886,6 +4924,43 @@ export async function registerRoutes(
       ).join("\n");
       res.setHeader("Content-Type", "text/csv");
       res.setHeader("Content-Disposition", `attachment; filename=supreme-line2-meta-coordinates.csv`);
+      res.send(header + rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Line 2 Campaign Builder CSV export — ready to upload into Campaigns tab
+  // Format: name,latitude,longitude,radius_m,address,city,state
+  app.get("/api/supreme/line2/export/campaign", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const jobId = req.query.jobId as string;
+      if (!jobId) return res.status(400).json({ error: "jobId required" });
+      const onlyGeocoded = req.query.onlyGeocoded !== "false";
+      const companies = await storage.getSupremeCompaniesForExport(jobId, onlyGeocoded);
+      const csvEscape = (s: string | null) => {
+        if (!s) return "";
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      // Convert radius yards to metres (default 250m if no radius set)
+      const yardsToM = (yards: number | null) => yards ? (yards * 0.9144).toFixed(0) : "250";
+      const header = "name,latitude,longitude,radius_m,address,city,state\n";
+      const rows = companies
+        .filter(c => c.latitude != null && c.longitude != null)
+        .map(c =>
+          [
+            csvEscape(c.name ?? ""),
+            c.latitude !== null ? String(c.latitude) : "",
+            c.longitude !== null ? String(c.longitude) : "",
+            yardsToM(c.radiusYards ?? null),
+            csvEscape(c.address ?? ""),
+            csvEscape(c.city ?? ""),
+            csvEscape(c.state ?? ""),
+          ].join(",")
+        ).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=supreme-line2-campaign-geofences.csv`);
       res.send(header + rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
