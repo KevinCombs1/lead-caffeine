@@ -47,7 +47,7 @@ services:
     name: lead-caffeine-db
     runtime: image
     image:
-      url: docker.io/postgis/postgis:18-3.6
+      url: docker.io/postgis/postgis:16-3.6
     plan: starter
     envVars:
       - key: POSTGRES_USER
@@ -58,7 +58,7 @@ services:
         value: leadcaffeine
     disk:
       name: pg-data
-      mountPath: /var/lib/postgresql
+      mountPath: /var/lib/postgresql/data
       sizeGB: 10
 
   # ── Redis (private service) ────────────────────────────────────────────
@@ -79,6 +79,7 @@ services:
     image:
       url: docker.io/clickhouse/clickhouse-server:latest
     plan: starter
+    dockerCommand: clickhouse-server --config-file=/etc/clickhouse-server/config.xml
     envVars:
       - key: CLICKHOUSE_DB
         value: default

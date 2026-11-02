@@ -13,6 +13,7 @@ const allowlist = [
   "drizzle-zod",
   "express",
   "express-session",
+  "https-proxy-agent",
   "ioredis",
   "pg",
   "ws",
