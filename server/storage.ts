@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, asc, and, sql } from "drizzle-orm";
+import { eq, desc, asc, and, sql, count } from "drizzle-orm";
 import {
   users, type User, type InsertUser,
   scrapeJobs, type ScrapeJob, type InsertScrapeJob,
@@ -24,6 +24,19 @@ import {
   emailCampaigns, type EmailCampaign, type InsertEmailCampaign,
   emailRecipients, type EmailRecipient, type InsertEmailRecipient,
   emailProviderConfigs, type EmailProviderConfig, type InsertEmailProviderConfig,
+  compassSources, type CompassSource, type InsertCompassSource,
+  compassQueryJobs, type CompassQueryJob, type InsertCompassQueryJob,
+  compassDiscoveries, type CompassDiscovery, type InsertCompassDiscovery,
+  compassProfiles, type CompassProfile, type InsertCompassProfile,
+  compassEventTypes, type CompassEventType, type InsertCompassEventType,
+  compassIndustries, type CompassIndustry, type InsertCompassIndustry,
+  stage32Profiles, type Stage32Profile, type InsertStage32Profile,
+  stage32Jobs, type Stage32Job, type InsertStage32Job,
+  supremeJobs, type SupremeJob, type InsertSupremeJob,
+  supremeCompanies, type SupremeCompany, type InsertSupremeCompany,
+  geofences, type Geofence, type InsertGeofence,
+  capturedDevices, type CapturedDevice, type InsertCapturedDevice,
+  audienceSegments, type AudienceSegment, type InsertAudienceSegment,
 } from "@shared/schema";
 import { ilike, or, count, inArray } from "drizzle-orm";
 
@@ -155,6 +168,83 @@ export interface IStorage {
   getEmailProviderConfigs(): Promise<EmailProviderConfig[]>;
   updateEmailProviderConfig(id: number, updates: Partial<EmailProviderConfig>): Promise<EmailProviderConfig | undefined>;
   deleteEmailProviderConfig(id: number): Promise<void>;
+
+  // Compass — Cal.com Intelligence
+  getCompassSources(platform?: string): Promise<CompassSource[]>;
+  getCompassIndustries(): Promise<CompassIndustry[]>;
+  createCompassQueryJob(job: InsertCompassQueryJob): Promise<CompassQueryJob>;
+  updateCompassQueryJob(id: string, updates: Partial<CompassQueryJob>): Promise<CompassQueryJob | undefined>;
+  getCompassQueryJobs(platform?: string): Promise<CompassQueryJob[]>;
+  getCompassQueryJob(id: string): Promise<CompassQueryJob | undefined>;
+  getCompassQueryJobShouldStop(id: string): Promise<boolean>;
+  interruptAllRunningCompassJobs(): Promise<number>;
+  appendCompassLog(jobId: string, message: string): Promise<void>;
+  appendCompassLogBatch(jobId: string, messages: string[]): Promise<void>;
+  bulkInsertDiscoveries(discoveries: InsertCompassDiscovery[]): Promise<number>;
+  getPendingDiscoveries(limit: number, jobId?: string, platform?: string): Promise<CompassDiscovery[]>;
+  getCompassDiscoveries(filters: { search?: string; searchMode?: string; source?: string; status?: string; sortBy?: string; page?: number; limit?: number; platform?: string }): Promise<{ discoveries: CompassDiscovery[]; total: number }>;
+  markDiscoveryEnriched(id: string): Promise<void>;
+  markDiscoveryFailed(id: string): Promise<void>;
+  isDiscoveryUrlExists(url: string): Promise<boolean>;
+  createCompassProfile(profile: InsertCompassProfile): Promise<CompassProfile>;
+  bulkInsertEventTypes(eventTypes: InsertCompassEventType[]): Promise<void>;
+  getCompassProfiles(filters: { search?: string; searchMode?: string; industry?: string; bundle?: string; scope?: string; minQuality?: number; source?: string; isTeam?: boolean; sortBy?: string; page?: number; limit?: number; platform?: string }): Promise<{ profiles: CompassProfile[]; total: number }>;
+  getCompassProfile(id: string): Promise<CompassProfile | undefined>;
+  getCompassEventTypes(profileId: string): Promise<CompassEventType[]>;
+  updateCompassProfile(id: string, updates: Partial<CompassProfile>): Promise<CompassProfile | undefined>;
+  replaceCompassEventTypes(profileId: string, eventTypes: InsertCompassEventType[]): Promise<void>;
+  getCompassStats(platform?: string): Promise<{ totalProfiles: number; totalDiscoveries: number; bySource: Record<string, number>; byIndustry: Record<string, number> }>;
+  updateProfileHealth(id: string, isAlive: boolean): Promise<void>;
+
+  // Stage 32
+  createStage32Profile(profile: InsertStage32Profile): Promise<Stage32Profile>;
+  getStage32ProfileByStage32Id(stage32Id: number): Promise<Stage32Profile | undefined>;
+  getStage32Profiles(filters: { search?: string; location?: string; hasContact?: boolean; isServiceProvider?: boolean; page?: number; limit?: number }): Promise<{ profiles: Stage32Profile[]; total: number }>;
+  getStage32Profile(id: string): Promise<Stage32Profile | undefined>;
+  updateStage32ProfileWebsiteContact(stage32Id: number, phone: string | null, email: string | null, calendlyUrl: string | null): Promise<void>;
+  updateStage32ProfileWebsiteContactByUrl(stage32Url: string, phone: string | null, email: string | null, calendlyUrl: string | null): Promise<void>;
+  getStage32Stats(): Promise<{ total: number; scraped: number; withContact: number; withWebsite: number; serviceProviders: number }>;
+  createStage32Job(job: InsertStage32Job): Promise<Stage32Job>;
+  getStage32Job(id: string): Promise<Stage32Job | undefined>;
+  getStage32Jobs(): Promise<Stage32Job[]>;
+  updateStage32Job(id: string, updates: Partial<Stage32Job>): Promise<Stage32Job | undefined>;
+
+  // Parallel Supreme
+  createSupremeJob(job: InsertSupremeJob): Promise<SupremeJob>;
+  updateSupremeJob(id: string, updates: Partial<SupremeJob>): Promise<SupremeJob | undefined>;
+  getSupremeJobs(): Promise<SupremeJob[]>;
+  getSupremeJob(id: string): Promise<SupremeJob | undefined>;
+  getSupremeJobLogTail(id: string, limit: number): Promise<string[]>;
+  getSupremeJobShouldStop(id: string): Promise<boolean>;
+  interruptSupremeJobs(): Promise<number>;
+  appendSupremeLogBatch(jobId: string, messages: string[]): Promise<void>;
+  bulkInsertSupremeCompanies(companies: InsertSupremeCompany[]): Promise<number>;
+  updateSupremeCompany(id: string, updates: Partial<SupremeCompany>): Promise<void>;
+  bulkUpdateSupremeCompanies(updates: { id: string; data: Partial<SupremeCompany> }[]): Promise<void>;
+  getSupremeCompanies(filters: { jobId?: string; line?: string; status?: string; search?: string; hasCoords?: boolean; page?: number; limit?: number }): Promise<{ companies: SupremeCompany[]; total: number }>;
+  getSupremeCompaniesForExport(jobId?: string, onlyGeocoded?: boolean): Promise<SupremeCompany[]>;
+  getSupremeSourceStats(jobId?: string): Promise<Array<{ source: string; total: number; withWebsite: number; withAddress: number; withPhone: number; withCoords: number }>>;
+
+  // ── Geofencing Platform ──────────────────────────────────────────────
+  createGeofence(geofence: InsertGeofence): Promise<Geofence>;
+  createGeofencesBulk(geofences: InsertGeofence[]): Promise<number>;
+  getGeofences(filters?: { active?: boolean; jobId?: string; source?: string }): Promise<Geofence[]>;
+  getGeofence(id: string): Promise<Geofence | undefined>;
+  updateGeofence(id: string, updates: Partial<Geofence>): Promise<Geofence | undefined>;
+  deleteGeofence(id: string): Promise<void>;
+  // Find which geofence a lat/lng point falls inside
+  findGeofencesForPoint(lat: number, lng: number): Promise<Array<{ id: string; name: string; radius_m: number }>>;
+  // Generate geofences from supreme companies with coordinates
+  generateGeofencesFromSupreme(jobId?: string, radiusM?: number): Promise<{ created: number; skipped: number }>;
+  // Captured devices
+  captureDevice(device: InsertCapturedDevice): Promise<{ created: boolean; device: CapturedDevice }>;
+  getCapturedDevices(filters?: { synced?: boolean; geofenceId?: string; limit?: number }): Promise<CapturedDevice[]>;
+  getCapturedDeviceCount(): Promise<number>;
+  markDevicesSynced(deviceIds: string[], syncedTo: string): Promise<void>;
+  // Audience segments
+  createAudienceSegment(segment: InsertAudienceSegment): Promise<AudienceSegment>;
+  getAudienceSegments(): Promise<AudienceSegment[]>;
+  updateAudienceSegment(id: string, updates: Partial<AudienceSegment>): Promise<AudienceSegment | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -967,6 +1057,719 @@ export class DatabaseStorage implements IStorage {
 
   async deleteEmailProviderConfig(id: number): Promise<void> {
     await db.delete(emailProviderConfigs).where(eq(emailProviderConfigs.id, id));
+  }
+
+  // ─── Compass — Cal.com Intelligence ──────────────────────────────────────
+
+  async getCompassSources(platform?: string): Promise<CompassSource[]> {
+    if (platform) {
+      return db.select().from(compassSources).where(eq(compassSources.platform, platform));
+    }
+    return db.select().from(compassSources);
+  }
+
+  async getCompassIndustries(): Promise<CompassIndustry[]> {
+    return db.select().from(compassIndustries);
+  }
+
+  async createCompassQueryJob(job: InsertCompassQueryJob): Promise<CompassQueryJob> {
+    const [created] = await db.insert(compassQueryJobs).values(job).returning();
+    return created;
+  }
+
+  async updateCompassQueryJob(id: string, updates: Partial<CompassQueryJob>): Promise<CompassQueryJob | undefined> {
+    const [updated] = await db.update(compassQueryJobs).set(updates).where(eq(compassQueryJobs.id, id)).returning();
+    return updated;
+  }
+
+  async getCompassQueryJobs(platform?: string): Promise<CompassQueryJob[]> {
+    if (platform) {
+      return db.select().from(compassQueryJobs).where(eq(compassQueryJobs.platform, platform)).orderBy(desc(compassQueryJobs.startedAt));
+    }
+    return db.select().from(compassQueryJobs).orderBy(desc(compassQueryJobs.startedAt));
+  }
+
+  async getCompassQueryJob(id: string): Promise<CompassQueryJob | undefined> {
+    const [job] = await db.select().from(compassQueryJobs).where(eq(compassQueryJobs.id, id));
+    return job;
+  }
+
+  async getCompassQueryJobShouldStop(id: string): Promise<boolean> {
+    const [job] = await db.select({ shouldStop: compassQueryJobs.shouldStop }).from(compassQueryJobs).where(eq(compassQueryJobs.id, id));
+    return job?.shouldStop ?? false;
+  }
+
+  async interruptAllRunningCompassJobs(): Promise<number> {
+    const result = await db.update(compassQueryJobs).set({ status: "interrupted" }).where(eq(compassQueryJobs.status, "running")).returning({ id: compassQueryJobs.id });
+    return result.length;
+  }
+
+  async appendCompassLog(jobId: string, message: string): Promise<void> {
+    await db.update(compassQueryJobs).set({ log: sql`array_append(${compassQueryJobs.log}, ${message})` }).where(eq(compassQueryJobs.id, jobId));
+  }
+
+  async appendCompassLogBatch(jobId: string, messages: string[]): Promise<void> {
+    if (messages.length === 0) return;
+    const escaped = messages.map(m => `'${m.replace(/'/g, "''")}'`).join(",");
+    await db.execute(sql`UPDATE compass_query_jobs SET log = log || ARRAY[${sql.raw(escaped)}]::text[] WHERE id = ${jobId}`);
+  }
+
+  async bulkInsertDiscoveries(discoveries: InsertCompassDiscovery[]): Promise<number> {
+    if (discoveries.length === 0) return 0;
+    const batchSize = 100;
+    let inserted = 0;
+    for (let i = 0; i < discoveries.length; i += batchSize) {
+      const batch = discoveries.slice(i, i + batchSize);
+      try {
+        const result = await db.insert(compassDiscoveries).values(batch).onConflictDoNothing().returning({ id: compassDiscoveries.id });
+        inserted += result.length;
+      } catch {
+        // Continue on conflict — dedup handled by unique index
+      }
+    }
+    return inserted;
+  }
+
+  async getPendingDiscoveries(limit: number, jobId?: string, platform?: string): Promise<CompassDiscovery[]> {
+    const conditions = [eq(compassDiscoveries.status, "pending")];
+    if (jobId) conditions.push(eq(compassDiscoveries.queryJobId, jobId));
+    if (platform) conditions.push(eq(compassDiscoveries.platform, platform));
+    return db.select().from(compassDiscoveries).where(and(...conditions)).limit(limit);
+  }
+
+  async getCompassDiscoveries(filters: { search?: string; searchMode?: string; source?: string; status?: string; sortBy?: string; page?: number; limit?: number; platform?: string }): Promise<{ discoveries: CompassDiscovery[]; total: number }> {
+    const conditions = [];
+    if (filters.search) {
+      const searchLower = `%${filters.search.toLowerCase()}%`;
+      if (filters.searchMode === "url") {
+        // URL/username only
+        conditions.push(
+          or(
+            ilike(compassDiscoveries.url, searchLower),
+            ilike(compassDiscoveries.username, searchLower),
+          )!
+        );
+      } else {
+        // Search everything (includes source, sourceQuery)
+        conditions.push(
+          or(
+            ilike(compassDiscoveries.url, searchLower),
+            ilike(compassDiscoveries.username, searchLower),
+            ilike(compassDiscoveries.source, searchLower),
+            ilike(compassDiscoveries.sourceQuery, searchLower),
+          )!
+        );
+      }
+    }
+    if (filters.source) conditions.push(eq(compassDiscoveries.source, filters.source));
+    if (filters.status) conditions.push(eq(compassDiscoveries.status, filters.status));
+    if (filters.platform) conditions.push(eq(compassDiscoveries.platform, filters.platform));
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+
+    let orderBy;
+    switch (filters.sortBy) {
+      case "oldest": orderBy = asc(compassDiscoveries.discoveredAt); break;
+      case "source": orderBy = asc(compassDiscoveries.source); break;
+      case "username": orderBy = asc(compassDiscoveries.username); break;
+      case "recent":
+      default: orderBy = desc(compassDiscoveries.discoveredAt); break;
+    }
+
+    const [countResult] = await db.select({ count: count() }).from(compassDiscoveries).where(whereClause);
+    const discoveries = await db.select().from(compassDiscoveries).where(whereClause).orderBy(orderBy).limit(limit).offset((page - 1) * limit);
+    return { discoveries, total: Number(countResult.count) };
+  }
+
+  async markDiscoveryEnriched(id: string): Promise<void> {
+    await db.update(compassDiscoveries).set({ status: "enriched", enrichedAt: new Date() }).where(eq(compassDiscoveries.id, id));
+  }
+
+  async markDiscoveryFailed(id: string): Promise<void> {
+    await db.update(compassDiscoveries).set({ status: "failed", enrichedAt: new Date() }).where(eq(compassDiscoveries.id, id));
+  }
+
+  async isDiscoveryUrlExists(url: string): Promise<boolean> {
+    const [existing] = await db.select({ id: compassDiscoveries.id }).from(compassDiscoveries).where(eq(compassDiscoveries.url, url)).limit(1);
+    return !!existing;
+  }
+
+  async createCompassProfile(profile: InsertCompassProfile): Promise<CompassProfile> {
+    const [created] = await db.insert(compassProfiles).values(profile).onConflictDoNothing().returning();
+    if (!created) {
+      const [existing] = await db.select().from(compassProfiles).where(eq(compassProfiles.calUrl, profile.calUrl));
+      return existing!;
+    }
+    return created;
+  }
+
+  async bulkInsertEventTypes(eventTypes: InsertCompassEventType[]): Promise<void> {
+    if (eventTypes.length === 0) return;
+    const batchSize = 100;
+    for (let i = 0; i < eventTypes.length; i += batchSize) {
+      await db.insert(compassEventTypes).values(eventTypes.slice(i, i + batchSize));
+    }
+  }
+
+  async getCompassProfiles(filters: { search?: string; searchMode?: string; industry?: string; bundle?: string; scope?: string; minQuality?: number; source?: string; isTeam?: boolean; sortBy?: string; page?: number; limit?: number; platform?: string }): Promise<{ profiles: CompassProfile[]; total: number }> {
+    const conditions = [];
+    if (filters.search) {
+      const searchLower = `%${filters.search.toLowerCase()}%`;
+      if (filters.searchMode === "url") {
+        // URL/username only
+        conditions.push(
+          or(
+            ilike(compassProfiles.username, searchLower),
+            ilike(compassProfiles.calUrl, searchLower),
+          )!
+        );
+      } else {
+        // Search everything
+        conditions.push(
+          or(
+            ilike(compassProfiles.name, searchLower),
+            ilike(compassProfiles.bio, searchLower),
+            ilike(compassProfiles.username, searchLower),
+            ilike(compassProfiles.companyName, searchLower),
+            ilike(compassProfiles.industry, searchLower),
+            ilike(compassProfiles.calUrl, searchLower),
+            sql`EXISTS (SELECT 1 FROM compass_event_types et WHERE et.profile_id = ${compassProfiles.id} AND et.title ILIKE ${searchLower})`
+          )!
+        );
+      }
+    }
+    if (filters.industry) conditions.push(eq(compassProfiles.industry, filters.industry));
+    if (filters.bundle) conditions.push(eq(compassProfiles.industryBundle, filters.bundle));
+    if (filters.scope) conditions.push(eq(compassProfiles.scope, filters.scope));
+    if (filters.source) conditions.push(eq(compassProfiles.source, filters.source));
+    if (filters.isTeam !== undefined) conditions.push(eq(compassProfiles.isTeamProfile, filters.isTeam));
+    if (filters.minQuality !== undefined) conditions.push(sql`${compassProfiles.qualityScore} >= ${filters.minQuality}`);
+    if (filters.platform) conditions.push(eq(compassProfiles.platform, filters.platform));
+
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+    const offset = (page - 1) * limit;
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    let orderBy;
+    switch (filters.sortBy) {
+      case "quality": orderBy = desc(compassProfiles.qualityScore); break;
+      case "name": orderBy = asc(compassProfiles.name); break;
+      case "industry": orderBy = asc(compassProfiles.industry); break;
+      case "events": orderBy = desc(compassProfiles.eventCount); break;
+      case "recent": orderBy = desc(compassProfiles.createdAt); break;
+      default: orderBy = desc(compassProfiles.qualityScore);
+    }
+
+    const baseQuery = db.select().from(compassProfiles);
+    const countQuery = db.select({ count: count() }).from(compassProfiles);
+
+    if (whereClause) {
+      const profiles = await baseQuery.where(whereClause).orderBy(orderBy).limit(limit).offset(offset);
+      const [totalResult] = await countQuery.where(whereClause);
+      return { profiles, total: Number(totalResult.count) };
+    }
+    const profiles = await baseQuery.orderBy(orderBy).limit(limit).offset(offset);
+    const [totalResult] = await countQuery;
+    return { profiles, total: Number(totalResult.count) };
+  }
+
+  async getCompassProfile(id: string): Promise<CompassProfile | undefined> {
+    const [profile] = await db.select().from(compassProfiles).where(eq(compassProfiles.id, id));
+    return profile;
+  }
+
+  async getCompassEventTypes(profileId: string): Promise<CompassEventType[]> {
+    return db.select().from(compassEventTypes).where(eq(compassEventTypes.profileId, profileId));
+  }
+
+  async getCompassStats(platform?: string): Promise<{ totalProfiles: number; totalDiscoveries: number; bySource: Record<string, number>; byIndustry: Record<string, number> }> {
+    const profileCond = platform ? eq(compassProfiles.platform, platform) : undefined;
+    const discoveryCond = platform ? eq(compassDiscoveries.platform, platform) : undefined;
+
+    const [profileCount] = await db.select({ count: count() }).from(compassProfiles).where(profileCond);
+    const [discoveryCount] = await db.select({ count: count() }).from(compassDiscoveries).where(discoveryCond);
+
+    const sourceStats = await db.select({ source: compassProfiles.source, count: count() }).from(compassProfiles).where(profileCond).groupBy(compassProfiles.source);
+    const industryStats = await db.select({ industry: compassProfiles.industry, count: count() }).from(compassProfiles).where(profileCond && sql`${compassProfiles.industry} IS NOT NULL`).groupBy(compassProfiles.industry);
+
+    return {
+      totalProfiles: Number(profileCount.count),
+      totalDiscoveries: Number(discoveryCount.count),
+      bySource: Object.fromEntries(sourceStats.map(s => [s.source, Number(s.count)])),
+      byIndustry: Object.fromEntries(industryStats.map(s => [s.industry || "Unclassified", Number(s.count)])),
+    };
+  }
+
+  async updateProfileHealth(id: string, isAlive: boolean): Promise<void> {
+    await db.update(compassProfiles).set({ isAlive, lastChecked: new Date() }).where(eq(compassProfiles.id, id));
+  }
+
+  async updateCompassProfile(id: string, updates: Partial<CompassProfile>): Promise<CompassProfile | undefined> {
+    const [updated] = await db.update(compassProfiles).set(updates).where(eq(compassProfiles.id, id)).returning();
+    return updated;
+  }
+
+  async replaceCompassEventTypes(profileId: string, eventTypes: InsertCompassEventType[]): Promise<void> {
+    await db.delete(compassEventTypes).where(eq(compassEventTypes.profileId, profileId));
+    if (eventTypes.length > 0) {
+      await db.insert(compassEventTypes).values(eventTypes);
+    }
+  }
+
+  // ── Stage 32 ────────────────────────────────────────────────────────────
+  async createStage32Profile(profile: InsertStage32Profile): Promise<Stage32Profile> {
+    const [created] = await db.insert(stage32Profiles).values(profile).onConflictDoNothing().returning();
+    return created;
+  }
+
+  async getStage32ProfileByStage32Id(stage32Id: number): Promise<Stage32Profile | undefined> {
+    const [result] = await db.select().from(stage32Profiles).where(eq(stage32Profiles.stage32Id, stage32Id)).limit(1);
+    return result;
+  }
+
+  async getStage32Profiles(filters: { search?: string; location?: string; hasContact?: boolean; isServiceProvider?: boolean; page?: number; limit?: number }): Promise<{ profiles: Stage32Profile[]; total: number }> {
+    const page = filters.page || 1;
+    const limit = filters.limit || 25;
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+    if (filters.search) {
+      conditions.push(
+        or(
+          ilike(stage32Profiles.name, `%${filters.search}%`),
+          ilike(stage32Profiles.bio, `%${filters.search}%`),
+          ilike(stage32Profiles.profession, `%${filters.search}%`),
+        )
+      );
+    }
+    if (filters.location) {
+      conditions.push(ilike(stage32Profiles.location, `%${filters.location}%`));
+    }
+    if (filters.hasContact) {
+      conditions.push(
+        or(
+          sql`${stage32Profiles.websiteEmail} IS NOT NULL`,
+          sql`${stage32Profiles.websitePhone} IS NOT NULL`,
+          sql`${stage32Profiles.bioEmail} IS NOT NULL`,
+          sql`${stage32Profiles.bioPhone} IS NOT NULL`,
+        )
+      );
+    }
+    if (filters.isServiceProvider) {
+      conditions.push(eq(stage32Profiles.isServiceProvider, true));
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const [totalResult] = await db.select({ count: count() }).from(stage32Profiles).where(where);
+    const total = totalResult?.count || 0;
+
+    const profiles = await db.select().from(stage32Profiles)
+      .where(where)
+      .orderBy(desc(stage32Profiles.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return { profiles, total };
+  }
+
+  async getStage32Profile(id: string): Promise<Stage32Profile | undefined> {
+    const [result] = await db.select().from(stage32Profiles).where(eq(stage32Profiles.id, id)).limit(1);
+    return result;
+  }
+
+  async updateStage32ProfileWebsiteContact(stage32Id: number, phone: string | null, email: string | null, calendlyUrl: string | null): Promise<void> {
+    await db.update(stage32Profiles)
+      .set({ websitePhone: phone, websiteEmail: email, websiteCalendlyUrl: calendlyUrl, websiteCheckedAt: new Date() })
+      .where(eq(stage32Profiles.stage32Id, stage32Id));
+  }
+
+  async updateStage32ProfileWebsiteContactByUrl(stage32Url: string, phone: string | null, email: string | null, calendlyUrl: string | null): Promise<void> {
+    await db.update(stage32Profiles)
+      .set({ websitePhone: phone, websiteEmail: email, websiteCalendlyUrl: calendlyUrl, websiteCheckedAt: new Date() })
+      .where(eq(stage32Profiles.stage32Url, stage32Url));
+  }
+
+  async getStage32Stats(): Promise<{ total: number; scraped: number; withContact: number; withWebsite: number; serviceProviders: number }> {
+    const [totalResult] = await db.select({ count: count() }).from(stage32Profiles);
+    const [scrapedResult] = await db.select({ count: count() }).from(stage32Profiles).where(eq(stage32Profiles.status, "scraped"));
+    const [contactResult] = await db.select({ count: count() }).from(stage32Profiles).where(
+      or(
+        sql`${stage32Profiles.websiteEmail} IS NOT NULL`,
+        sql`${stage32Profiles.websitePhone} IS NOT NULL`,
+        sql`${stage32Profiles.bioEmail} IS NOT NULL`,
+        sql`${stage32Profiles.bioPhone} IS NOT NULL`,
+      )
+    );
+    const [websiteResult] = await db.select({ count: count() }).from(stage32Profiles).where(sql`${stage32Profiles.website} IS NOT NULL`);
+    const [svcResult] = await db.select({ count: count() }).from(stage32Profiles).where(eq(stage32Profiles.isServiceProvider, true));
+
+    return {
+      total: totalResult?.count || 0,
+      scraped: scrapedResult?.count || 0,
+      withContact: contactResult?.count || 0,
+      withWebsite: websiteResult?.count || 0,
+      serviceProviders: svcResult?.count || 0,
+    };
+  }
+
+  async createStage32Job(job: InsertStage32Job): Promise<Stage32Job> {
+    const [created] = await db.insert(stage32Jobs).values(job).returning();
+    return created;
+  }
+
+  async getStage32Job(id: string): Promise<Stage32Job | undefined> {
+    const [result] = await db.select().from(stage32Jobs).where(eq(stage32Jobs.id, id)).limit(1);
+    return result;
+  }
+
+  async getStage32Jobs(): Promise<Stage32Job[]> {
+    return await db.select().from(stage32Jobs).orderBy(desc(stage32Jobs.startedAt)).limit(10);
+  }
+
+  async updateStage32Job(id: string, updates: Partial<Stage32Job>): Promise<Stage32Job | undefined> {
+    const [updated] = await db.update(stage32Jobs).set(updates).where(eq(stage32Jobs.id, id)).returning();
+    return updated;
+  }
+
+  // ── Parallel Supreme ──────────────────────────────────────────────────
+  async createSupremeJob(job: InsertSupremeJob): Promise<SupremeJob> {
+    const [created] = await db.insert(supremeJobs).values(job).returning();
+    return created;
+  }
+
+  async updateSupremeJob(id: string, updates: Partial<SupremeJob>): Promise<SupremeJob | undefined> {
+    const [updated] = await db.update(supremeJobs).set(updates).where(eq(supremeJobs.id, id)).returning();
+    return updated;
+  }
+
+  async getSupremeJobs(): Promise<SupremeJob[]> {
+    return await db.select().from(supremeJobs).orderBy(desc(supremeJobs.startedAt)).limit(20);
+  }
+
+  async getSupremeJob(id: string): Promise<SupremeJob | undefined> {
+    const [result] = await db.select().from(supremeJobs).where(eq(supremeJobs.id, id)).limit(1);
+    return result;
+  }
+
+  async getSupremeJobLogTail(id: string, limit: number): Promise<string[]> {
+    const result = await db.execute(sql`
+      SELECT (SELECT ARRAY(
+        SELECT unnest(log) AS entry
+        FROM supreme_jobs WHERE id = ${id}
+        OFFSET GREATEST(0, (SELECT COALESCE(array_length(log, 1), 0) FROM supreme_jobs WHERE id = ${id}) - ${limit})
+      )) AS tail
+    `);
+    return (result.rows[0] as any)?.tail ?? [];
+  }
+
+  async getSupremeJobShouldStop(id: string): Promise<boolean> {
+    const [job] = await db.select({ shouldStop: supremeJobs.shouldStop }).from(supremeJobs).where(eq(supremeJobs.id, id)).limit(1);
+    return job?.shouldStop ?? false;
+  }
+
+  async interruptSupremeJobs(): Promise<number> {
+    const result = await db.update(supremeJobs)
+      .set({ status: "interrupted", completedAt: new Date() })
+      .where(eq(supremeJobs.status, "running"))
+      .returning({ id: supremeJobs.id });
+    return result.length;
+  }
+
+  async appendSupremeLogBatch(jobId: string, messages: string[]): Promise<void> {
+    if (messages.length === 0) return;
+    const pgArray = `{${messages.map(m => `"${m.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',')}}`;
+    await db.execute(sql`UPDATE supreme_jobs SET log = log || ${pgArray}::text[] WHERE id = ${jobId}`);
+  }
+
+  async bulkInsertSupremeCompanies(companies: InsertSupremeCompany[]): Promise<number> {
+    if (companies.length === 0) return 0;
+    let inserted = 0;
+    const batchSize = 100;
+    for (let i = 0; i < companies.length; i += batchSize) {
+      const batch = companies.slice(i, i + batchSize);
+      const result = await db.insert(supremeCompanies).values(batch).onConflictDoNothing().returning();
+      inserted += result.length;
+    }
+    return inserted;
+  }
+
+  async updateSupremeCompany(id: string, updates: Partial<SupremeCompany>): Promise<void> {
+    await db.update(supremeCompanies).set(updates).where(eq(supremeCompanies.id, id));
+  }
+
+  async bulkUpdateSupremeCompanies(updates: { id: string; data: Partial<SupremeCompany> }[]): Promise<void> {
+    if (updates.length === 0) return;
+    for (const { id, data } of updates) {
+      await db.update(supremeCompanies).set(data).where(eq(supremeCompanies.id, id));
+    }
+  }
+
+  async getSupremeCompanies(filters: { jobId?: string; line?: string; status?: string; search?: string; hasCoords?: boolean; page?: number; limit?: number }): Promise<{ companies: SupremeCompany[]; total: number }> {
+    const conditions: any[] = [];
+    if (filters.jobId) conditions.push(eq(supremeCompanies.jobId, filters.jobId));
+    if (filters.line) conditions.push(eq(supremeCompanies.line, filters.line));
+    if (filters.status) conditions.push(eq(supremeCompanies.status, filters.status));
+    if (filters.hasCoords) conditions.push(sql`${supremeCompanies.latitude} IS NOT NULL`);
+    if (filters.search) {
+      conditions.push(or(
+        ilike(supremeCompanies.name, `%${filters.search}%`),
+        ilike(supremeCompanies.website, `%${filters.search}%`),
+        ilike(supremeCompanies.address, `%${filters.search}%`),
+        ilike(supremeCompanies.city, `%${filters.search}%`),
+      )!);
+    }
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 50;
+    const offset = (page - 1) * limit;
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : sql`true`;
+    const [countResult] = await db.select({ count: count() }).from(supremeCompanies).where(whereClause);
+    const companies = await db.select().from(supremeCompanies)
+      .where(whereClause)
+      .orderBy(desc(supremeCompanies.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return { companies, total: countResult?.count ?? 0 };
+  }
+
+  async getSupremeCompaniesForExport(jobId?: string, onlyGeocoded?: boolean): Promise<SupremeCompany[]> {
+    const conditions: any[] = [];
+    if (jobId) {
+      conditions.push(eq(supremeCompanies.jobId, jobId));
+    } else {
+      // Only filter by line when no specific jobId — for Line 1 "all runs" export
+      conditions.push(eq(supremeCompanies.line, "line1"));
+    }
+    if (onlyGeocoded) {
+      conditions.push(sql`${supremeCompanies.latitude} IS NOT NULL`);
+      conditions.push(sql`${supremeCompanies.longitude} IS NOT NULL`);
+    }
+    return await db.select().from(supremeCompanies).where(and(...conditions)).orderBy(asc(supremeCompanies.createdAt));
+  }
+
+  async getSupremeSourceStats(jobId?: string): Promise<Array<{ source: string; total: number; withWebsite: number; withAddress: number; withPhone: number; withCoords: number }>> {
+    const conditions: any[] = [eq(supremeCompanies.line, "line1")];
+    if (jobId) {
+      conditions.push(eq(supremeCompanies.jobId, jobId));
+    }
+    const rows = await db
+      .select({
+        source: supremeCompanies.source,
+        total: count(),
+        withWebsite: count(sql`CASE WHEN ${supremeCompanies.website} IS NOT NULL AND ${supremeCompanies.website} != '' THEN 1 END`),
+        withAddress: count(sql`CASE WHEN ${supremeCompanies.address} IS NOT NULL AND ${supremeCompanies.address} != '' THEN 1 END`),
+        withPhone: count(sql`CASE WHEN ${supremeCompanies.phone} IS NOT NULL AND ${supremeCompanies.phone} != '' THEN 1 END`),
+        withCoords: count(sql`CASE WHEN ${supremeCompanies.latitude} IS NOT NULL THEN 1 END`),
+      })
+      .from(supremeCompanies)
+      .where(and(...conditions))
+      .groupBy(supremeCompanies.source);
+    return rows.map(r => ({
+      source: r.source ?? "unknown",
+      total: Number(r.total),
+      withWebsite: Number(r.withWebsite),
+      withAddress: Number(r.withAddress),
+      withPhone: Number(r.withPhone),
+      withCoords: Number(r.withCoords),
+    }));
+  }
+
+  // ── Geofencing Platform ──────────────────────────────────────────────
+
+  async createGeofence(geofence: InsertGeofence): Promise<Geofence> {
+    const [created] = await db.insert(geofences).values(geofence).returning();
+    return created;
+  }
+
+  async createGeofencesBulk(geofencesList: InsertGeofence[]): Promise<number> {
+    if (geofencesList.length === 0) return 0;
+    const result = await db.insert(geofences).values(geofencesList).returning();
+    return result.length;
+  }
+
+  async getGeofences(filters?: { active?: boolean; jobId?: string; source?: string }): Promise<Geofence[]> {
+    const conditions: any[] = [];
+    if (filters?.active !== undefined) {
+      conditions.push(eq(geofences.active, filters.active));
+    }
+    if (filters?.jobId) {
+      conditions.push(eq(geofences.jobId, filters.jobId));
+    }
+    if (filters?.source) {
+      conditions.push(eq(geofences.source, filters.source));
+    }
+    const query = db.select().from(geofences);
+    if (conditions.length > 0) {
+      return await query.where(and(...conditions)).orderBy(desc(geofences.createdAt));
+    }
+    return await query.orderBy(desc(geofences.createdAt));
+  }
+
+  async getGeofence(id: string): Promise<Geofence | undefined> {
+    const [g] = await db.select().from(geofences).where(eq(geofences.id, id));
+    return g;
+  }
+
+  async updateGeofence(id: string, updates: Partial<Geofence>): Promise<Geofence | undefined> {
+    const [updated] = await db.update(geofences).set(updates).where(eq(geofences.id, id)).returning();
+    return updated;
+  }
+
+  async deleteGeofence(id: string): Promise<void> {
+    await db.delete(geofences).where(eq(geofences.id, id));
+  }
+
+  async findGeofencesForPoint(lat: number, lng: number): Promise<Array<{ id: string; name: string; radius_m: number }>> {
+    // Raw SQL using PostGIS ST_Contains — drizzle can't express this
+    const result = await db.execute(sql`
+      SELECT id, name, radius_m
+      FROM geofences
+      WHERE active = true
+        AND ST_Contains(geom, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326))
+    `);
+    return result.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      radius_m: r.radius_m,
+    }));
+  }
+
+  async generateGeofencesFromSupreme(jobId?: string, radiusM?: number): Promise<{ created: number; skipped: number }> {
+    const radius = radiusM ?? 250;
+    // Find supreme companies with coordinates that don't have a geofence yet
+    const conditions: any[] = [
+      sql`${supremeCompanies.latitude} IS NOT NULL`,
+      sql`${supremeCompanies.longitude} IS NOT NULL`,
+    ];
+    if (jobId) {
+      conditions.push(eq(supremeCompanies.jobId, jobId));
+    }
+
+    const companies = await db
+      .select({
+        id: supremeCompanies.id,
+        name: supremeCompanies.name,
+        address: supremeCompanies.address,
+        city: supremeCompanies.city,
+        state: supremeCompanies.state,
+        latitude: supremeCompanies.latitude,
+        longitude: supremeCompanies.longitude,
+        jobId: supremeCompanies.jobId,
+      })
+      .from(supremeCompanies)
+      .where(and(...conditions));
+
+    // Check which already have geofences
+    const existing = await db.select({ companyId: geofences.companyId }).from(geofences);
+    const existingCompanyIds = new Set(existing.map((e: any) => e.companyId));
+
+    const toCreate: InsertGeofence[] = [];
+    let skipped = 0;
+    for (const c of companies) {
+      if (existingCompanyIds.has(c.id)) {
+        skipped++;
+        continue;
+      }
+      toCreate.push({
+        name: c.name,
+        companyId: c.id,
+        jobId: c.jobId,
+        latitude: c.latitude!,
+        longitude: c.longitude!,
+        radiusM: radius,
+        address: c.address,
+        city: c.city,
+        state: c.state,
+        source: "supreme_line2",
+      });
+    }
+
+    let created = 0;
+    if (toCreate.length > 0) {
+      created = await this.createGeofencesBulk(toCreate);
+    }
+    return { created, skipped };
+  }
+
+  // ── Captured Devices ──────────────────────────────────────────────────
+
+  async captureDevice(device: InsertCapturedDevice): Promise<{ created: boolean; device: CapturedDevice }> {
+    // Upsert by MAID — if exists, update last_seen and hit_count
+    if (!device.maid) {
+      // No MAID — just insert
+      const [created] = await db.insert(capturedDevices).values(device).returning();
+      return { created: true, device: created };
+    }
+
+    const [existing] = await db.select().from(capturedDevices).where(eq(capturedDevices.maid, device.maid));
+    if (existing) {
+      const [updated] = await db
+        .update(capturedDevices)
+        .set({
+          lastSeen: new Date(),
+          hitCount: existing.hitCount + 1,
+          latitude: device.latitude ?? existing.latitude,
+          longitude: device.longitude ?? existing.longitude,
+          geofenceId: device.geofenceId ?? existing.geofenceId,
+          geofenceName: device.geofenceName ?? existing.geofenceName,
+          ip: device.ip ?? existing.ip,
+        })
+        .where(eq(capturedDevices.id, existing.id))
+        .returning();
+      return { created: false, device: updated };
+    }
+
+    const [created] = await db.insert(capturedDevices).values(device).returning();
+    return { created: true, device: created };
+  }
+
+  async getCapturedDevices(filters?: { synced?: boolean; geofenceId?: string; limit?: number }): Promise<CapturedDevice[]> {
+    const conditions: any[] = [];
+    if (filters?.synced !== undefined) {
+      conditions.push(eq(capturedDevices.synced, filters.synced));
+    }
+    if (filters?.geofenceId) {
+      conditions.push(eq(capturedDevices.geofenceId, filters.geofenceId));
+    }
+    const limit = filters?.limit ?? 100;
+    const query = db.select().from(capturedDevices);
+    if (conditions.length > 0) {
+      return await query.where(and(...conditions)).orderBy(desc(capturedDevices.lastSeen)).limit(limit);
+    }
+    return await query.orderBy(desc(capturedDevices.lastSeen)).limit(limit);
+  }
+
+  async getCapturedDeviceCount(): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(capturedDevices);
+    return Number(result.count);
+  }
+
+  async markDevicesSynced(deviceIds: string[], syncedTo: string): Promise<void> {
+    if (deviceIds.length === 0) return;
+    await db
+      .update(capturedDevices)
+      .set({ synced: true, syncedAt: new Date(), syncedTo })
+      .where(inArray(capturedDevices.id, deviceIds));
+  }
+
+  // ── Audience Segments ─────────────────────────────────────────────────
+
+  async createAudienceSegment(segment: InsertAudienceSegment): Promise<AudienceSegment> {
+    const [created] = await db.insert(audienceSegments).values(segment).returning();
+    return created;
+  }
+
+  async getAudienceSegments(): Promise<AudienceSegment[]> {
+    return await db.select().from(audienceSegments).orderBy(desc(audienceSegments.createdAt));
+  }
+
+  async updateAudienceSegment(id: string, updates: Partial<AudienceSegment>): Promise<AudienceSegment | undefined> {
+    const [updated] = await db.update(audienceSegments).set(updates).where(eq(audienceSegments.id, id)).returning();
+    return updated;
   }
 }
 

@@ -1,4 +1,6 @@
 import { getSpeedParams } from "./hive-speed";
+import * as https from "https";
+import * as zlib from "zlib";
 
 export interface ScraperLocation {
   city: string;
@@ -6,13 +8,15 @@ export interface ScraperLocation {
 }
 
 export interface ScraperResult {
-  name: string; 
+  name: string;
   website?: string;
   phone?: string;
   address?: string;
   city?: string;
   state?: string;
   sourceUrl?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface ScraperOutput {
@@ -710,7 +714,75 @@ class FetchError extends Error {
 }
 
 async function doFetch(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<Response> {
+  // Use https.request instead of fetch to avoid the undici event-loop freeze.
   return fetch(url, { headers, signal, redirect: "follow" });
+}
+
+// ── httpsGetRaw: fetch a URL via https.request with decompression ───────
+// Returns { status, headers, body, redirected }. Does NOT throw on non-200.
+async function httpsGetRaw(
+  url: string,
+  extraHeaders: Record<string, string>,
+  signal: AbortSignal,
+  redirectCount = 0,
+): Promise<{ status: number; headers: Record<string, string>; body: string; redirected: boolean }> {
+  const u = new URL(url);
+
+  return new Promise((resolve, reject) => {
+    const options: any = {
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      method: "GET",
+      headers: { ...extraHeaders, "Accept-Encoding": extraHeaders["Accept-Encoding"] || "gzip, deflate, br", "Connection": extraHeaders["Connection"] || "keep-alive" },
+    };
+
+    const req = https.request(options, (res: any) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        if (redirectCount >= 5) {
+          resolve({ status: res.statusCode, headers: {}, body: "", redirected: true });
+          return;
+        }
+        const redirectUrl = new URL(res.headers.location, url).href;
+        return httpsGetRaw(redirectUrl, extraHeaders, signal, redirectCount + 1).then(resolve, reject);
+      }
+
+      const respHeaders: Record<string, string> = {};
+      for (const [k, v] of Object.entries(res.headers)) {
+        respHeaders[k] = Array.isArray(v) ? v[0] : String(v);
+      }
+
+      const chunks: Buffer[] = [];
+      let stream = res;
+      const enc = res.headers["content-encoding"];
+      if (enc === "gzip") stream = res.pipe(zlib.createGunzip());
+      else if (enc === "deflate") stream = res.pipe(zlib.createInflate());
+      else if (enc === "br") stream = res.pipe(zlib.createBrotliDecompress());
+
+      stream.on("data", (c: Buffer) => chunks.push(c));
+      stream.on("end", () => {
+        resolve({
+          status: res.statusCode || 200,
+          headers: respHeaders,
+          body: Buffer.concat(chunks).toString("utf8"),
+          redirected: redirectCount > 0,
+        });
+      });
+      stream.on("error", reject);
+    });
+
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(new Error("Request timed out")); });
+    req.setTimeout(30000);
+
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        req.destroy(new Error("The operation was aborted"));
+      });
+    }
+
+    req.end();
+  });
 }
 
 async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
@@ -722,7 +794,10 @@ async function fetchPageWithMeta(url: string): Promise<FetchPageMeta> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {
-      const response = await doFetch(url, getRandomHeaders(), controller.signal);
+      // Use fetch (undici) — Cloudflare requires HTTP/2 + proper TLS fingerprint
+      // which undici provides but https.request does not.
+      // The event loop freeze is prevented by setImmediate yields in the worker loop.
+      const response = await fetch(url, { headers: getRandomHeaders(), signal: controller.signal, redirect: "follow" });
 
       const respHeaders: Record<string, string> = {};
       response.headers.forEach((v, k) => { respHeaders[k] = v; });
@@ -999,123 +1074,104 @@ export async function scrapeYellowPages(
   searchTerms: string[],
   location: ScraperLocation
 ): Promise<ScraperResponse> {
+  // YellowPages.com is behind Cloudflare and blocks all non-browser HTTP clients
+  // (both fetch and https.request get 403). Instead, we use Serper.dev to search
+  // Google for YellowPages listings. Google has YP pages indexed with business
+  // names, phone numbers, and URLs in the snippets.
   const results: ScraperResult[] = [];
   const log: string[] = [];
   const locationStr = `${location.city}, ${location.state}`;
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) {
+    log.push("[YellowPages] No SERPER_API_KEY — cannot search");
+    return { results, log };
+  }
 
   for (const term of searchTerms) {
     if (globalStopSignal) break;
-    log.push(`Searching "${term}" in ${locationStr}...`);
-    const encodedTerm = encodeURIComponent(term);
-    const encodedLocation = encodeURIComponent(locationStr);
-    let page = 1;
-    const maxPages = 5;
-    let termTotal = 0;
+    log.push(`[YellowPages] Searching "${term}" in ${locationStr}...`);
 
-    while (page <= maxPages) {
+    for (let page = 1; page <= 2; page++) {
       if (globalStopSignal) break;
       try {
-        const url = `https://www.yellowpages.com/search?search_terms=${encodedTerm}&geo_location_terms=${encodedLocation}&page=${page}`;
-        const html = await fetchPage(url, log);
+        const query = `site:yellowpages.com "${term}" "${locationStr}"`;
+        const postData = JSON.stringify({ q: query, num: 10, gl: "us", page });
+        const data: any = await new Promise((resolve, reject) => {
+          const req = https.request("https://google.serper.dev/search", {
+            method: "POST",
+            headers: {
+              "X-API-KEY": apiKey,
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(postData),
+            },
+          }, (res: any) => {
+            let body = "";
+            res.on("data", (c: string) => { body += c; });
+            res.on("end", () => {
+              try { resolve(JSON.parse(body)); }
+              catch {
+                log.push(`[YellowPages] Serper response: ${body.substring(0, 200)}`);
+                resolve(null);
+              }
+            });
+          });
+          req.on("error", reject);
+          req.setTimeout(15000, () => req.destroy(new Error("Serper timeout")));
+          req.write(postData);
+          req.end();
+        });
 
-        const namePattern = /<a[^>]*class="[^"]*business-name[^"]*"[^>]*>(?:<span[^>]*>)?([^<]+)/g;
-        const phonePattern = /class="[^"]*phones?\s[^"]*"[^>]*>([^<]+)/g;
-        const phoneAltPattern = /class="[^"]*phones?\s[^"]*"[^>]*href="tel:([^"]+)"/g;
-        const addressPattern = /class="[^"]*street-address[^"]*"[^>]*>([^<]+)/g;
-        const websitePattern = /class="[^"]*track-visit-website[^"]*"[^>]*href="([^"]+)"/g;
-        const websiteAltPattern = /href="([^"]+)"[^>]*class="[^"]*track-visit-website[^"]*"/g;
-
-        const names: string[] = [];
-        const phones: string[] = [];
-        const addresses: string[] = [];
-        const websites: string[] = [];
-
-        let match;
-        while ((match = namePattern.exec(html)) !== null) {
-          names.push(stripTags(match[1]));
-        }
-
-        if (names.length === 0 && page > 1) {
-          log.push(`No more results after page ${page - 1}, stopping pagination`);
+        if (!data || !data.organic || data.organic.length === 0) {
+          log.push(`[YellowPages] Page ${page}: no results`);
           break;
         }
-        if (names.length === 0) {
-          log.push(`No listings found for "${term}"`);
-          break;
-        }
-
-        while ((match = phonePattern.exec(html)) !== null) {
-          phones.push(stripTags(match[1]));
-        }
-        if (phones.length === 0) {
-          while ((match = phoneAltPattern.exec(html)) !== null) {
-            phones.push(match[1]);
-          }
-        }
-        while ((match = addressPattern.exec(html)) !== null) {
-          addresses.push(stripTags(match[1]));
-        }
-        while ((match = websitePattern.exec(html)) !== null) {
-          websites.push(match[1]);
-        }
-        if (websites.length === 0) {
-          while ((match = websiteAltPattern.exec(html)) !== null) {
-            websites.push(match[1]);
-          }
-        }
-
-        const finalNames = names;
 
         let pageCount = 0;
-        for (let i = 0; i < finalNames.length; i++) {
-          const name = finalNames[i];
-          if (!name || name.length < 2) continue;
+        for (const result of data.organic) {
+          const title: string = result.title || "";
+          const snippet: string = result.snippet || "";
+          const link: string = result.link || "";
+          const combined = `${title} ${snippet}`;
 
-          const entry: ScraperResult = {
-            name,
-            phone: phones[i] || extractPhone(html),
-            address: addresses[i],
-            city: location.city,
-            state: location.state,
-            sourceUrl: `https://www.yellowpages.com/search?search_terms=${encodedTerm}&geo_location_terms=${encodedLocation}&page=${page}`,
-          };
+          // Extract business name from title (usually "Business Name - City, State | Yellow Pages")
+          const nameMatch = title.match(/^(.+?)\s*[-|]/);
+          const name = nameMatch ? nameMatch[1].trim() : title;
 
-          if (websites[i]) {
-            let websiteUrl = websites[i];
-            if (websiteUrl.startsWith("/")) {
-              websiteUrl = "https://www.yellowpages.com" + websiteUrl;
-            }
-            if (!isDirectoryPlaceholder(websiteUrl)) {
-              entry.website = websiteUrl;
-            }
+          // Skip category listing pages like "Best 30 Coffee Shops in Austin, TX"
+          if (/^best\s+\d+/i.test(name) || /^coffee (shops|tea)/i.test(name)) continue;
+
+          // Extract phone from snippet (xxx-xxx-xxxx or (xxx) xxx-xxxx)
+          const phoneMatch = snippet.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
+          const phone = phoneMatch ? phoneMatch[0] : undefined;
+
+          // Extract address from snippet
+          const addrMatch = snippet.match(/(\d+\s+[A-Za-z0-9\s]+(?:St|Ave|Rd|Dr|Blvd|Ln|Way|Ct|Pkwy|Hwy|Cir|Pl|Sq)\.?(?:\s+#?\d+)?)/i);
+          const address = addrMatch ? addrMatch[1].trim() : undefined;
+
+          if (name && name.length > 2) {
+            results.push({
+              name,
+              phone,
+              address,
+              city: location.city,
+              state: location.state,
+              sourceUrl: link || `https://www.yellowpages.com/search?search_terms=${encodeURIComponent(term)}&geo_location_terms=${encodeURIComponent(locationStr)}`,
+            });
+            pageCount++;
           }
-
-          results.push(entry);
-          pageCount++;
         }
 
-        log.push(`Page ${page}: found ${pageCount} listings`);
-        termTotal += pageCount;
-
-        if (finalNames.length < 5) {
-          log.push(`No more results after page ${page}, stopping pagination`);
-          break;
-        }
-
-        page++;
+        log.push(`[YellowPages] Page ${page}: ${pageCount} listings`);
+        if (data.organic.length < 5) break;
         await randomDelay();
       } catch (err: any) {
-        log.push(`Error on page ${page} for "${term}": ${err.message || err}`);
+        log.push(`[YellowPages] Page ${page} error: ${err.message || err}`);
         break;
       }
     }
-    log.push(`Completed "${term}": ${termTotal} results`);
-    if (searchTerms.indexOf(term) < searchTerms.length - 1) {
-      await randomDelay();
-    }
   }
 
-  log.push(`Total: ${results.length} results`);
+  log.push(`[YellowPages] Total: ${results.length} results`);
   return { results, log };
 }
 
@@ -1581,6 +1637,202 @@ export async function scrapeWLW(
   return { results, log };
 }
 
+// ── Google Search via Serper ─────────────────────────────────────────────
+// Direct Google search for businesses — not restricted to any directory site.
+// Returns actual business names with websites. Uses 1 Serper credit per
+// keyword per page (10 results per page, max 3 pages = 3 credits per keyword).
+export async function scrapeGoogleSearch(
+  searchTerms: string[],
+  location: ScraperLocation
+): Promise<ScraperResponse> {
+  const results: ScraperResult[] = [];
+  const log: string[] = [];
+  const locationStr = `${location.city}, ${location.state}`;
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) {
+    log.push("[GoogleSearch] No SERPER_API_KEY — cannot search");
+    return { results, log };
+  }
+
+  for (const term of searchTerms) {
+    if (globalStopSignal) break;
+    log.push(`[GoogleSearch] Searching "${term}" in ${locationStr}...`);
+
+    for (let page = 1; page <= 3; page++) {
+      if (globalStopSignal) break;
+      try {
+        // First: query Serper Places API for structured business data (addresses, phones, coords)
+        const placesPostData = JSON.stringify({ q: `${term} ${locationStr}`, gl: "us", page });
+        const placesData: any = await new Promise((resolve, reject) => {
+          const req = https.request("https://google.serper.dev/places", {
+            method: "POST",
+            headers: {
+              "X-API-KEY": apiKey,
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(placesPostData),
+            },
+          }, (res: any) => {
+            let body = "";
+            res.on("data", (c: string) => { body += c; });
+            res.on("end", () => {
+              try { resolve(JSON.parse(body)); }
+              catch { resolve(null); }
+            });
+          });
+          req.on("error", reject);
+          req.setTimeout(15000, () => req.destroy(new Error("Serper Places timeout")));
+          req.write(placesPostData);
+          req.end();
+        });
+
+        if (placesData && placesData.places && placesData.places.length > 0) {
+          for (const place of placesData.places) {
+            const name = place.title || "";
+            const website = place.website || undefined;
+            const phone = place.phoneNumber || undefined;
+            const address = place.address || undefined;
+            const lat = place.latitude ? parseFloat(place.latitude) : undefined;
+            const lng = place.longitude ? parseFloat(place.longitude) : undefined;
+            if (name && name.length > 2) {
+              results.push({
+                name,
+                website,
+                phone,
+                address,
+                city: location.city,
+                state: location.state,
+                latitude: lat,
+                longitude: lng,
+                sourceUrl: website || `https://www.google.com/search?q=${encodeURIComponent(`${term} ${locationStr}`)}`,
+              });
+            }
+          }
+          log.push(`[GoogleSearch] Places page ${page}: ${placesData.places.length} businesses`);
+        }
+
+        // Also do regular search for websites that Places might miss
+        const query = `${term} ${locationStr}`;
+        const postData = JSON.stringify({ q: query, num: 10, gl: "us", page });
+        const data: any = await new Promise((resolve, reject) => {
+          const req = https.request("https://google.serper.dev/search", {
+            method: "POST",
+            headers: {
+              "X-API-KEY": apiKey,
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(postData),
+            },
+          }, (res: any) => {
+            let body = "";
+            res.on("data", (c: string) => { body += c; });
+            res.on("end", () => {
+              try { resolve(JSON.parse(body)); }
+              catch {
+                // Serper returns non-JSON on errors (e.g. insufficient credits)
+                log.push(`[GoogleSearch] Serper response: ${body.substring(0, 200)}`);
+                resolve(null);
+              }
+            });
+          });
+          req.on("error", reject);
+          req.setTimeout(15000, () => req.destroy(new Error("Serper timeout")));
+          req.write(postData);
+          req.end();
+        });
+
+        if (!data) {
+          log.push(`[GoogleSearch] Page ${page}: Serper returned null`);
+          break;
+        }
+        if (!data.organic || data.organic.length === 0) {
+          log.push(`[GoogleSearch] Page ${page}: no organic results — ${JSON.stringify(data).substring(0, 200)}`);
+          break;
+        }
+
+        // Also check for a knowledge graph result (local business pack)
+        if (data.knowledgeGraph && data.knowledgeGraph.title) {
+          const kg = data.knowledgeGraph;
+          const name = kg.title;
+          const website = kg.website || undefined;
+          const phone = kg.phoneNumber || undefined;
+          const address = kg.address || undefined;
+          if (name && name.length > 2) {
+            results.push({
+              name,
+              website,
+              phone,
+              address,
+              city: location.city,
+              state: location.state,
+              sourceUrl: website || `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+            });
+            log.push(`[GoogleSearch] Knowledge Graph: ${name}`);
+          }
+        }
+
+        let pageCount = 0;
+        for (const result of data.organic) {
+          const title: string = result.title || "";
+          const snippet: string = result.snippet || "";
+          const link: string = result.link || "";
+
+          // Skip directory sites — we want actual business websites
+          const dirDomains = ["yellowpages.com", "yelp.com", "facebook.com", "linkedin.com",
+            "instagram.com", "twitter.com", "mapquest.com", "superpages.com", "angi.com",
+            "bbb.org", "houzz.com", "manta.com", "foursquare.com"];
+          const isDirectory = dirDomains.some(d => link.toLowerCase().includes(d));
+          if (isDirectory) continue;
+
+          // The title is usually the business name or "Business Name - City, State"
+          const nameMatch = title.match(/^(.+?)\s*[-|–—]/);
+          const name = nameMatch ? nameMatch[1].trim() : title;
+
+          // Extract phone from snippet
+          const phoneMatch = snippet.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
+          const phone = phoneMatch ? phoneMatch[0] : undefined;
+
+          // Extract address from snippet
+          const addrMatch = snippet.match(/(\d+\s+[A-Za-z0-9\s]+(?:St|Ave|Rd|Dr|Blvd|Ln|Way|Ct|Pkwy|Hwy|Cir|Pl|Sq|Ste|Suite)\.?(?:\s+#?\d+)?)/i);
+          const address = addrMatch ? addrMatch[1].trim() : undefined;
+
+          if (name && name.length > 2 && link) {
+            results.push({
+              name,
+              website: link.startsWith("http") ? link : `https://${link}`,
+              phone,
+              address,
+              city: location.city,
+              state: location.state,
+              sourceUrl: link,
+            });
+            pageCount++;
+          }
+        }
+
+        log.push(`[GoogleSearch] Page ${page}: ${pageCount} businesses`);
+        if (data.organic && data.organic.length < 5) break;
+        await randomDelay();
+      } catch (err: any) {
+        log.push(`[GoogleSearch] Page ${page} error: ${err.message || err}`);
+        break;
+      }
+    }
+  }
+
+  // Deduplicate by normalized website or name — Places and organic may overlap
+  const seen = new Set<string>();
+  const deduped: ScraperResult[] = [];
+  for (const r of results) {
+    const key = (r.website ? r.website.replace(/^https?:\/\/(?:www\.)?/, "").replace(/\/$/, "") : r.name || "").toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(r);
+    }
+  }
+  log.push(`[GoogleSearch] Total: ${deduped.length} results (deduped from ${results.length})`);
+
+  return { results: deduped, log };
+}
+
 export const scrapeYelp: ScraperFn = () => blockedScraper("Yelp", "Blocked — requires API key");
 export const scrapeBBB: ScraperFn = () => blockedScraper("BBB", "Blocked — CAPTCHA/anti-bot protection");
 export const scrapeAngi: ScraperFn = () => blockedScraper("Angi", "Blocked — requires authentication");
@@ -1589,6 +1841,7 @@ export const scrapeManta: ScraperFn = () => blockedScraper("Manta", "Blocked —
 export const scrapeChamberOfCommerce: ScraperFn = () => blockedScraper("ChamberOfCommerce", "Blocked — CAPTCHA/anti-bot protection");
 
 export const SCRAPERS: Record<string, ScraperFn> = {
+  googlesearch: scrapeGoogleSearch,
   yellowpages: scrapeYellowPages,
   superpages: scrapeSuperpages,
   mapquest: scrapeMapQuest,

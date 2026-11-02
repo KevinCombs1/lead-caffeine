@@ -1,0 +1,87 @@
+# Render Blueprint — Lead Caffeine Geofencing Platform
+# Docs: https://render.com/docs/blueprint-spec
+#
+# After pushing this file to GitHub, go to:
+# https://dashboard.render.com/blueprints → New Blueprint → connect repo
+# Render will create all services defined below automatically.
+#
+# IMPORTANT: After deploy, run scripts/init-production.sh to set up
+# database tables and ClickHouse schema.
+
+services:
+  # ── Web Service (Node.js app) ──────────────────────────────────────────
+  - type: web
+    name: lead-caffeine
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5001
+      - key: SCANNER_PASSWORD
+        sync: false
+      - key: SERPER_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: postgresql://leadcaffeine:leadcaffeine123@lead-caffeine-db:5432/leadcaffeine
+      - key: REDIS_URL
+        value: redis://lead-caffeine-redis:6379
+      - key: CLICKHOUSE_URL
+        value: http://lead-caffeine-clickhouse:8123
+      - key: CLICKHOUSE_PASSWORD
+        sync: false
+      - key: BIDDER_DOMAIN
+        value: https://leadcaffeine.com
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: FLARESOLVERR_URL
+        value: http://lead-caffeine-flaresolverr:8191
+
+  # ── PostgreSQL + PostGIS (private service) ──────────────────────────────
+  - type: pserv
+    name: lead-caffeine-db
+    runtime: docker
+    plan: starter
+    dockerRepo: postgis/postgis
+    dockerTag: "18-3.7"
+    envVars:
+      - key: POSTGRES_USER
+        value: leadcaffeine
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: POSTGRES_DB
+        value: leadcaffeine
+
+  # ── Redis (private service) ────────────────────────────────────────────
+  - type: pserv
+    name: lead-caffeine-redis
+    runtime: docker
+    plan: starter
+    dockerRepo: redis
+    dockerTag: 7-alpine
+
+  # ── ClickHouse (private service) ───────────────────────────────────────
+  - type: pserv
+    name: lead-caffeine-clickhouse
+    runtime: docker
+    plan: starter
+    dockerRepo: clickhouse/clickhouse-server
+    dockerTag: latest
+    envVars:
+      - key: CLICKHOUSE_DB
+        value: default
+      - key: CLICKHOUSE_USER
+        value: default
+      - key: CLICKHOUSE_PASSWORD
+        sync: false
+
+  # ── FlareSolverr (private service) ─────────────────────────────────────
+  - type: pserv
+    name: lead-caffeine-flaresolverr
+    runtime: docker
+    plan: starter
+    dockerRepo: ghcr.io/rix1337/flaresolverr-next
+    dockerTag: latest

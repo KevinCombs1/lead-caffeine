@@ -258,6 +258,7 @@ const COMBO_TIMEOUT_MS = 300000;
 export class RayOfGraceEngine {
   private jobId: string = "";
   private stopped = false;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private combos: CrawlCombo[] = [];
   private comboIndex = 0;
   private totalFlowers = 0;
@@ -361,6 +362,16 @@ export class RayOfGraceEngine {
     this.log(`[engine] Suspension: 5 consecutive failures → 3min cooldown`);
     await this.flushLogs();
 
+    // Start heartbeat — logs progress every 10s and flushes logs
+    this.heartbeatTimer = setInterval(async () => {
+      if (this.stopped || this.comboIndex >= this.combos.length) {
+        clearInterval(this.heartbeatTimer);
+        return;
+      }
+      this.log(`[heartbeat] ${this.completedCombos}/${this.combos.length} combos done, ${this.totalFlowers} flowers, ${this.totalPollen} pollen`);
+      await this.flushLogs();
+    }, 10000);
+
     this.runWorkersSafe();
 
     return this.jobId;
@@ -416,6 +427,8 @@ export class RayOfGraceEngine {
 
     await Promise.all(workers);
 
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+
     const summaryLines = this.metrics.getSummaryLines();
     for (const line of summaryLines) {
       this.log(line);
@@ -438,6 +451,9 @@ export class RayOfGraceEngine {
   private async worker(workerId: number): Promise<void> {
     while (true) {
       if (this.stopped) break;
+
+      // Yield to event loop so health check / other requests can fire
+      await new Promise<void>((r) => setImmediate(r));
 
       const combo = this.getNextCombo();
       if (!combo) break;

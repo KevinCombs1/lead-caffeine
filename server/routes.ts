@@ -6,13 +6,14 @@ import session from "express-session";
 import { z } from "zod";
 import { storage } from "./storage";
 import { db } from "./db";
-import { sql, eq, inArray } from "drizzle-orm";
-import { scrapedResults, scrapeJobs, domainSecurityProfiles, fiscalLeads, hiveCategories } from "@shared/schema";
+import { sql, eq, inArray, count } from "drizzle-orm";
+import { scrapedResults, scrapeJobs, domainSecurityProfiles, fiscalLeads, hiveCategories, compassProfiles, compassDiscoveries, mandyProfiles, mandyJobs, backstageProfiles, backstageJobs } from "@shared/schema";
 import { TAX_CREDIT_UNIVERSE, matchLeadCredits, analyzeCompanyCreditPosition, analyzeMultiYearTrends, analyzeCreditInteractions, applyInteractionAdjustments, computeIndustryBenchmarks, compareToIndustryPeers } from "./credit-universe";
 import { scanSingleLead, type SingleLeadGapResult } from "./credit-gap-engine";
 import { SIC_INDUSTRIES, findCompaniesBySIC, findCompaniesByFormD, findCompaniesByFilingText, getCompanyDetails, loadAllCompanies, companyIndex, type RecentEvent } from "./gradient-sweep";
 import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-blocklist";
 import { submitSingleForm, runBatchSubmission, isActionableForm, type SenderProfile, type FormTarget, type BatchItem } from "./form-submitter";
+import { checkMaidDedup, addToAudienceSet, getAudienceMAIDsForGeofences, logToClickHouse, getCaptureAnalytics, getTotalUniqueDevices, isTargetedMaid, addTargetMaids, removeTargetMaid, getTargetMaidCount, getTargetMaids, getClickHouse } from "./geofence-pipeline";
 import * as cheerio from "cheerio";
 import { smartGet } from "./smart-retry";
 import dns from "dns";
@@ -3580,6 +3581,1909 @@ export async function registerRoutes(
     try {
       await storage.deleteEmailProviderConfig(Number(req.params.id));
       res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── COMPASS — Cal.com Intelligence ─────────────────────────────────────────
+
+  app.get("/api/compass/sources", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const sources = await storage.getCompassSources();
+      res.json(sources);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/compass/industries", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const industries = await storage.getCompassIndustries();
+      res.json(industries);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/compass/industries/bundles", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const industries = await storage.getCompassIndustries();
+      const bundles = [...new Set(industries.map(i => i.bundle))].sort();
+      res.json(bundles);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/compass/discover", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { sourceIds, industryIds, strategyIds, customKeywords, country, strictMode, minQuality, state } = req.body;
+      const hasCustom = Array.isArray(customKeywords) && customKeywords.length > 0;
+      if (!sourceIds?.length || (!hasCustom && !industryIds?.length)) {
+        return res.status(400).json({ error: "Must select sources and industries (or enter custom keywords)" });
+      }
+      const { startCompass } = await import("./compass-engine");
+      const jobId = await startCompass(sourceIds, industryIds ?? [], strategyIds ?? [], hasCustom ? customKeywords : undefined, country || "all", strictMode || false, minQuality || 0, state || "all");
+      res.json({ jobId });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/compass/discover/:id/stop", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { stopCompass } = await import("./compass-engine");
+      await stopCompass();
+      res.json({ stopped: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/compass/discover/status", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getActiveEngine } = await import("./compass-engine");
+      const engine = getActiveEngine();
+      const engineStatus = engine ? engine.getStatus() : null;
+      const jobs = await storage.getCompassQueryJobs();
+      const recentJobs = jobs.slice(0, 10).map((job: any) => {
+        if (engineStatus && job.id === engineStatus.jobId) {
+          return {
+            ...job,
+            completedQueries: engineStatus.completedQueries,
+            urlsDiscovered: engineStatus.urlsDiscovered,
+            profilesEnriched: engineStatus.profilesEnriched,
+          };
+        }
+        return job;
+      });
+      res.json({ active: engineStatus, recentJobs });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/compass/discover/:id/log", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const job = await storage.getCompassQueryJob(req.params.id);
+      if (!job) return res.status(404).json({ error: "Job not found" });
+      const limit = parseInt(req.query.limit as string) || 200;
+      const log = (job.log || []).slice(-limit);
+      res.json(log);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/compass/profiles", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const {
+        search, searchMode, industry, bundle, scope, source, sort, page, limit,
+        minQuality, isTeam, platform,
+      } = req.query;
+
+      const result = await storage.getCompassProfiles({
+        search: search as string | undefined,
+        searchMode: searchMode as string | undefined,
+        industry: industry as string | undefined,
+        bundle: bundle as string | undefined,
+        scope: scope as string | undefined,
+        source: source as string | undefined,
+        sortBy: sort as string | undefined,
+        page: page ? parseInt(page as string) : 1,
+        limit: limit ? parseInt(limit as string) : 50,
+        minQuality: minQuality ? parseInt(minQuality as string) : undefined,
+        isTeam: isTeam !== undefined ? isTeam === "true" : undefined,
+        platform: platform as string | undefined,
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/compass/profiles/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const profile = await storage.getCompassProfile(req.params.id);
+      if (!profile) return res.status(404).json({ error: "Profile not found" });
+      const eventTypes = await storage.getCompassEventTypes(req.params.id);
+      res.json({ ...profile, eventTypes });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/compass/discoveries", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { search, searchMode, source, status, sort, page, limit, platform } = req.query;
+      const result = await storage.getCompassDiscoveries({
+        search: search as string | undefined,
+        searchMode: searchMode as string | undefined,
+        source: source as string | undefined,
+        status: status as string | undefined,
+        sortBy: sort as string | undefined,
+        page: page ? parseInt(page as string) : 1,
+        limit: limit ? parseInt(limit as string) : 50,
+        platform: platform as string | undefined,
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/compass/stats", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { platform } = req.query;
+      const stats = await storage.getCompassStats(platform as string | undefined);
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/compass/export", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { search, industry, bundle, scope, source, sort, minQuality } = req.query;
+      const result = await storage.getCompassProfiles({
+        search: search as string | undefined,
+        industry: industry as string | undefined,
+        bundle: bundle as string | undefined,
+        scope: scope as string | undefined,
+        source: source as string | undefined,
+        sortBy: sort as string | undefined,
+        page: 1,
+        limit: 10000,
+        minQuality: minQuality ? parseInt(minQuality as string) : undefined,
+      });
+      const csvHeader = "calUrl,username,name,industry,industryBundle,scope,qualityScore,companyName,timezone,eventCount,source,createdAt\n";
+      const csvRows = result.profiles.map(p => {
+        const escape = (v: string | null | undefined) => `"${(v || "").replace(/"/g, '""')}"`;
+        return [
+          escape(p.calUrl), escape(p.username), escape(p.name), escape(p.industry),
+          escape(p.industryBundle), escape(p.scope), p.qualityScore?.toString() || "",
+          escape(p.companyName), escape(p.timezone), p.eventCount.toString(),
+          escape(p.source), p.createdAt?.toISOString() || "",
+        ].join(",");
+      }).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=compass-profiles.csv");
+      res.send(csvHeader + csvRows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/compass/speed-mode", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getSpeedMode, getSpeedParams, getAllSpeedModes } = await import("./compass-speed");
+      res.json({ current: getSpeedMode(), params: getSpeedParams(), modes: getAllSpeedModes() });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/compass/speed-mode", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { setSpeedMode } = await import("./compass-speed");
+      setSpeedMode(req.body.mode);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/compass/enrich/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const profile = await storage.getCompassProfile(req.params.id);
+      if (!profile) return res.status(404).json({ error: "Profile not found" });
+      const { extractProfile } = await import("./compass-extract");
+      const { classifyIndustryWithCategories, classifyScope, computeQualityScore, setIndustryCategoryCache } = await import("./compass-classify");
+      const industries = await storage.getCompassIndustries();
+      setIndustryCategoryCache(industries);
+      const extracted = await extractProfile(profile.calUrl);
+      if (!extracted) {
+        return res.status(422).json({ error: "Could not extract profile data" });
+      }
+      const adapted = {
+        name: extracted.name ?? undefined,
+        bio: extracted.bio ?? undefined,
+        avatarUrl: extracted.avatarUrl ?? undefined,
+        timezone: extracted.timezone ?? undefined,
+        location: extracted.location ?? undefined,
+        companyName: extracted.companyName ?? undefined,
+        isTeamProfile: extracted.isTeamProfile ?? undefined,
+        socialLinks: extracted.socialLinks ?? undefined,
+        eventTypes: extracted.eventTypes ?? [],
+      };
+      const industry = classifyIndustryWithCategories(adapted, industries);
+      const scope = classifyScope(adapted);
+      const qualityScore = computeQualityScore(adapted);
+      const updated = await storage.updateCompassProfile(req.params.id, {
+        name: extracted.name ?? null,
+        bio: extracted.bio ?? null,
+        avatarUrl: extracted.avatarUrl ?? null,
+        timezone: extracted.timezone ?? null,
+        location: extracted.location ?? null,
+        industry: industry.industry,
+        industryBundle: industry.bundle,
+        scope,
+        qualityScore,
+        socialLinks: extracted.socialLinks ? JSON.stringify(extracted.socialLinks) : null,
+        isTeamProfile: extracted.isTeamProfile ?? false,
+        companyName: extracted.companyName ?? null,
+        eventCount: extracted.eventTypes?.length ?? 0,
+        lastChecked: new Date(),
+        isAlive: true,
+      });
+      if (extracted.eventTypes && extracted.eventTypes.length > 0) {
+        await storage.replaceCompassEventTypes(req.params.id, extracted.eventTypes.map(et => ({
+          profileId: req.params.id,
+          title: et.title ?? "",
+          description: et.description ?? null,
+          duration: et.duration ?? null,
+          price: et.price ?? null,
+          slug: et.slug ?? null,
+          eventTypeUrl: et.eventTypeUrl ?? null,
+        })));
+      }
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/compass/health-check", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const profiles = await storage.getCompassProfiles({ page: 1, limit: 100 });
+      const { extractProfile } = await import("./compass-extract");
+      let checked = 0;
+      let alive = 0;
+      let dead = 0;
+      for (const profile of profiles.profiles) {
+        checked++;
+        try {
+          const extracted = await extractProfile(profile.calUrl);
+          if (extracted) {
+            alive++;
+            await storage.updateCompassProfile(profile.id, { isAlive: true, lastChecked: new Date() });
+          } else {
+            dead++;
+            await storage.updateCompassProfile(profile.id, { isAlive: false, lastChecked: new Date() });
+          }
+        } catch {
+          dead++;
+          await storage.updateCompassProfile(profile.id, { isAlive: false, lastChecked: new Date() });
+        }
+      }
+      res.json({ checked, alive, dead });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Calendly Compass routes ──────────────────────────────────────────────
+
+  app.get("/api/calendly/sources", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const sources = await storage.getCompassSources("calendly");
+      res.json(sources);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/calendly/industries", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const industries = await storage.getCompassIndustries();
+      res.json(industries);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/calendly/industries/bundles", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const industries = await storage.getCompassIndustries();
+      const bundles = [...new Set(industries.map((i) => i.bundle))].sort();
+      res.json(bundles);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/calendly/discover", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { sourceIds, industryIds, strategyIds, customKeywords, country, state } = req.body;
+      if (!sourceIds?.length) {
+        return res.status(400).json({ error: "Must select at least one source" });
+      }
+      const { startCalendly } = await import("./calendly-engine");
+      const hasCustom = Array.isArray(customKeywords) && customKeywords.length > 0;
+      const jobId = await startCalendly(
+        sourceIds,
+        industryIds ?? [],
+        strategyIds ?? [],
+        hasCustom ? customKeywords : [],
+        country || "all",
+        state || "all",
+      );
+      res.json({ jobId });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/calendly/discover/:id/stop", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { stopCalendly } = await import("./calendly-engine");
+      await stopCalendly();
+      res.json({ stopped: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/calendly/validate-pending", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { startValidationOnlyCalendly } = await import("./calendly-engine");
+      const jobId = await startValidationOnlyCalendly();
+      res.json({ jobId });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/calendly/discover/status", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getActiveCalendlyEngine } = await import("./calendly-engine");
+      const engine = getActiveCalendlyEngine();
+      const jobs = await storage.getCompassQueryJobs("calendly");
+      const recentJobs = jobs.slice(0, 10).map((job: any) => {
+        if (engine && job.id === engine.jobId) {
+          const es = engine.getEngineStatus();
+          return { ...job, completedQueries: es.completedQueries, urlsDiscovered: es.urlsDiscovered, profilesEnriched: es.profilesEnriched };
+        }
+        return job;
+      });
+      res.json({ active: !!engine, recentJobs });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/calendly/discover/:id/log", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const job = await storage.getCompassQueryJob(req.params.id);
+      if (!job) return res.status(404).json({ error: "Job not found" });
+      const limit = parseInt(req.query.limit as string) || 200;
+      const log = (job.log || []).slice(-limit);
+      res.json(log);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/calendly/profiles", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { search, industry, bundle, scope, source, sort, page, limit, minQuality, isTeam } = req.query;
+      const result = await storage.getCompassProfiles({
+        search: search as string | undefined,
+        industry: industry as string | undefined,
+        bundle: bundle as string | undefined,
+        scope: scope as string | undefined,
+        source: source as string | undefined,
+        sortBy: sort as string | undefined,
+        page: page ? parseInt(page as string) : 1,
+        limit: limit ? parseInt(limit as string) : 50,
+        minQuality: minQuality ? parseInt(minQuality as string) : undefined,
+        isTeam: isTeam !== undefined ? isTeam === "true" : undefined,
+        platform: "calendly",
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/calendly/profiles/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const profile = await storage.getCompassProfile(req.params.id);
+      if (!profile) return res.status(404).json({ error: "Profile not found" });
+      const eventTypes = await storage.getCompassEventTypes(req.params.id);
+      res.json({ ...profile, eventTypes });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/calendly/discoveries", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { search, source, status, sort, page, limit } = req.query;
+      const result = await storage.getCompassDiscoveries({
+        search: search as string | undefined,
+        source: source as string | undefined,
+        status: status as string | undefined,
+        sortBy: sort as string | undefined,
+        page: page ? parseInt(page as string) : 1,
+        limit: limit ? parseInt(limit as string) : 50,
+        platform: "calendly",
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/calendly/stats", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const [profileCount] = await db.select({ count: count() }).from(compassProfiles).where(eq(compassProfiles.platform, "calendly"));
+      const [discoveryCount] = await db.select({ count: count() }).from(compassDiscoveries).where(eq(compassDiscoveries.platform, "calendly"));
+      const sourceStats = await db.select({ source: compassProfiles.source, count: count() }).from(compassProfiles).where(eq(compassProfiles.platform, "calendly")).groupBy(compassProfiles.source);
+      res.json({
+        totalProfiles: Number(profileCount.count),
+        totalDiscoveries: Number(discoveryCount.count),
+        bySource: Object.fromEntries(sourceStats.map((s) => [s.source, Number(s.count)])),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/calendly/export", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { search, searchMode, industry, bundle, scope, source, sort, minQuality, isTeamProfile } = req.query;
+
+      // Build the same filters used for the profile browser
+      const filters: any = {
+        search: search as string | undefined,
+        searchMode: searchMode as string | undefined,
+        industry: industry as string | undefined,
+        bundle: bundle as string | undefined,
+        scope: scope as string | undefined,
+        source: source as string | undefined,
+        sortBy: sort as string | undefined,
+        minQuality: minQuality ? parseInt(minQuality as string) : undefined,
+        platform: "calendly",
+      };
+      if (isTeamProfile === "true") filters.isTeam = true;
+      else if (isTeamProfile === "false") filters.isTeam = false;
+
+      // Stream the CSV — fetch in batches of 5000 to handle 253k+ profiles
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=calendly-profiles.csv");
+
+      const csvHeader = "calUrl,username,name,industry,industryBundle,scope,qualityScore,companyName,phone,email,website,timezone,eventCount,source,createdAt\n";
+      res.write(csvHeader);
+
+      const escape = (v: string | null | undefined) => `"${(v || "").replace(/"/g, '""')}"`;
+      const BATCH_SIZE = 5000;
+      let page = 1;
+      let totalExported = 0;
+
+      while (true) {
+        const result = await storage.getCompassProfiles({
+          ...filters,
+          page,
+          limit: BATCH_SIZE,
+        });
+
+        if (result.profiles.length === 0) break;
+
+        const csvRows = result.profiles.map((p) => {
+          return [
+            escape(p.calUrl), escape(p.username), escape(p.name), escape(p.industry),
+            escape(p.industryBundle), escape(p.scope), p.qualityScore?.toString() || "",
+            escape(p.companyName), escape(p.phone), escape(p.email), escape(p.website),
+            escape(p.timezone), p.eventCount?.toString() || "0",
+            escape(p.source), p.createdAt?.toISOString() || "",
+          ].join(",");
+        }).join("\n");
+
+        res.write(csvRows + "\n");
+        totalExported += result.profiles.length;
+
+        if (result.profiles.length < BATCH_SIZE) break;
+        page++;
+      }
+
+      res.end();
+      console.log(`[calendly-export] Exported ${totalExported} profiles`);
+    } catch (err: any) {
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  });
+
+  // Export Calendly discoveries (all 253k URLs, even unenriched)
+  app.get("/api/calendly/export-discoveries", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { search, source, status, sort } = req.query;
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=calendly-discoveries.csv");
+
+      const csvHeader = "url,username,source,sourceQuery,status,discoveredAt,enrichedAt\n";
+      res.write(csvHeader);
+
+      const escape = (v: string | null | undefined) => `"${(v || "").replace(/"/g, '""')}"`;
+      const BATCH_SIZE = 5000;
+      let page = 1;
+      let totalExported = 0;
+
+      while (true) {
+        const result = await storage.getCompassDiscoveries({
+          search: search as string | undefined,
+          source: source as string | undefined,
+          status: status as string | undefined,
+          sortBy: sort as string | undefined,
+          page,
+          limit: BATCH_SIZE,
+          platform: "calendly",
+        });
+
+        if (result.discoveries.length === 0) break;
+
+        const csvRows = result.discoveries.map((d) => {
+          return [
+            escape(d.url), escape(d.username), escape(d.source),
+            escape(d.sourceQuery), escape(d.status),
+            d.discoveredAt?.toISOString() || "",
+            d.enrichedAt?.toISOString() || "",
+          ].join(",");
+        }).join("\n");
+
+        res.write(csvRows + "\n");
+        totalExported += result.discoveries.length;
+
+        if (result.discoveries.length < BATCH_SIZE) break;
+        page++;
+      }
+
+      res.end();
+      console.log(`[calendly-export] Exported ${totalExported} discoveries`);
+    } catch (err: any) {
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message });
+      }
+    }
+  });
+
+  app.post("/api/calendly/enrich/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const profile = await storage.getCompassProfile(req.params.id);
+      if (!profile) return res.status(404).json({ error: "Profile not found" });
+      const { extractCalendlyProfile } = await import("./calendly-extract");
+      const { classifyIndustryWithCategories, classifyScope, computeQualityScore } = await import("./compass-classify");
+      const extracted = await extractCalendlyProfile(profile.calUrl);
+      if (!extracted) return res.status(404).json({ error: "Profile not found on Calendly" });
+      const classifyProfile: any = {
+        name: extracted.name ?? undefined,
+        bio: extracted.bio ?? undefined,
+        avatarUrl: extracted.avatarUrl ?? undefined,
+        timezone: extracted.timezone ?? undefined,
+        location: extracted.location ?? undefined,
+        eventTypes: extracted.eventTypes.map((et) => ({ title: et.title, description: et.description ?? undefined })),
+        socialLinks: [],
+        isTeamProfile: extracted.isTeamProfile,
+        companyName: extracted.companyName ?? undefined,
+      };
+      const industry = classifyIndustryWithCategories(classifyProfile, []);
+      const scope = classifyScope(classifyProfile);
+      const quality = computeQualityScore(classifyProfile);
+      res.json({
+        name: extracted.name,
+        bio: extracted.bio,
+        avatarUrl: extracted.avatarUrl,
+        timezone: extracted.timezone,
+        isTeamProfile: extracted.isTeamProfile,
+        companyName: extracted.companyName,
+        phone: extracted.phone,
+        email: extracted.email,
+        website: extracted.website,
+        eventCount: extracted.eventTypes.length,
+        industry: industry.industry,
+        scope,
+        quality,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Stage 32 ──────────────────────────────────────────────────────────────
+  app.post("/api/stage32/scan", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { startId, endId, mode } = req.body;
+      const { startStage32Scan, startStage32SerperScan } = await import("./stage32-engine");
+      if (mode === "serper") {
+        const jobId = await startStage32SerperScan();
+        res.json({ jobId });
+      } else {
+        const jobId = await startStage32Scan(
+          parseInt(startId) || 1,
+          parseInt(endId) || 1500000,
+        );
+        res.json({ jobId });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/stage32/scan/stop", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { stopStage32Scan } = await import("./stage32-engine");
+      await stopStage32Scan();
+      res.json({ stopped: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/stage32/scan/status", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getActiveStage32Engine } = await import("./stage32-engine");
+      const engine = getActiveStage32Engine();
+      const jobs = await storage.getStage32Jobs();
+      res.json({ active: !!engine, recentJobs: jobs });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/stage32/stats", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const stats = await storage.getStage32Stats();
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/stage32/profiles", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { search, location, hasContact, isServiceProvider, page, limit } = req.query;
+      const result = await storage.getStage32Profiles({
+        search: search as string | undefined,
+        location: location as string | undefined,
+        hasContact: hasContact === "true",
+        isServiceProvider: isServiceProvider === "true",
+        page: parseInt(page as string) || 1,
+        limit: parseInt(limit as string) || 25,
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/stage32/profiles/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const profile = await storage.getStage32Profile(req.params.id);
+      if (!profile) return res.status(404).json({ error: "Profile not found" });
+      res.json(profile);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/stage32/export", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { hasContact } = req.query;
+      const result = await storage.getStage32Profiles({
+        hasContact: hasContact === "true",
+        page: 1,
+        limit: 100000,
+      });
+      const csvHeader = "name,profession,location,email,phone,website,twitter,instagram,youtube,facebook,imdbId,guild,calendlyUrl,stage32Url,bio\n";
+      const csvRows = result.profiles.map((p) => {
+        const escape = (v: string | null | undefined) => `"${(v || "").replace(/"/g, '""')}"`;
+        const email = p.websiteEmail || p.bioEmail || "";
+        const phone = p.websitePhone || p.bioPhone || "";
+        const calendly = p.websiteCalendlyUrl || p.bioCalendlyUrl || "";
+        return [
+          escape(p.name), escape(p.profession), escape(p.location),
+          escape(email), escape(phone), escape(p.website),
+          escape(p.twitter), escape(p.instagram), escape(p.youtube), escape(p.facebook),
+          escape(p.imdbId), escape(p.guild), escape(calendly),
+          escape(p.stage32Url), escape(p.bio),
+        ].join(",");
+      }).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=stage32-profiles.csv");
+      res.send(csvHeader + csvRows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Mandy endpoints ──────────────────────────────────────────────────────
+  app.get("/api/mandy/stats", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getMandyStats } = await import("./mandy-engine");
+      const stats = await getMandyStats();
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/mandy/scan", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { startMandy } = await import("./mandy-engine");
+      const jobId = await startMandy();
+      res.json({ jobId });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/mandy/stop", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { stopMandy } = await import("./mandy-engine");
+      await stopMandy();
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/mandy/status", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getActiveMandyEngine } = await import("./mandy-engine");
+      const engine = getActiveMandyEngine();
+      const jobs = await db.select().from(mandyJobs).orderBy(sql`${mandyJobs.startedAt} DESC`).limit(5);
+      res.json({ active: !!engine, engineStatus: engine ? engine.getEngineStatus() : null, recentJobs: jobs });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/mandy/profiles", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { search, status, sort, page, limit, hasContact } = req.query;
+      const conditions = [];
+      if (search) {
+        const searchLower = `%${(search as string).toLowerCase()}%`;
+        conditions.push(sql`(${mandyProfiles.name} ILIKE ${searchLower} OR ${mandyProfiles.username} ILIKE ${searchLower} OR ${mandyProfiles.location} ILIKE ${searchLower} OR ${mandyProfiles.profileType} ILIKE ${searchLower} OR ${mandyProfiles.bio} ILIKE ${searchLower})`);
+      }
+      if (status) conditions.push(eq(mandyProfiles.status, status as string));
+      if (hasContact === "true") {
+        conditions.push(sql`(${mandyProfiles.phone} IS NOT NULL OR ${mandyProfiles.email} IS NOT NULL OR ${mandyProfiles.website} IS NOT NULL OR ${mandyProfiles.calendlyUrl} IS NOT NULL OR ${mandyProfiles.calcomUrl} IS NOT NULL)`);
+      }
+      const whereClause = conditions.length > 0 ? sql.join(conditions, sql` AND `) : undefined;
+      const pageNum = page ? parseInt(page as string) : 1;
+      const limitNum = limit ? parseInt(limit as string) : 50;
+      const offset = (pageNum - 1) * limitNum;
+
+      let orderBy = sql`${mandyProfiles.createdAt} DESC`;
+      if (sort === "name") orderBy = sql`${mandyProfiles.name} ASC`;
+      if (sort === "recent") orderBy = sql`${mandyProfiles.scrapedAt} DESC NULLS LAST`;
+      if (sort === "contact") orderBy = sql`CASE WHEN ${mandyProfiles.phone} IS NOT NULL OR ${mandyProfiles.email} IS NOT NULL THEN 0 ELSE 1 END, ${mandyProfiles.scrapedAt} DESC NULLS LAST`;
+
+      const query = db.select().from(mandyProfiles);
+      const profiles = whereClause
+        ? await query.where(whereClause).orderBy(orderBy).limit(limitNum).offset(offset)
+        : await query.orderBy(orderBy).limit(limitNum).offset(offset);
+
+      const [count] = whereClause
+        ? await db.select({ count: sql`count(*)` }).from(mandyProfiles).where(whereClause)
+        : await db.select({ count: sql`count(*)` }).from(mandyProfiles);
+
+      res.json({ profiles, total: Number(count.count) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/mandy/log/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const [job] = await db.select().from(mandyJobs).where(eq(mandyJobs.id, req.params.id)).limit(1);
+      if (!job) return res.status(404).json({ error: "Job not found" });
+      res.json({ status: job.status, log: job.log || [] });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/mandy/export", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { hasContact } = req.query;
+      const whereClause = hasContact === "true"
+        ? sql`(${mandyProfiles.phone} IS NOT NULL OR ${mandyProfiles.email} IS NOT NULL OR ${mandyProfiles.website} IS NOT NULL OR ${mandyProfiles.calendlyUrl} IS NOT NULL OR ${mandyProfiles.calcomUrl} IS NOT NULL)`
+        : undefined;
+
+      const profiles = whereClause
+        ? await db.select().from(mandyProfiles).where(whereClause).orderBy(sql`${mandyProfiles.name} ASC`).limit(50000)
+        : await db.select().from(mandyProfiles).orderBy(sql`${mandyProfiles.name} ASC`).limit(50000);
+
+      const headers = ["username", "name", "profileType", "location", "gender", "bio", "phone", "email", "website", "calendlyUrl", "calcomUrl", "imdbUrl", "socialLinks", "unionMembership", "representation", "skills", "education", "height", "weight", "build", "hair", "eyes", "playingAge", "ethnicities", "profileUrl"];
+      const csvRows = profiles.map((p: any) => {
+        return headers.map(h => {
+          const val = p[h] || "";
+          return `"${String(val).replace(/"/g, '""')}"`;
+        }).join(",");
+      }).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=mandy-profiles.csv");
+      res.send(headers.join(",") + "\n" + csvRows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Backstage endpoints ──────────────────────────────────────────────────
+  app.get("/api/backstage/stats", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getBackstageStats } = await import("./backstage-engine");
+      const stats = await getBackstageStats();
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/backstage/scan", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { startBackstage } = await import("./backstage-engine");
+      const jobId = await startBackstage();
+      res.json({ jobId });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/backstage/stop", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { stopBackstage } = await import("./backstage-engine");
+      await stopBackstage();
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/backstage/status", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getActiveBackstageEngine } = await import("./backstage-engine");
+      const engine = getActiveBackstageEngine();
+      const jobs = await db.select().from(backstageJobs).orderBy(sql`${backstageJobs.startedAt} DESC`).limit(5);
+      res.json({ active: !!engine, engineStatus: engine ? engine.getEngineStatus() : null, recentJobs: jobs });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/backstage/profiles", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { search, status, sort, page, limit } = req.query;
+      const conditions = [];
+      if (search) {
+        const searchLower = `%${(search as string).toLowerCase()}%`;
+        conditions.push(sql`(${backstageProfiles.name} ILIKE ${searchLower} OR ${backstageProfiles.username} ILIKE ${searchLower} OR ${backstageProfiles.location} ILIKE ${searchLower} OR ${backstageProfiles.profileType} ILIKE ${searchLower} OR ${backstageProfiles.bio} ILIKE ${searchLower})`);
+      }
+      if (status) conditions.push(eq(backstageProfiles.status, status as string));
+      const whereClause = conditions.length > 0 ? sql.join(conditions, sql` AND `) : undefined;
+      const pageNum = page ? parseInt(page as string) : 1;
+      const limitNum = limit ? parseInt(limit as string) : 50;
+      const offset = (pageNum - 1) * limitNum;
+
+      let query = db.select().from(backstageProfiles);
+      if (whereClause) {
+        query = query.where(whereClause) as any;
+      }
+      const profiles = await query.limit(limitNum).offset(offset);
+      const [total] = await db.select({ count: sql`count(*)` }).from(backstageProfiles);
+      res.json({ profiles, total: Number(total.count), page: pageNum, limit: limitNum });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/backstage/log/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const [job] = await db.select().from(backstageJobs).where(eq(backstageJobs.id, req.params.id)).limit(1);
+      if (!job) return res.status(404).json({ error: "Job not found" });
+      const logStr = job.log || "";
+      const logLines = typeof logStr === "string" ? logStr.split("\n").filter(Boolean) : (logStr as any[]);
+      res.json({ status: job.status, log: logLines });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/backstage/export", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const profiles = await db.select().from(backstageProfiles).limit(50000);
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=backstage-profiles.csv");
+      res.write("username,name,gender,location,city,state,phone,email,website,bio,profile_url\n");
+      for (const p of profiles) {
+        res.write(`"${p.username}","${p.name || ""}","${p.gender || ""}","${p.location || ""}","${p.city || ""}","${p.state || ""}","${p.phone || ""}","${p.email || ""}","${p.website || ""}","${(p.bio || "").replace(/"/g, '""')}","${p.profileUrl}"\n`);
+      }
+      res.end();
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PARALLEL SUPREME — Geofence Advertising Engine
+  // Line 1: keyword-indexed company discovery (city/state + keywords → companies)
+  // Line 2: address geocoding & coordinate pinning (websites → lat/lng + radius)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  app.get("/api/supreme/capabilities", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getSupremeCapabilities } = await import("./supreme-engine");
+      const caps = getSupremeCapabilities();
+      // Check FlareSolverr health async
+      try {
+        const { flaresolverr } = await import("./flaresolverr-client");
+        caps.flaresolverr = await flaresolverr.healthCheck();
+      } catch {
+        caps.flaresolverr = false;
+      }
+      res.json(caps);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/supreme/line1/start", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { locations, keywords, maxResults, scraperKeys } = req.body;
+      if (!locations?.length || !keywords?.length) {
+        return res.status(400).json({ error: "Must provide locations and keywords" });
+      }
+      if (locations.length > 100) {
+        return res.status(400).json({ error: "Maximum 100 locations per run" });
+      }
+      if (keywords.length > 200) {
+        return res.status(400).json({ error: "Maximum 200 keywords per run" });
+      }
+      const { startSupremeLine1 } = await import("./supreme-engine");
+      const jobId = await startSupremeLine1({
+        locations,
+        keywords,
+        maxResults: maxResults || 50000,
+        scraperKeys,
+      });
+      res.json({ jobId });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/supreme/line2/start", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { websites, addresses, radiusYards, useWebsiteScrape, useCensus, useNominatim, useGooglePlaces, useChromium, sourceJobId, onlyWithAddress } = req.body;
+      const hasWebsites = Array.isArray(websites) && websites.length > 0;
+      const hasAddresses = Array.isArray(addresses) && addresses.length > 0;
+      if (!hasWebsites && !hasAddresses && !sourceJobId) {
+        return res.status(400).json({ error: "Must provide websites array, addresses array, or sourceJobId (from Line 1)" });
+      }
+      if (hasWebsites && websites.length > 50000) {
+        return res.status(400).json({ error: "Maximum 50,000 websites per run" });
+      }
+      if (hasAddresses && addresses.length > 50000) {
+        return res.status(400).json({ error: "Maximum 50,000 addresses per run" });
+      }
+      const radius = radiusYards || 250;
+      if (![100, 250, 500].includes(radius)) {
+        return res.status(400).json({ error: "radiusYards must be 100, 250, or 500" });
+      }
+      const { startSupremeLine2 } = await import("./supreme-engine");
+      const jobId = await startSupremeLine2(
+        hasWebsites ? websites : [],
+        radius,
+        {
+          useWebsiteScrape: useWebsiteScrape !== false,
+          useCensus: useCensus !== false,
+          useNominatim: useNominatim !== false,
+          useGooglePlaces: useGooglePlaces === true,
+          useChromium: useChromium !== false,
+        },
+        sourceJobId,
+        hasAddresses ? addresses : undefined,
+        onlyWithAddress === true,
+      );
+      res.json({ jobId });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/supreme/stop", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { stopSupreme } = await import("./supreme-engine");
+      await stopSupreme();
+      res.json({ stopped: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/supreme/status", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const { getActiveSupremeEngine } = await import("./supreme-engine");
+      const engine = getActiveSupremeEngine();
+      const engineStatus = engine ? engine.getStatus() : null;
+      const jobs = await storage.getSupremeJobs();
+      const recentJobs = jobs.map((job: any) => {
+        if (engineStatus && job.id === engineStatus.jobId) {
+          if (job.line === "line1") {
+            return { ...job, completedCombos: engineStatus.completedCombos, companiesFound: engineStatus.companiesFound };
+          } else {
+            return { ...job, geocodedCount: engineStatus.geocodedCount, failedCount: engineStatus.failedCount };
+          }
+        }
+        return job;
+      });
+      res.json({ active: engineStatus, recentJobs });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/supreme/log/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { getActiveSupremeEngine } = await import("./supreme-engine");
+      const engine = getActiveSupremeEngine();
+      const jobId = req.params.id;
+      const job = await storage.getSupremeJob(jobId);
+      if (!job) return res.status(404).json({ error: "Job not found" });
+      const isActiveJob = engine && engine.getStatus().jobId === jobId;
+      const maxLogLines = 500;
+      let log: string[];
+      if (isActiveJob) {
+        log = engine.getLogBuffer(maxLogLines);
+      } else {
+        log = await storage.getSupremeJobLogTail(jobId, maxLogLines);
+      }
+      const status = isActiveJob ? engine.getStatus() : { status: job.status };
+      res.json({ log, ...status });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Source stats — per-scraper yield breakdown
+  app.get("/api/supreme/source-stats", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const jobId = req.query.jobId as string | undefined;
+      const stats = await storage.getSupremeSourceStats(jobId);
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/supreme/companies", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const filters = {
+        jobId: req.query.jobId as string | undefined,
+        line: req.query.line as string | undefined,
+        status: req.query.status as string | undefined,
+        search: req.query.search as string | undefined,
+        hasCoords: req.query.hasCoords === "true",
+        page: req.query.page ? parseInt(req.query.page as string) : 1,
+        limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
+      };
+      const result = await storage.getSupremeCompanies(filters);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Line 1 CSV export — company discovery results
+  app.get("/api/supreme/line1/export", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const jobId = req.query.jobId as string | undefined;
+      const companies = await storage.getSupremeCompaniesForExport(jobId);
+      const csvEscape = (s: string | null) => {
+        if (!s) return "";
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const header = "Name,Website,Phone,Address,City,State,Zip,Country,Category,Source,SourceUrl\n";
+      const rows = companies.map(c =>
+        [c.name, c.website, c.phone, c.address, c.city, c.state, c.zip, c.country, c.category, c.source, c.sourceUrl]
+          .map(v => csvEscape(v ?? "")).join(",")
+      ).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=supreme-line1-companies.csv`);
+      res.send(header + rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Line 2 Meta-ready CSV export — coordinates + radius for Meta Ads Manager
+  app.get("/api/supreme/line2/export", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const jobId = req.query.jobId as string;
+      if (!jobId) return res.status(400).json({ error: "jobId required" });
+      const onlyGeocoded = req.query.onlyGeocoded !== "false";
+      const companies = await storage.getSupremeCompaniesForExport(jobId, onlyGeocoded);
+      const csvEscape = (s: string | null) => {
+        if (!s) return "";
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const header = "Name,Website,Address,City,State,Zip,Latitude,Longitude,RadiusYards,RadiusMiles,RadiusKm,MetaRadiusMiles,PinQuery,GeocodeSource,GeocodeConfidence,Status\n";
+      const rows = companies.map(c =>
+        [
+          c.name, c.website, c.address, c.city, c.state, c.zip,
+          c.latitude !== null && c.latitude !== undefined ? String(c.latitude) : "",
+          c.longitude !== null && c.longitude !== undefined ? String(c.longitude) : "",
+          c.radiusYards, c.radiusMiles, c.radiusKm, c.metaRadiusMiles,
+          c.pinQuery, c.geocodeSource, c.geocodeConfidence, c.status,
+        ].map(v => csvEscape(v !== null && v !== undefined ? String(v) : "")).join(",")
+      ).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=supreme-line2-meta-coordinates.csv`);
+      res.send(header + rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Line 2 JSON export — Meta Marketing API custom_locations array format
+  app.get("/api/supreme/line2/export/json", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const jobId = req.query.jobId as string;
+      if (!jobId) return res.status(400).json({ error: "jobId required" });
+      const companies = await storage.getSupremeCompaniesForExport(jobId, true);
+      const customLocations = companies
+        .filter(c => c.latitude !== null && c.longitude !== null)
+        .map(c => ({
+          latitude: c.latitude,
+          longitude: c.longitude,
+          radius: c.metaRadiusMiles,
+          radius_unit: "mile",
+          name: c.name || c.website || `${c.latitude},${c.longitude}`,
+          address: c.address || undefined,
+          city: c.city || undefined,
+          state: c.state || undefined,
+          pinQuery: c.pinQuery,
+        }));
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", `attachment; filename=supreme-line2-meta-locations.json`);
+      res.json({
+        targeting: {
+          custom_locations: customLocations,
+        },
+        total_locations: customLocations.length,
+        instructions: "Use this custom_locations array in the Meta Marketing API adset targeting specification. Each entry has latitude, longitude, radius (miles), and radius_unit. Drop each pin in Meta Ads Manager's coordinate location picker, or upload via the API in bulk.",
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Line 2 Basis DSP export — hyperlocal zone upload format
+  // Basis DSP accepts a CSV with lat/lng and radius for bulk hyperlocal zone import.
+  // The radius can be set at export time (default 500 feet) to bypass Meta's 0.63mi minimum.
+  app.get("/api/supreme/line2/export/basis", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const jobId = req.query.jobId as string;
+      if (!jobId) return res.status(400).json({ error: "jobId required" });
+      const radiusFeet = req.query.radiusFeet ? parseInt(req.query.radiusFeet as string) : 500;
+      const companies = await storage.getSupremeCompaniesForExport(jobId, true);
+      const csvEscape = (s: string | null) => {
+        if (!s) return "";
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const radiusMeters = (radiusFeet * 0.3048).toFixed(1);
+      const header = "latitude,longitude,radius_ft,radius_m,name,address,city,state,zip\n";
+      const rows = companies
+        .filter(c => c.latitude !== null && c.longitude !== null)
+        .map(c =>
+          [
+            String(c.latitude),
+            String(c.longitude),
+            String(radiusFeet),
+            radiusMeters,
+            c.name || c.website || `${c.latitude},${c.longitude}`,
+            c.address,
+            c.city,
+            c.state,
+            c.zip,
+          ].map(v => csvEscape(v ?? "")).join(",")
+        ).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=supreme-line2-basis-hyperlocal-${radiusFeet}ft.csv`);
+      res.send(header + rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Line 2 StackAdapt export — geo radius targeting file format
+  // StackAdapt's API accepts a CSV upload for geo radius targeting on campaigns.
+  // Format: latitude,longitude,radius,radius_unit,label
+  // The radius can be set at export time (default 500 feet) to bypass Meta's 0.63mi minimum.
+  app.get("/api/supreme/line2/export/stackadapt", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const jobId = req.query.jobId as string;
+      if (!jobId) return res.status(400).json({ error: "jobId required" });
+      const radiusFeet = req.query.radiusFeet ? parseInt(req.query.radiusFeet as string) : 500;
+      const companies = await storage.getSupremeCompaniesForExport(jobId, true);
+      const csvEscape = (s: string | null) => {
+        if (!s) return "";
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const header = "latitude,longitude,radius,radius_unit,label,address,city,state\n";
+      const rows = companies
+        .filter(c => c.latitude !== null && c.longitude !== null)
+        .map(c =>
+          [
+            String(c.latitude),
+            String(c.longitude),
+            String(radiusFeet),
+            "ft",
+            c.name || c.website || `${c.latitude},${c.longitude}`,
+            c.address,
+            c.city,
+            c.state,
+          ].map(v => csvEscape(v ?? "")).join(",")
+        ).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=supreme-line2-stackadapt-geo-${radiusFeet}ft.csv`);
+      res.send(header + rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Line 2 ad:personam export — hyperlocal GPS targeting format
+  // ad:personam is a self-serve DSP with credit card signup, no minimum spend.
+  // Hyperlocal targeting fields: latitude, longitude, radius (metres), address (label).
+  // Radius: 100 to 9,999 metres. Max 500 locations per line item.
+  // No file import — but this CSV matches their form fields for easy copy-paste entry.
+  app.get("/api/supreme/line2/export/adpersonam", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const jobId = req.query.jobId as string;
+      if (!jobId) return res.status(400).json({ error: "jobId required" });
+      const radiusM = req.query.radiusM ? parseInt(req.query.radiusM as string) : 500;
+      const companies = await storage.getSupremeCompaniesForExport(jobId, true);
+      const csvEscape = (s: string | null) => {
+        if (!s) return "";
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const header = "latitude,longitude,radius_m,address\n";
+      const rows = companies
+        .filter(c => c.latitude !== null && c.longitude !== null)
+        .map(c =>
+          [
+            String(c.latitude),
+            String(c.longitude),
+            String(radiusM),
+            `${c.name || c.website || ""}${c.address ? `, ${c.address}` : ""}${c.city ? `, ${c.city}` : ""}${c.state ? `, ${c.state}` : ""}`,
+          ].map(v => csvEscape(v ?? "")).join(",")
+        ).join("\n");
+      const totalLocations = companies.filter(c => c.latitude !== null && c.longitude !== null).length;
+      const truncated = totalLocations > 500;
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=supreme-line2-adpersonam-hyperlocal-${radiusM}m.csv`);
+      res.send(header + (truncated ? rows.split("\n").slice(0, 501).join("\n") : rows));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Geofencing Platform API ─────────────────────────────────────────────
+
+  // Generate geofences from Supreme Line 2 geocoded companies
+  app.post("/api/geofence/generate", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { jobId, radiusM } = req.body;
+      const result = await storage.generateGeofencesFromSupreme(jobId, radiusM);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // List geofences
+  app.get("/api/geofence", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const filters: any = {};
+      if (req.query.active !== undefined) filters.active = req.query.active === "true";
+      if (req.query.jobId) filters.jobId = req.query.jobId as string;
+      if (req.query.source) filters.source = req.query.source as string;
+      const geofences = await storage.getGeofences(filters);
+      res.json(geofences);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Check which geofences a point falls inside (used by bid handler)
+  app.post("/api/geofence/check", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { latitude, longitude } = req.body;
+      if (typeof latitude !== "number" || typeof longitude !== "number") {
+        return res.status(400).json({ error: "latitude and longitude required" });
+      }
+      const matches = await storage.findGeofencesForPoint(latitude, longitude);
+      res.json({ matches });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Capture a device from the bidstream
+  app.post("/api/geofence/capture", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { maid, device_type, os, osv, make, model, latitude, longitude, geofence_id, geofence_name, ip, ua } = req.body;
+      let gfId = geofence_id;
+      let gfName = geofence_name;
+      if (!gfId && typeof latitude === "number" && typeof longitude === "number") {
+        const matches = await storage.findGeofencesForPoint(latitude, longitude);
+        if (matches.length > 0) {
+          gfId = matches[0].id;
+          gfName = matches[0].name;
+        }
+      }
+      const result = await storage.captureDevice({
+        maid,
+        deviceType: device_type,
+        os,
+        osv,
+        make,
+        model,
+        latitude,
+        longitude,
+        geofenceId: gfId,
+        geofenceName: gfName,
+        ip,
+        ua,
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // List captured devices
+  app.get("/api/geofence/devices", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const filters: any = {};
+      if (req.query.synced !== undefined) filters.synced = req.query.synced === "true";
+      if (req.query.geofenceId) filters.geofenceId = req.query.geofenceId as string;
+      if (req.query.limit) filters.limit = parseInt(req.query.limit as string);
+      const devices = await storage.getCapturedDevices(filters);
+      const total = await storage.getCapturedDeviceCount();
+      res.json({ devices, total });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Geofence dashboard stats
+  app.get("/api/geofence/stats", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const allGeofences = await storage.getGeofences();
+      const activeCount = allGeofences.filter(g => g.active).length;
+      const totalDevices = await storage.getCapturedDeviceCount();
+      const unsyncedDevices = (await storage.getCapturedDevices({ synced: false, limit: 10000 })).length;
+      const segments = await storage.getAudienceSegments();
+      res.json({
+        totalGeofences: allGeofences.length,
+        activeGeofences: activeCount,
+        totalDevices,
+        unsyncedDevices,
+        totalSegments: segments.length,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Audience segments
+  app.get("/api/geofence/segments", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const segments = await storage.getAudienceSegments();
+      res.json(segments);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/geofence/segments", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const s = await storage.createAudienceSegment(req.body);
+      res.json(s);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get MAID list for a set of geofences (for DSP sync) (MUST be before /:id)
+  app.post("/api/geofence/maids", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { geofenceIds } = req.body;
+      if (!Array.isArray(geofenceIds) || geofenceIds.length === 0) {
+        return res.status(400).json({ error: "geofenceIds array required" });
+      }
+      const maids = await getAudienceMAIDsForGeofences(geofenceIds);
+      res.json({ maids, count: maids.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Export captured MAIDs as CSV (for manual DSP upload)
+  app.get("/api/geofence/export-maids", requireAuth, async (req: Request, res: Response) => {
+    try {
+      // Get all active geofence IDs
+      const allGeofences = await storage.getGeofences({ active: true });
+      const geofenceIds = allGeofences.map((g: any) => g.id);
+      if (geofenceIds.length === 0) return res.status(400).json({ error: "No active geofences" });
+
+      const maids = await getAudienceMAIDsForGeofences(geofenceIds);
+      const csv = "device_id,device_type\n" + maids.map((m: string) => `${m},IFA`).join("\n");
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=geofence-maids-${maids.length}.csv`);
+      res.send(csv);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Sync captured MAIDs to a DSP (The Trade Desk or StackAdapt)
+  app.post("/api/geofence/sync-dsp", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { dsp, config, geofenceIds, audienceName, audienceDescription } = req.body;
+      if (!dsp || !config || !geofenceIds || !audienceName) {
+        return res.status(400).json({ error: "dsp, config, geofenceIds, audienceName required" });
+      }
+
+      // Dynamic import to avoid loading if not used
+      const { syncToDSP } = await import("./dsp-sync");
+      const result = await syncToDSP(dsp, config, geofenceIds, audienceName, audienceDescription);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Geofence analytics from ClickHouse (MUST be before /:id)
+  app.get("/api/geofence/analytics", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const days = req.query.days ? parseInt(req.query.days as string) : 7;
+      const analytics = await getCaptureAnalytics(days);
+      const totalUnique = await getTotalUniqueDevices();
+      res.json({ analytics, totalUniqueDevices: totalUnique, days });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get a single geofence (MUST be after /stats, /devices, /segments, /check, /capture, /analytics, /maids)
+  app.get("/api/geofence/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const g = await storage.getGeofence(req.params.id);
+      if (!g) return res.status(404).json({ error: "not found" });
+      res.json(g);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Create a geofence manually
+  app.post("/api/geofence", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const g = await storage.createGeofence(req.body);
+      res.json(g);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Update a geofence (e.g. toggle active, change radius)
+  app.patch("/api/geofence/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const g = await storage.updateGeofence(req.params.id, req.body);
+      if (!g) return res.status(404).json({ error: "not found" });
+      res.json(g);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Delete a geofence
+  app.delete("/api/geofence/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      await storage.deleteGeofence(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Lightweight SDK ingestion endpoint — accepts direct JSON pings from
+  // mobile apps or web SDKs. No OpenRTB wrapper required. Format:
+  // { "lat": 41.68, "lng": -73.85, "maid": "xxx", "os": "iOS", ... }
+  // This bypasses SSP entirely — apps ping this endpoint directly.
+  app.post("/api/ingest", async (req: Request, res: Response) => {
+    try {
+      const { lat, lng, maid, os, osv, make, model, ip, ua, app } = req.body;
+      if (typeof lat !== "number" || typeof lng !== "number") {
+        return res.status(400).json({ error: "lat and lng required" });
+      }
+
+      // PostGIS check — is this device inside any geofence?
+      const matches = await storage.findGeofencesForPoint(lat, lng);
+      if (matches.length === 0) {
+        // Not in any geofence — acknowledge but don't capture
+        return res.status(200).json({ captured: false, reason: "outside_geofence" });
+      }
+
+      const match = matches[0];
+
+      // Redis dedup
+      const isNew = await checkMaidDedup(maid, 300);
+
+      // PostgreSQL upsert
+      const captureResult = await storage.captureDevice({
+        maid: maid || null,
+        deviceType: "mobile",
+        os: os || null,
+        osv: osv || null,
+        make: make || null,
+        model: model || null,
+        latitude: lat,
+        longitude: lng,
+        geofenceId: match.id,
+        geofenceName: match.name,
+        ip: ip || null,
+        ua: ua || null,
+      });
+
+      // Redis audience set
+      if (maid) {
+        await addToAudienceSet(match.id, maid);
+      }
+
+      // ClickHouse log
+      await logToClickHouse({
+        id: captureResult.device.id,
+        maid: maid || "",
+        device_type: "mobile",
+        os: os || "",
+        osv: osv || "",
+        make: make || "",
+        model: model || "",
+        latitude: lat,
+        longitude: lng,
+        geofence_id: match.id,
+        geofence_name: match.name || "",
+        ip: ip || "",
+        ua: ua || "",
+        hit_count: captureResult.device.hitCount,
+      });
+
+      res.status(200).json({
+        captured: true,
+        geofence: match.name,
+        new_device: isNew,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // OpenRTB 2.5 bid request endpoint — Software Build 1
+  // Selective bidder: 204 harvest for non-targeted, $0.50 CPM bid for targeted MAIDs
+  //
+  // Pipeline:
+  //   1. Parse device.geo.lat/lon, device.ifa (MAID), imp[]
+  //   2. PostGIS ST_Contains — is device inside an active geofence?
+  //   3. If yes: Redis dedup → PostgreSQL capture → Redis audience set → ClickHouse log
+  //   4. Check Redis audience:target_maids set — should we bid?
+  //   5a. If targeted AND imp[] exists: return 200 OK with $0.50 CPM bid
+  //   5b. Otherwise: return 204 No Content (free harvest)
+  app.post("/api/openrtb/auction", async (req: Request, res: Response) => {
+    try {
+      const bid = req.body;
+      const device = bid?.device || {};
+      const geo = device.geo || {};
+      const lat = geo.lat;
+      const lng = geo.lon;
+      const maid = device.ifa || device.idfa || device.aaid || device.dpid || device.rida || null;
+      const imps = bid?.imp || [];
+
+      // Reject immediately if no valid location data — 204 no-bid
+      if (typeof lat !== "number" || typeof lng !== "number") {
+        return res.status(204).json({});
+      }
+
+      // Step 1: PostGIS — find which geofences contain this point
+      const matches = await storage.findGeofencesForPoint(lat, lng);
+
+      if (matches.length === 0) {
+        // Outside all geofences — free harvest, no capture
+        return res.status(204).json({});
+      }
+
+      const match = matches[0];
+
+      // Step 2: Redis dedup
+      const isNew = await checkMaidDedup(maid, 300);
+
+      // Step 3: PostgreSQL — upsert captured device
+      const captureResult = await storage.captureDevice({
+        maid,
+        deviceType: bid?.app ? "mobile" : (bid?.dooh ? "dooh" : "mobile"),
+        os: device.os,
+        osv: device.osv,
+        make: device.make,
+        model: device.model,
+        carrier: device.carrier,
+        latitude: lat,
+        longitude: lng,
+        geofenceId: match.id,
+        geofenceName: match.name,
+        ip: device.ip,
+        ua: device.ua,
+      });
+
+      // Step 3b: Add to Redis audience set for this geofence
+      if (maid) {
+        await addToAudienceSet(match.id, maid);
+      }
+
+      // Step 4: ClickHouse — log capture event
+      await logToClickHouse({
+        id: captureResult.device.id,
+        maid: maid || "",
+        device_type: bid?.app ? "mobile" : (bid?.dooh ? "dooh" : "mobile"),
+        os: device.os || "",
+        osv: device.osv || "",
+        make: device.make || "",
+        model: device.model || "",
+        latitude: lat,
+        longitude: lng,
+        geofence_id: match.id,
+        geofence_name: match.name || "",
+        ip: device.ip || "",
+        ua: device.ua || "",
+        hit_count: captureResult.device.hitCount,
+      });
+
+      // Step 5: Check targeting — should we bid on this device?
+      const targeted = maid ? await isTargetedMaid(maid) : false;
+
+      if (targeted && imps.length > 0) {
+        // SELECTIVE BID: device is targeted and impressions are available
+        // Return $0.50 CPM bid
+        const bidPrice = 0.50;
+        const imp = imps[0];
+        const bidId = `bid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const serverDomain = process.env.BIDDER_DOMAIN || `https://leadcaffeine.com`;
+
+        const bidResponse = {
+          id: bid.id || bidId,
+          seatbid: [{
+            seat: "geofence_bidder",
+            bid: [{
+              id: bidId,
+              impid: imp.id || "1",
+              price: bidPrice,
+              adid: "campaign_geo_01",
+              adm: `<a href="${serverDomain}/api/openrtb/click?maid=${encodeURIComponent(maid || "")}"><img src="${serverDomain}/api/openrtb/creative?maid=${encodeURIComponent(maid || "")}" width="${imp.banner?.w || 320}" height="${imp.banner?.h || 50}" border="0" alt="Geofence Targeted Ad"/></a>`,
+              nurl: `${serverDomain}/api/openrtb/win?price=\${AUCTION_PRICE}&maid=${encodeURIComponent(maid || "")}&geofence=${encodeURIComponent(match.id)}`,
+              w: imp.banner?.w || 320,
+              h: imp.banner?.h || 50,
+            }],
+          }],
+          cur: ["USD"],
+        };
+
+        return res.status(200).json(bidResponse);
+      }
+
+      // NOT TARGETED: return 204 no-bid (free harvest)
+      res.status(204).json({});
+    } catch {
+      // On error, always return 204 no-bid so SSP doesn't penalize
+      res.status(204).json({});
+    }
+  });
+
+  // Win notice endpoint — called by SSP when our bid wins the auction
+  app.get("/api/openrtb/win", async (req: Request, res: Response) => {
+    try {
+      const price = req.query.price as string;
+      const maid = req.query.maid as string;
+      const geofence = req.query.geofence as string;
+
+      // Log the win to ClickHouse for billing reconciliation
+      const ch = getClickHouse();
+      await ch.insert({
+        table: "bid_wins",
+        values: [{
+          maid: maid || "",
+          geofence_id: geofence || "",
+          price: parseFloat(price) || 0,
+          won_at: new Date().toISOString().replace("T", " ").replace("Z", ""),
+        }],
+        format: "JSONEachRow",
+      }).catch(() => {});
+
+      res.status(200).send("");
+    } catch {
+      res.status(200).send("");
+    }
+  });
+
+  // Creative tracking pixel
+  app.get("/api/openrtb/creative", (req: Request, res: Response) => {
+    res.setHeader("Content-Type", "image/gif");
+    res.send(Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64"));
+  });
+
+  // Click redirect
+  app.get("/api/openrtb/click", (req: Request, res: Response) => {
+    res.redirect("https://example.com");
+  });
+
+  // Targeting management — add MAIDs to the target set
+  app.post("/api/geofence/targeting/add", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { maids } = req.body;
+      if (!Array.isArray(maids) || maids.length === 0) {
+        return res.status(400).json({ error: "maids array required" });
+      }
+      const count = await addTargetMaids(maids);
+      res.json({ added: count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Remove MAIDs from target set
+  app.post("/api/geofence/targeting/remove", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { maids } = req.body;
+      if (!Array.isArray(maids) || maids.length === 0) {
+        return res.status(400).json({ error: "maids array required" });
+      }
+      for (const m of maids) {
+        await removeTargetMaid(m);
+      }
+      res.json({ removed: maids.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get target set size
+  app.get("/api/geofence/targeting/count", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const count = await getTargetMaidCount();
+      res.json({ targetedMaids: count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get target set members
+  app.get("/api/geofence/targeting/list", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const maids = await getTargetMaids();
+      res.json({ maids, count: maids.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Software Build 2: DSP Sync & Management Platform ──────────────────
+
+  // Trigger automated audience sync to Epom or SmartyAds
+  app.post("/api/dsp/sync", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { provider, credentials, segmentName, geofenceIds } = req.body;
+
+      // Validate with Zod-style checks
+      if (!provider || !["epom", "smartyads"].includes(provider)) {
+        return res.status(400).json({ error: "provider must be 'epom' or 'smartyads'" });
+      }
+      if (!credentials || !segmentName || !geofenceIds || !Array.isArray(geofenceIds)) {
+        return res.status(400).json({ error: "credentials, segmentName, and geofenceIds[] required" });
+      }
+      if (provider === "epom" && (!credentials.apiKey || !credentials.networkDomain)) {
+        return res.status(400).json({ error: "Epom requires apiKey and networkDomain" });
+      }
+      if (provider === "smartyads" && !credentials.apiToken) {
+        return res.status(400).json({ error: "SmartyAds requires apiToken" });
+      }
+
+      const { executeDspSync } = await import("./dsp/orchestrator");
+      const result = await executeDspSync({ provider, credentials, segmentName, geofenceIds });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Export filtered MAIDs as CSV for manual fallback upload
+  app.get("/api/dsp/export-maids", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const geofenceIds = req.query.geofenceIds
+        ? (req.query.geofenceIds as string).split(",")
+        : null;
+      const daysBack = req.query.days ? parseInt(req.query.days as string) : 30;
+
+      let maids: string[];
+
+      if (geofenceIds && geofenceIds.length > 0) {
+        maids = await getAudienceMAIDsForGeofences(geofenceIds);
+      } else {
+        // Export all active geofence MAIDs
+        const allGeofences = await storage.getGeofences({ active: true });
+        maids = await getAudienceMAIDsForGeofences(allGeofences.map((g: any) => g.id));
+      }
+
+      // Fallback to PostgreSQL if Redis is empty
+      if (maids.length === 0) {
+        const devices = await storage.getCapturedDevices({ limit: 100000 });
+        maids = devices
+          .filter((d) => d.maid)
+          .map((d) => d.maid!)
+          .filter((v, i, a) => a.indexOf(v) === i);
+      }
+
+      const csv = "device_id\n" + maids.join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=maids-export-${maids.length}.csv`);
+      res.send(csv);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get DSP sync logs
+  app.get("/api/dsp/logs", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const logs = await db.execute(sql`
+        SELECT * FROM dsp_sync_logs
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      `);
+      res.json(logs.rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

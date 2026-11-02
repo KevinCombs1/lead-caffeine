@@ -1,0 +1,19 @@
+# PostgreSQL 18 + PostGIS 3.7
+# Deploy this as a private service on Render, or run locally.
+#
+# On Render: New → Private Service → Docker → use this Dockerfile
+# Then set DATABASE_URL env var on the web service to:
+#   postgresql://leadcaffeine:PASSWORD@lead-caffeine-pg:5432/leadcaffeine
+#
+# After first boot, connect and run:
+#   CREATE EXTENSION IF NOT EXISTS postgis;
+#   \i migrations/0006_supreme.sql
+#   \i migrations/0007_geofence_platform.sql
+
+FROM postgis/postgis:18-3.7
+
+ENV POSTGRES_USER=leadcaffeine
+ENV POSTGRES_PASSWORD=changeme
+ENV POSTGRES_DB=leadcaffeine
+
+EXPOSE 5432

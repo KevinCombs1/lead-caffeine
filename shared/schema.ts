@@ -1411,3 +1411,599 @@ export type InsertEmailTemplate = z.infer<typeof insertEmailTemplateSchema>;
 export type InsertEmailCampaign = z.infer<typeof insertEmailCampaignSchema>;
 export type InsertEmailRecipient = z.infer<typeof insertEmailRecipientSchema>;
 export type InsertEmailProviderConfig = z.infer<typeof insertEmailProviderConfigSchema>;
+
+// ─── COMPASS: Cal.com Intelligence System ──────────────────────────────────
+
+export const compassSources = pgTable("compass_sources", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  scraperKey: text("scraper_key").notNull().unique(),
+  enabled: boolean("enabled").notNull().default(true),
+  status: text("status").notNull().default("untested"),
+  region: text("region").notNull().default("global"),
+  rateLimitMs: integer("rate_limit_ms").notNull().default(5000),
+  maxConcurrent: integer("max_concurrent").notNull().default(2),
+  description: text("description"),
+  platform: text("platform").notNull().default("cal.com"),
+});
+
+export const insertCompassSourceSchema = createInsertSchema(compassSources).omit({ id: true });
+export type CompassSource = typeof compassSources.$inferSelect;
+export type InsertCompassSource = z.infer<typeof insertCompassSourceSchema>;
+
+export const compassQueryJobs = pgTable("compass_query_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  status: text("status").notNull().default("pending"),
+  sourceIds: text("source_ids").notNull().default("[]"),
+  industryIds: text("industry_ids").notNull().default("[]"),
+  strategyIds: text("strategy_ids").notNull().default("[]"),
+  totalQueries: integer("total_queries").notNull().default(0),
+  completedQueries: integer("completed_queries").notNull().default(0),
+  urlsDiscovered: integer("urls_discovered").notNull().default(0),
+  profilesEnriched: integer("profiles_enriched").notNull().default(0),
+  shouldStop: boolean("should_stop").notNull().default(false),
+  log: text("log").array().default(sql`'{}'::text[]`),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  platform: text("platform").notNull().default("cal.com"),
+}, (table) => [
+  index("cqc_status_idx").on(table.status),
+  index("cqc_platform_idx").on(table.platform),
+]);
+
+export const insertCompassQueryJobSchema = createInsertSchema(compassQueryJobs).omit({ id: true, startedAt: true, completedAt: true });
+export type CompassQueryJob = typeof compassQueryJobs.$inferSelect;
+export type InsertCompassQueryJob = z.infer<typeof insertCompassQueryJobSchema>;
+
+export const compassDiscoveries = pgTable("compass_discoveries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  url: text("url").notNull(),
+  username: text("username"),
+  source: text("source").notNull(),
+  sourceQuery: text("source_query"),
+  queryJobId: varchar("query_job_id"),
+  status: text("status").notNull().default("pending"),
+  platform: text("platform").notNull().default("cal.com"),
+  discoveredAt: timestamp("discovered_at").defaultNow(),
+  enrichedAt: timestamp("enriched_at"),
+}, (table) => [
+  uniqueIndex("cd_url_idx").on(table.url),
+  index("cd_status_idx").on(table.status),
+  index("cd_source_idx").on(table.source),
+  index("cd_platform_idx").on(table.platform),
+]);
+
+export const insertCompassDiscoverySchema = createInsertSchema(compassDiscoveries).omit({ id: true, discoveredAt: true });
+export type CompassDiscovery = typeof compassDiscoveries.$inferSelect;
+export type InsertCompassDiscovery = z.infer<typeof insertCompassDiscoverySchema>;
+
+export const compassProfiles = pgTable("compass_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  calUrl: text("cal_url").notNull().unique(),
+  username: text("username").notNull(),
+  name: text("name"),
+  bio: text("bio"),
+  avatarUrl: text("avatar_url"),
+  timezone: text("timezone"),
+  location: text("location"),
+  industry: text("industry"),
+  industryBundle: text("industry_bundle"),
+  scope: text("scope"),
+  qualityScore: integer("quality_score"),
+  socialLinks: text("social_links"),
+  isTeamProfile: boolean("is_team_profile").notNull().default(false),
+  companyName: text("company_name"),
+  phone: text("phone"),
+  email: text("email"),
+  website: text("website"),
+  eventCount: integer("event_count").notNull().default(0),
+  discoveryId: varchar("discovery_id"),
+  source: text("source").notNull(),
+  queryJobId: varchar("query_job_id"),
+  lastChecked: timestamp("last_checked"),
+  isAlive: boolean("is_alive").notNull().default(true),
+  platform: text("platform").notNull().default("cal.com"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("cp_industry_idx").on(table.industry),
+  index("cp_bundle_idx").on(table.industryBundle),
+  index("cp_scope_idx").on(table.scope),
+  index("cp_quality_idx").on(table.qualityScore),
+  index("cp_name_idx").on(table.name),
+  index("cp_alive_idx").on(table.isAlive),
+  index("cp_source_idx").on(table.source),
+  index("cp_platform_idx").on(table.platform),
+  index("cp_phone_idx").on(table.phone),
+  index("cp_email_idx").on(table.email),
+]);
+
+export const insertCompassProfileSchema = createInsertSchema(compassProfiles).omit({ id: true, createdAt: true });
+export type CompassProfile = typeof compassProfiles.$inferSelect;
+export type InsertCompassProfile = z.infer<typeof insertCompassProfileSchema>;
+
+export const compassEventTypes = pgTable("compass_event_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  profileId: varchar("profile_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  duration: integer("duration"),
+  price: integer("price"),
+  slug: text("slug"),
+  eventTypeUrl: text("event_type_url"),
+}, (table) => [
+  index("cet_profile_idx").on(table.profileId),
+]);
+
+export const insertCompassEventTypeSchema = createInsertSchema(compassEventTypes).omit({ id: true });
+export type CompassEventType = typeof compassEventTypes.$inferSelect;
+export type InsertCompassEventType = z.infer<typeof insertCompassEventTypeSchema>;
+
+export const compassIndustries = pgTable("compass_industries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  bundle: text("bundle").notNull(),
+  keywords: text("keywords").array().default(sql`'{}'::text[]`),
+}, (table) => [
+  index("ci_bundle_idx").on(table.bundle),
+  index("ci_slug_idx").on(table.slug),
+]);
+
+export const insertCompassIndustrySchema = createInsertSchema(compassIndustries).omit({ id: true });
+export type CompassIndustry = typeof compassIndustries.$inferSelect;
+export type InsertCompassIndustry = z.infer<typeof insertCompassIndustrySchema>;
+
+export const compassKeywords = pgTable("compass_keywords", {
+  id: serial("id").primaryKey(),
+  keyword: text("keyword").notNull(),
+  industry: text("industry"),
+  matchCount: integer("match_count").notNull().default(0),
+}, (table) => [
+  index("ck_keyword_idx").on(table.keyword),
+  index("ck_industry_idx").on(table.industry),
+]);
+
+export const insertCompassKeywordSchema = createInsertSchema(compassKeywords).omit({ id: true });
+export type CompassKeyword = typeof compassKeywords.$inferSelect;
+export type InsertCompassKeyword = z.infer<typeof insertCompassKeywordSchema>;
+
+// ── Stage 32 Profiles ────────────────────────────────────────────────────
+export const stage32Profiles = pgTable("stage32_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  stage32Id: integer("stage32_id"),
+  stage32Slug: text("stage32_slug"),
+  stage32Url: text("stage32_url").notNull().unique(),
+  name: text("name"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  bio: text("bio"),
+  location: text("location"),
+  profession: text("profession"),
+  company: text("company"),
+  profileImageUrl: text("profile_image_url"),
+  twitter: text("twitter"),
+  instagram: text("instagram"),
+  youtube: text("youtube"),
+  facebook: text("facebook"),
+  linkedin: text("linkedin"),
+  website: text("website"),
+  bioPhone: text("bio_phone"),
+  bioEmail: text("bio_email"),
+  bioCalendlyUrl: text("bio_calendly_url"),
+  websitePhone: text("website_phone"),
+  websiteEmail: text("website_email"),
+  websiteCalendlyUrl: text("website_calendly_url"),
+  imdbId: text("imdb_id"),
+  guild: text("guild"),
+  projects: text("projects"),
+  isServiceProvider: boolean("is_service_provider").notNull().default(false),
+  isExecutive: boolean("is_executive").notNull().default(false),
+  status: text("status").notNull().default("pending"),
+  scrapedAt: timestamp("scraped_at"),
+  websiteCheckedAt: timestamp("website_checked_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("s32_id_idx").on(table.stage32Id),
+  index("s32_slug_idx").on(table.stage32Slug),
+  index("s32_name_idx").on(table.name),
+  index("s32_location_idx").on(table.location),
+  index("s32_status_idx").on(table.status),
+  index("s32_email_idx").on(table.websiteEmail),
+  index("s32_phone_idx").on(table.websitePhone),
+]);
+
+export const insertStage32ProfileSchema = createInsertSchema(stage32Profiles).omit({ id: true, createdAt: true });
+export type Stage32Profile = typeof stage32Profiles.$inferType;
+export type InsertStage32Profile = z.infer<typeof insertStage32ProfileSchema>;
+
+// ── Stage 32 Scan Jobs ───────────────────────────────────────────────────
+export const stage32Jobs = pgTable("stage32_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  status: text("status").notNull().default("pending"),
+  startId: integer("start_id").notNull().default(1),
+  endId: integer("end_id").notNull().default(1500000),
+  workersScraped: integer("workers_scraped").notNull().default(0),
+  websitesChecked: integer("websites_checked").notNull().default(0),
+  contactFound: integer("contact_found").notNull().default(0),
+  shouldStop: boolean("should_stop").notNull().default(false),
+  log: text("log"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("s32_job_status_idx").on(table.status),
+]);
+
+export const insertStage32JobSchema = createInsertSchema(stage32Jobs).omit({ id: true, startedAt: true });
+export type Stage32Job = typeof stage32Jobs.$inferType;
+export type InsertStage32Job = z.infer<typeof insertStage32JobSchema>;
+
+// ── Mandy Profiles ──────────────────────────────────────────────────────
+export const mandyProfiles = pgTable("mandy_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username: text("username").notNull().unique(),
+  profileUrl: text("profile_url").notNull().unique(),
+  profileType: text("profile_type"),
+  name: text("name"),
+  gender: text("gender"),
+  location: text("location"),
+  bio: text("bio"),
+  // Appearance
+  height: text("height"),
+  weight: text("weight"),
+  build: text("build"),
+  hair: text("hair"),
+  eyes: text("eyes"),
+  chestSize: text("chest_size"),
+  waistSize: text("waist_size"),
+  hipsSize: text("hips_size"),
+  dressSize: text("dress_size"),
+  playingAge: text("playing_age"),
+  ethnicities: text("ethnicities"),
+  // Credits
+  credits: jsonb("credits"),
+  // Skills
+  skills: text("skills"),
+  // Education
+  education: text("education"),
+  // Highlights
+  highlights: text("highlights"),
+  // Websites & Social
+  websites: text("websites"),
+  imdbUrl: text("imdb_url"),
+  socialLinks: text("social_links"),
+  // Representation
+  representation: text("representation"),
+  // Union
+  unionMembership: text("union_membership"),
+  // License & Passport
+  hasDriversLicense: boolean("has_drivers_license"),
+  hasPassport: boolean("has_passport"),
+  // Contact info extracted from profile + linked sites
+  phone: text("phone"),
+  email: text("email"),
+  website: text("website"),
+  calendlyUrl: text("calendly_url"),
+  calcomUrl: text("calcom_url"),
+  // Discovery
+  source: text("source"),
+  status: text("status").notNull().default("pending"),
+  scrapedAt: timestamp("scraped_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("mandy_username_idx").on(table.username),
+  index("mandy_name_idx").on(table.name),
+  index("mandy_location_idx").on(table.location),
+  index("mandy_status_idx").on(table.status),
+  index("mandy_type_idx").on(table.profileType),
+  index("mandy_phone_idx").on(table.phone),
+  index("mandy_email_idx").on(table.email),
+]);
+
+export const insertMandyProfileSchema = createInsertSchema(mandyProfiles).omit({ id: true, createdAt: true });
+export type MandyProfile = typeof mandyProfiles.$inferType;
+export type InsertMandyProfile = z.infer<typeof insertMandyProfileSchema>;
+
+// ── Mandy Jobs ──────────────────────────────────────────────────────────
+export const mandyJobs = pgTable("mandy_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  status: text("status").notNull().default("pending"),
+  totalProfiles: integer("total_profiles").notNull().default(0),
+  discoveredProfiles: integer("discovered_profiles").notNull().default(0),
+  enrichedProfiles: integer("enriched_profiles").notNull().default(0),
+  shouldStop: boolean("should_stop").notNull().default(false),
+  log: text("log"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("mandy_job_status_idx").on(table.status),
+]);
+
+export const insertMandyJobSchema = createInsertSchema(mandyJobs).omit({ id: true, startedAt: true });
+export type MandyJob = typeof mandyJobs.$inferType;
+export type InsertMandyJob = z.infer<typeof insertMandyJobSchema>;
+
+// ── Parallel Supreme ─────────────────────────────────────────────────────
+// Two-capability geofence advertising engine.
+//
+// Line 1 — Keyword-Indexed Company Discovery:
+//   City/state + industry/custom keywords → up to 50,000 company records
+//   (name, website, business address). Reuses the hive scraper stack.
+//
+// Line 2 — Address Geocoding & Coordinate Pinning:
+//   Upload up to 50,000 company websites → find address (website scrape,
+//   Google Maps / Apple Maps / Google Business Profile / Chromium search)
+//   → pin exact lat/lng → radius-tagged (100/250/500 yards) → Meta-ready
+//   export (CSV / JSON) for bulk coordinate location picker upload.
+
+export const supremeJobs = pgTable("supreme_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  line: text("line").notNull(), // 'line1' | 'line2'
+  status: text("status").notNull().default("pending"), // pending|running|completed|stopped|failed
+  params: jsonb("params").notNull().default(sql`'{}'::jsonb`),
+  totalCombos: integer("total_combos").notNull().default(0),
+  completedCombos: integer("completed_combos").notNull().default(0),
+  companiesFound: integer("companies_found").notNull().default(0),
+  totalWebsites: integer("total_websites").notNull().default(0),
+  geocodedCount: integer("geocoded_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  shouldStop: boolean("should_stop").notNull().default(false),
+  log: text("log").array().default(sql`'{}'::text[]`),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("supreme_job_status_idx").on(table.status),
+  index("supreme_job_line_idx").on(table.line),
+]);
+
+export const insertSupremeJobSchema = createInsertSchema(supremeJobs).omit({ id: true, startedAt: true, completedAt: true });
+export type SupremeJob = typeof supremeJobs.$inferSelect;
+export type InsertSupremeJob = z.infer<typeof insertSupremeJobSchema>;
+
+export const supremeCompanies = pgTable("supreme_companies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobId: varchar("job_id").notNull(),
+  line: text("line").notNull(), // 'line1' | 'line2'
+  name: text("name"),
+  website: text("website"),
+  normalizedUrl: text("normalized_url"),
+  phone: text("phone"),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  country: text("country").default("US"),
+  category: text("category"),
+  source: text("source"), // discovery source or geocode source
+  sourceUrl: text("source_url"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
+  geocodeSource: text("geocode_source"),
+  geocodeConfidence: integer("geocode_confidence"),
+  radiusYards: integer("radius_yards"),
+  radiusMiles: real("radius_miles"),
+  radiusKm: real("radius_km"),
+  metaRadiusMiles: real("meta_radius_miles"),
+  pinQuery: text("pin_query"),
+  status: text("status").notNull().default("discovered"), // discovered|pending|scraped|geocoded|failed
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("supreme_comp_job_idx").on(table.jobId),
+  index("supreme_comp_line_idx").on(table.line),
+  index("supreme_comp_status_idx").on(table.status),
+  index("supreme_comp_norm_idx").on(table.normalizedUrl),
+  index("supreme_comp_geo_idx").on(table.latitude, table.longitude),
+]);
+
+export const insertSupremeCompanySchema = createInsertSchema(supremeCompanies).omit({ id: true, createdAt: true });
+export type SupremeCompany = typeof supremeCompanies.$inferSelect;
+export type InsertSupremeCompany = z.infer<typeof insertSupremeCompanySchema>;
+
+// ── Backstage Profiles ───────────────────────────────────────────────────
+// 300,000+ actor/performer profiles from backstage.com sitemap.
+// Same platform backend as Mandy (Backstage acquired Mandy).
+// Uses FlareSolverr for Cloudflare bypass.
+
+export const backstageProfiles = pgTable("backstage_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username: text("username").notNull().unique(),
+  profileUrl: text("profile_url").notNull().unique(),
+  profileType: text("profile_type"),
+  name: text("name"),
+  stageName: text("stage_name"),
+  gender: text("gender"),
+  location: text("location"),
+  city: text("city"),
+  state: text("state"),
+  country: text("country"),
+  bio: text("bio"),
+  // Appearance
+  height: text("height"),
+  weight: text("weight"),
+  bodyType: text("body_type"),
+  hair: text("hair"),
+  eyes: text("eyes"),
+  chest: text("chest"),
+  waist: text("waist"),
+  hips: text("hips"),
+  dress: text("dress"),
+  ethnicities: text("ethnicities"),
+  playingAge: text("playing_age"),
+  // Credits & Skills
+  credits: jsonb("credits"),
+  skills: jsonb("skills"),
+  education: jsonb("education"),
+  highlights: jsonb("highlights"),
+  // Links
+  links: text("links"),
+  websites: text("websites"),
+  // Contact — from Backstage profile
+  phone: text("phone"),
+  email: text("email"),
+  website: text("website"),
+  // Contact — scraped from personal website (separate from Backstage source)
+  phoneFromWebsite: text("phone_from_website"),
+  emailFromWebsite: text("email_from_website"),
+  websiteScraped: text("website_scraped"),
+  calendlyUrl: text("calendly_url"),
+  calcomUrl: text("calcom_url"),
+  // Meta
+  unions: text("unions"),
+  hasDriversLicense: boolean("has_drivers_license"),
+  hasPassport: boolean("has_passport"),
+  qualityScore: integer("quality_score"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
+  source: text("source"),
+  status: text("status").notNull().default("pending"),
+  scrapedAt: timestamp("scraped_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("backstage_username_idx").on(table.username),
+  index("backstage_name_idx").on(table.name),
+  index("backstage_location_idx").on(table.location),
+  index("backstage_status_idx").on(table.status),
+  index("backstage_type_idx").on(table.profileType),
+  index("backstage_phone_idx").on(table.phone),
+  index("backstage_email_idx").on(table.email),
+]);
+
+export const insertBackstageProfileSchema = createInsertSchema(backstageProfiles).omit({ id: true, createdAt: true });
+export type BackstageProfile = typeof backstageProfiles.$inferType;
+export type InsertBackstageProfile = z.infer<typeof insertBackstageProfileSchema>;
+
+// ── Backstage Jobs ───────────────────────────────────────────────────────
+export const backstageJobs = pgTable("backstage_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  status: text("status").notNull().default("pending"),
+  totalProfiles: integer("total_profiles").notNull().default(0),
+  discoveredProfiles: integer("discovered_profiles").notNull().default(0),
+  enrichedProfiles: integer("enriched_profiles").notNull().default(0),
+  shouldStop: boolean("should_stop").notNull().default(false),
+  log: text("log"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("backstage_job_status_idx").on(table.status),
+]);
+
+export const insertBackstageJobSchema = createInsertSchema(backstageJobs).omit({ id: true, startedAt: true });
+export type BackstageJob = typeof backstageJobs.$inferType;
+export type InsertBackstageJob = z.infer<typeof insertBackstageJobSchema>;
+
+// ── Geofencing Platform (Layers 1–4) ────────────────────────────────────
+//
+// Layer 1: PostGIS geofences — polygon shapes generated from Supreme Line 2
+//   coordinates. Each geofence is a circle approximation (ST_Buffer) around
+//   a lat/lng point with a configurable radius in metres.
+//
+// Layer 3: Captured devices — MAIDs harvested from the bidstream that fall
+//   inside a geofence. Stored in PostgreSQL for persistence, mirrored to
+//   Redis for real-time dedup, and to ClickHouse for historical analytics.
+
+export const geofences = pgTable("geofences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name"),
+  companyId: varchar("company_id").references(() => supremeCompanies.id),
+  jobId: varchar("job_id"),
+  // Centre point
+  latitude: real("latitude").notNull(),
+  longitude: real("longitude").notNull(),
+  // Radius in metres (used to generate the polygon)
+  radiusM: real("radius_m").notNull().default(250),
+  // Polygon geometry — stored as raw WKB, managed via raw SQL
+  // (drizzle doesn't have a native geometry type)
+  // geom GEOMETRY(Polygon, 4326) created via migration
+  // Active flag — toggle geofences on/off without deleting
+  active: boolean("active").notNull().default(true),
+  // Metadata
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  source: text("source"), // 'supreme_line2' | 'manual' | 'csv_upload'
+  tags: text("tags").array().default(sql`'{}'::text[]`),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("geofence_active_idx").on(table.active),
+  index("geofence_job_idx").on(table.jobId),
+  index("geofence_company_idx").on(table.companyId),
+]);
+
+export const insertGeofenceSchema = createInsertSchema(geofences).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type Geofence = typeof geofences.$inferSelect;
+export type InsertGeofence = z.infer<typeof insertGeofenceSchema>;
+
+// Captured devices from the bidstream
+export const capturedDevices = pgTable("captured_devices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Device identifiers from OpenRTB bid request
+  maid: text("maid"), // device.ifa (IDFA/AAID) — primary key for dedup
+  deviceType: text("device_type"), // 'mobile' | 'ctv' | 'desktop'
+  os: text("os"), // device.os
+  osv: text("osv"), // device.osv
+  make: text("make"),
+  model: text("model"),
+  carrier: text("carrier"),
+  // Location at time of capture
+  latitude: real("latitude"),
+  longitude: real("longitude"),
+  // Which geofence triggered the capture
+  geofenceId: varchar("geofence_id").references(() => geofences.id),
+  geofenceName: text("geofence_name"),
+  // IP for fallback matching
+  ip: text("ip"), // device.ip
+  // User agent
+  ua: text("ua"), // device.ua
+  // Synchronization state
+  synced: boolean("synced").notNull().default(false), // pushed to DSP?
+  syncedAt: timestamp("synced_at"),
+  syncedTo: text("synced_to"), // 'ttd' | 'stackadapt' | 'beeswax' | 'adpersonam'
+  // Timestamps
+  firstSeen: timestamp("first_seen").defaultNow(),
+  lastSeen: timestamp("last_seen").defaultNow(),
+  hitCount: integer("hit_count").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("captured_dev_maid_idx").on(table.maid),
+  index("captured_dev_geofence_idx").on(table.geofenceId),
+  index("captured_dev_synced_idx").on(table.synced),
+  index("captured_dev_seen_idx").on(table.lastSeen),
+]);
+
+export const insertCapturedDeviceSchema = createInsertSchema(capturedDevices).omit({
+  id: true, createdAt: true,
+});
+export type CapturedDevice = typeof capturedDevices.$inferSelect;
+export type InsertCapturedDevice = z.infer<typeof insertCapturedDeviceSchema>;
+
+// Audience segments — groups of captured devices pushed to a DSP
+export const audienceSegments = pgTable("audience_segments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  // Which geofences comprise this segment
+  geofenceIds: text("geofence_ids").array().default(sql`'{}'::text[]`),
+  // DSP identifiers
+  ttdSegmentId: text("ttd_segment_id"),
+  stackadaptAudienceId: text("stackadapt_audience_id"),
+  beeswaxSegmentId: text("beeswax_segment_id"),
+  adpersonamLocationIds: text("adpersonam_location_ids").array().default(sql`'{}'::text[]`),
+  // Stats
+  deviceCount: integer("device_count").notNull().default(0),
+  // Status
+  status: text("status").notNull().default("active"), // active|paused|archived
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("audience_seg_status_idx").on(table.status),
+]);
+
+export const insertAudienceSegmentSchema = createInsertSchema(audienceSegments).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type AudienceSegment = typeof audienceSegments.$inferSelect;
+export type InsertAudienceSegment = z.infer<typeof insertAudienceSegmentSchema>;

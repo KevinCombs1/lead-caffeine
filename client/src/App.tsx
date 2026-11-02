@@ -14,8 +14,15 @@ import CarpenterAntsPage from "@/pages/carpenter-ants";
 import ManifestoPage from "@/pages/manifesto";
 import DocsPage from "@/pages/docs";
 import EmailPage from "@/pages/email";
+import CompassPage from "@/pages/compass";
+import CalendlyPage from "@/pages/calendly";
+import Stage32Page from "@/pages/stage32";
+import MandyPage from "@/pages/mandy";
+import BackstagePage from "@/pages/backstage";
+import SupremePage from "@/pages/supreme";
+import GeofencePage from "@/pages/geofence";
 import NotFound from "@/pages/not-found";
-import { Loader2, Sun, LogOut, Box, Radio, Palette, Contrast, FolderOpen, Flower2, Bug, ScrollText, BookOpen, Mail } from "lucide-react";
+import { Loader2, Sun, LogOut, Box, Radio, Palette, Contrast, FolderOpen, Flower2, Bug, ScrollText, BookOpen, Mail, Compass, Calendar, Film, Users, Crosshair, Star, MapPin } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { Link, useLocation } from "wouter";
 
@@ -94,6 +101,69 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
               <Mail className="w-3 h-3" />
               Email
             </Link>
+            <Link href="/compass"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/compass" ? `${theme.accentText} ${theme.accentBg}` : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-compass"
+            >
+              <Compass className="w-3 h-3" />
+              Compass
+            </Link>
+            <Link href="/calendly"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/calendly" ? `${theme.accentText} ${theme.accentBg}` : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-calendly"
+            >
+              <Calendar className="w-3 h-3" />
+              Calendly
+            </Link>
+            <Link href="/stage32"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/stage32" ? `${theme.accentText} ${theme.accentBg}` : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-stage32"
+            >
+              <Film className="w-3 h-3" />
+              Stage 32
+            </Link>
+            <Link href="/mandy"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/mandy" ? `${theme.accentText} ${theme.accentBg}` : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-mandy"
+            >
+              <Users className="w-3 h-3" />
+              Mandy
+            </Link>
+            <Link href="/backstage"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/backstage" ? `${theme.accentText} ${theme.accentBg}` : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-backstage"
+            >
+              <Star className="w-3 h-3" />
+              Backstage
+            </Link>
+            <Link href="/supreme"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/supreme" ? `${theme.accentText} ${theme.accentBg}` : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-supreme"
+            >
+              <Crosshair className="w-3 h-3" />
+              Supreme
+            </Link>
+            <Link href="/geofence"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                location === "/geofence" ? `${theme.accentText} ${theme.accentBg}` : "text-muted-foreground/40 hover:text-muted-foreground/60"
+              }`}
+              data-testid="nav-geofence"
+            >
+              <MapPin className="w-3 h-3" />
+              Geofence
+            </Link>
             <Link href="/manifesto"
               className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
                 location === "/manifesto" ? `${theme.accentText} ${theme.accentBg}` : "text-muted-foreground/40 hover:text-muted-foreground/60"
@@ -158,6 +228,13 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
         <Route path="/carpenter-ants" component={CarpenterAntsPage} />
         <Route path="/manifesto" component={ManifestoPage} />
         <Route path="/email" component={EmailPage} />
+        <Route path="/compass" component={CompassPage} />
+        <Route path="/calendly" component={CalendlyPage} />
+        <Route path="/stage32" component={Stage32Page} />
+        <Route path="/mandy" component={MandyPage} />
+        <Route path="/backstage" component={BackstagePage} />
+        <Route path="/supreme" component={SupremePage} />
+        <Route path="/geofence" component={GeofencePage} />
         <Route path="/docs" component={DocsPage} />
         <Route component={NotFound} />
       </Switch>

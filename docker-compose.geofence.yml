@@ -1,0 +1,61 @@
+# Geofencing Platform Infrastructure
+# Deploy with: docker compose -f docker-compose.geofence.yml up -d
+#
+# Services:
+#   - Redis: real-time MAID dedup + audience sets
+#   - ClickHouse: historical device capture analytics
+#   - Prebid Server: open-source OpenRTB bidder (optional — your /api/openrtb/auction endpoint already handles this)
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: geofence-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: geofence-clickhouse
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native protocol
+    environment:
+      CLICKHOUSE_DB: geofencing
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: geofence123
+    restart: unless-stopped
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  # Prebid Server (optional) — open-source OpenRTB bidder
+  # If you want to route publisher traffic through your own bidder
+  # instead of relying on external SSPs sending to /api/openrtb/auction
+  # Uncomment to enable:
+  #
+  # prebid-server:
+  #   image: prebid/prebid-server:latest
+  #   container_name: geofence-prebid
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     - PB_STATUS_RESPONSE=true
+  #     - PB_GDPR_ENABLED=false
+  #     - PB_GPP_ENABLED=false
+  #   restart: unless-stopped
+  #   # Configure your bidder endpoint in the config file:
+  #   # /etc/prebid-server/config.yaml
+  #   # Set your endpoint as: http://host.docker.internal:5001/api/openrtb/auction
+  #   volumes:
+  #     - ./prebid-config.yaml:/etc/prebid-server/config.yaml
+
+volumes:
+  redis-data:
+  clickhouse-data:

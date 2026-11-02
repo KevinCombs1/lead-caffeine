@@ -23,6 +23,16 @@ app.use(
 
 app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 
+// Health check — registered BEFORE Vite middleware so it always responds
+// even when the event loop is under pressure from discovery workers.
+app.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    uptime: Math.round(process.uptime()),
+    memMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+  });
+});
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -84,6 +94,27 @@ app.use((req, res, next) => {
     console.log("[hive-engine] Orphan cleanup error:", err.message);
   }
 
+  try {
+    const { seedCompassData } = await import("./compass-seed");
+    await seedCompassData();
+  } catch (err: any) {
+    console.log("[compass-seed] Seed skipped or error:", err.message);
+  }
+
+  try {
+    const { cleanupOrphanedCompassJobs } = await import("./compass-engine");
+    await cleanupOrphanedCompassJobs();
+  } catch (err: any) {
+    console.log("[compass-engine] Orphan cleanup error:", err.message);
+  }
+
+  try {
+    const { cleanupSupremeJobs } = await import("./supreme-engine");
+    await cleanupSupremeJobs();
+  } catch (err: any) {
+    console.log("[supreme-engine] Orphan cleanup error:", err.message);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
@@ -117,8 +148,7 @@ app.use((req, res, next) => {
   httpServer.listen(
     {
       port,
-      host: "0.0.0.0",
-      reusePort: true,
+      host: process.env.HOST || "0.0.0.0",
     },
     async () => {
       log(`serving on port ${port}`);
