@@ -4808,7 +4808,7 @@ export async function registerRoutes(
   // Resets their status to "pending" so Line 2 picks them up again
   app.post("/api/supreme/line2/regeocode", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { sourceJobId, includeScraped, includeFailed } = req.body;
+      const { sourceJobId } = req.body;
       if (!sourceJobId) return res.status(400).json({ error: "sourceJobId required" });
 
       // The sourceJobId might be a Line 2 job ID. If so, resolve the actual
@@ -4819,18 +4819,15 @@ export async function registerRoutes(
         line1JobId = (job as any).params.sourceJobId;
       }
 
-      const statuses: string[] = ["pending"];
-      if (includeScraped) statuses.push("scraped");
-      if (includeFailed !== false) statuses.push("failed");
-
-      // Reset matching companies to "pending" so Line 2 reprocesses them
-      const statusesStr = statuses.map(s => `'${s}'`).join(',');
+      // Reset ALL companies from this Line 1 job that are missing coordinates
+      // (latitude IS NULL) back to "pending" so Line 2 picks them up again.
+      // No status filtering — just look at whether they have coordinates.
       const result = await db.execute(sql.raw(`
         UPDATE supreme_companies
         SET status = 'pending', error = NULL
         WHERE job_id = '${line1JobId}'
           AND line = 'line1'
-          AND status = ANY(ARRAY[${statusesStr}]::text[])
+          AND latitude IS NULL
           AND (address IS NOT NULL AND address != '' OR city IS NOT NULL AND city != '')
       `));
 

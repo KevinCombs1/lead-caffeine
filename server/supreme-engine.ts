@@ -1222,7 +1222,23 @@ export class SupremeEngine {
       }
     }
 
-    // ── Step 3: Nominatim (if still no coords) ──
+    // ── Step 2b: Census Geocoder retry with zip code only (city name mismatch is common) ──
+    if (!lat && this.line2Params.useCensus && (company.address || foundAddress.street) && (company.zip || foundAddress.zip)) {
+      const result = await geocodeCensus(
+        company.address || foundAddress.street || "",
+        undefined, // omit city — Census often fails on hamlet/suburb names
+        company.state || foundAddress.state,
+        company.zip || foundAddress.zip
+      );
+      if (result) {
+        lat = result.lat;
+        lng = result.lng;
+        geoSource = "census-zip";
+        confidence = result.confidence;
+      }
+    }
+
+    // ── Step 3: Nominatim — try business name + city first ──
     if (!lat && this.line2Params.useNominatim) {
       const query = company.name
         ? `${company.name} ${company.city || ""} ${company.state || ""}`
@@ -1232,6 +1248,18 @@ export class SupremeEngine {
         lat = result.lat;
         lng = result.lng;
         geoSource = "nominatim";
+        confidence = result.confidence;
+      }
+    }
+
+    // ── Step 3b: Nominatim — retry with full address (name-based search may fail for small businesses) ──
+    if (!lat && this.line2Params.useNominatim && (company.address || foundAddress.street)) {
+      const addrQuery = `${company.address || foundAddress.street || ""}, ${company.city || foundAddress.city || ""}, ${company.state || foundAddress.state || ""} ${company.zip || foundAddress.zip || ""}`;
+      const result = await geocodeNominatim(this.nominatimGate, addrQuery.trim(), undefined, undefined);
+      if (result) {
+        lat = result.lat;
+        lng = result.lng;
+        geoSource = "nominatim-addr";
         confidence = result.confidence;
       }
     }
