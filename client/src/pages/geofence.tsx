@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MapPin, Radio, Users, Loader2, Power, Trash2, RefreshCw, Smartphone, Send, Zap, Megaphone } from "lucide-react";
+import { MapPin, Radio, Users, Loader2, Power, Trash2, RefreshCw, Smartphone, Send, Zap, Megaphone, Upload, FileUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import CampaignBuilder from "@/components/campaign-builder";
@@ -119,6 +119,26 @@ export default function GeofencePage() {
       toast({ title: `Generated ${data.created} geofences (${data.skipped} already existed)` });
       queryClient.invalidateQueries({ queryKey: ["geofences"] });
       queryClient.invalidateQueries({ queryKey: ["geofence-stats"] });
+    },
+  });
+
+  const [csvText, setCsvText] = useState("");
+  const [showCsvUpload, setShowCsvUpload] = useState(false);
+
+  const csvUploadMutation = useMutation({
+    mutationFn: async (csv: string) => {
+      const res = await apiRequest("POST", "/api/geofence/upload-csv", { csv });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: `Created ${data.created} geofences (${data.skipped} skipped)` });
+      setCsvText("");
+      setShowCsvUpload(false);
+      queryClient.invalidateQueries({ queryKey: ["geofences"] });
+      queryClient.invalidateQueries({ queryKey: ["geofence-stats"] });
+    },
+    onError: (err: any) => {
+      toast({ title: `Upload failed: ${err.message}`, variant: "destructive" });
     },
   });
 
@@ -280,6 +300,47 @@ export default function GeofencePage() {
                   <span className="text-xs text-muted-foreground">
                     Created: {generateMutation.data.created} | Skipped: {generateMutation.data.skipped}
                   </span>
+                )}
+              </div>
+
+              {/* CSV Upload toggle */}
+              <div className="mt-3 pt-3 border-t">
+                <button
+                  onClick={() => setShowCsvUpload(!showCsvUpload)}
+                  className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                >
+                  <FileUp className="w-3 h-3" />
+                  Upload CSV of locations instead
+                </button>
+                {showCsvUpload && (
+                  <div className="mt-2 space-y-2">
+                    <textarea
+                      value={csvText}
+                      onChange={(e) => setCsvText(e.target.value)}
+                      placeholder={"name,latitude,longitude,radius_m,address,city,state\nJ&J Auto Repair,41.681427,-73.855606,250,123 Main St,Poughkeepsie,NY"}
+                      className="bg-input border rounded px-2 py-1 text-xs w-full font-mono h-32"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => csvUploadMutation.mutate(csvText)}
+                        disabled={csvUploadMutation.isPending || !csvText.trim()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        {csvUploadMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                        Upload CSV
+                      </button>
+                      {csvUploadMutation.data && (
+                        <span className="text-xs text-muted-foreground">
+                          Created: {csvUploadMutation.data.created} | Skipped: {csvUploadMutation.data.skipped}
+                        </span>
+                      )}
+                    </div>
+                    <div className="bg-muted/30 rounded p-2 text-[10px] font-mono text-muted-foreground">
+                      Required: name, latitude, longitude<br/>
+                      Optional: radius_m (default 250m), address, city, state<br/>
+                      Also auto-detects: radius_yards, radius_miles, radius_km
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

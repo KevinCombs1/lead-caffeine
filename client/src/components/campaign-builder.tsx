@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Megaphone, Image, Film, Upload, Trash2, Loader2, Plus, Link2, Unlink, DollarSign, MousePointerClick, Eye, Settings2, FileUp } from "lucide-react";
+import { Megaphone, Image, Film, Upload, Trash2, Loader2, Plus, Link2, Unlink, DollarSign, MousePointerClick, Eye, Settings2, FileUp, MapPin } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -57,6 +57,13 @@ interface Geofence {
 interface CampaignDetail extends Campaign {
   geofenceIds: string[];
   creatives: Creative[];
+}
+
+interface GeofenceGroup {
+  id: string;
+  label: string;
+  count: number;
+  source: string;
 }
 
 type Tab = "list" | "create" | "detail";
@@ -137,21 +144,46 @@ function CreateCampaignForm({ onCreated, onBack }: { onCreated: (id: string) => 
   const [totalBudget, setTotalBudget] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const { toast } = useToast();
+
+  const { data: groups = [] } = useQuery<GeofenceGroup[]>({
+    queryKey: ["geofence-groups"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/geofence/groups");
+      return res.json();
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("POST", "/api/campaigns", data);
       return res.json();
     },
-    onSuccess: (data) => {
-      toast({ title: `Campaign "${data.name}" created` });
+    onSuccess: async (data) => {
+      // Link selected geofence groups to the campaign
+      if (selectedGroups.length > 0) {
+        for (const groupId of selectedGroups) {
+          try {
+            await apiRequest("POST", `/api/campaigns/${data.id}/link-group`, { groupId });
+          } catch {
+            // ignore errors
+          }
+        }
+        toast({ title: `Campaign "${data.name}" created with ${selectedGroups.length} geofence group(s)` });
+      } else {
+        toast({ title: `Campaign "${data.name}" created` });
+      }
       onCreated(data.id);
     },
     onError: (err: any) => {
       toast({ title: `Failed: ${err.message}`, variant: "destructive" });
     },
   });
+
+  const toggleGroup = (groupId: string) => {
+    setSelectedGroups(prev => prev.includes(groupId) ? prev.filter(g => g !== groupId) : [...prev, groupId]);
+  };
 
   const handleSubmit = () => {
     if (!name) {
@@ -209,15 +241,48 @@ function CreateCampaignForm({ onCreated, onBack }: { onCreated: (id: string) => 
             <input value={endDate} onChange={(e) => setEndDate(e.target.value)} type="date" className="bg-input border rounded px-2 py-1 text-xs w-full" />
           </div>
         </div>
-        <button
-          onClick={handleSubmit}
-          disabled={createMutation.isPending || !name}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
-        >
-          {createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Megaphone className="w-3 h-3" />}
-          Create Campaign
-        </button>
       </div>
+
+      {/* Geofence Group Selector */}
+      <div className="bg-card border rounded-lg p-4">
+        <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> Geofence Groups</h4>
+        <p className="text-xs text-muted-foreground mb-3">Select which geofence groups to target. Active groups continuously capture MAIDs and feed them to this campaign.</p>
+        {groups.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No geofence groups available. Generate geofences first.</p>
+        ) : (
+          <div className="space-y-1">
+            {groups.map((g) => (
+              <label key={g.id} className="flex items-center gap-2 p-2 rounded hover:bg-muted/30 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedGroups.includes(g.id)}
+                  onChange={() => toggleGroup(g.id)}
+                  className="w-3.5 h-3.5"
+                />
+                <div className="flex-1">
+                  <span className="text-xs font-medium">{g.label}</span>
+                  <span className="text-[10px] text-muted-foreground ml-2">{g.count} geofences</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{g.source}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        {selectedGroups.length > 0 && (
+          <div className="mt-2 text-xs text-primary">
+            {selectedGroups.length} group(s) selected — all geofences in these groups will be linked to this campaign
+          </div>
+        )}
+      </div>
+
+      <button
+        onClick={handleSubmit}
+        disabled={createMutation.isPending || !name}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+      >
+        {createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Megaphone className="w-3 h-3" />}
+        Create Campaign
+      </button>
     </div>
   );
 }
@@ -361,6 +426,28 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] });
+    },
+  });
+
+  const { data: groups = [] } = useQuery<GeofenceGroup[]>({
+    queryKey: ["geofence-groups"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/geofence/groups");
+      return res.json();
+    },
+  });
+
+  const linkGroupMutation = useMutation({
+    mutationFn: async (groupId: string) => {
+      const res = await apiRequest("POST", `/api/campaigns/${campaignId}/link-group`, { groupId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: `Linked ${data.linked} geofences from group` });
+      queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] });
+    },
+    onError: (err: any) => {
+      toast({ title: `Failed: ${err.message}`, variant: "destructive" });
     },
   });
 
@@ -520,7 +607,7 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
       <div className="bg-card border rounded-lg p-4">
         <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> Linked Geofences ({linkedGeofences.length})</h4>
         {linkedGeofences.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No geofences linked. Upload a CSV or link existing geofences below.</p>
+          <p className="text-xs text-muted-foreground">No geofences linked. Upload a CSV, link a group, or link individual geofences below.</p>
         ) : (
           <div className="space-y-1 max-h-40 overflow-y-auto">
             {linkedGeofences.map((g) => (
@@ -533,6 +620,27 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
             ))}
           </div>
         )}
+
+        {/* Geofence Group Quick-Link */}
+        {groups.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="text-xs font-medium mb-2">Quick-link a geofence group:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {groups.map((g) => (
+                <button
+                  key={g.id}
+                  onClick={() => linkGroupMutation.mutate(g.id)}
+                  disabled={linkGroupMutation.isPending}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-muted hover:bg-muted/70 text-[10px] font-medium disabled:opacity-50"
+                >
+                  <Link2 className="w-2.5 h-2.5" />
+                  {g.label} ({g.count})
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {unlinkedGeofences.length > 0 && (
           <div className="mt-3 pt-3 border-t">
             <p className="text-xs font-medium mb-2">Link existing geofences:</p>

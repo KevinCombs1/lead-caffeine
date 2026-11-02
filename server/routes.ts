@@ -5170,6 +5170,87 @@ export async function registerRoutes(
     }
   });
 
+  // Upload CSV of locations → create geofences (no campaign required)
+  app.post("/api/geofence/upload-csv", requireAuth, async (req: Request, res: Response) => {
+    try {
+      let csvText: string | undefined;
+      if (req.body && typeof req.body.csv === "string") {
+        csvText = req.body.csv;
+      } else if (req.body && typeof req.body === "string") {
+        csvText = req.body;
+      }
+      if (!csvText) {
+        return res.status(400).json({ error: "csv content required (send as {csv: '...'} JSON)" });
+      }
+      const { rows, errors } = parseCsv(csvText);
+      if (rows.length === 0) {
+        return res.status(400).json({ created: 0, skipped: 0, errors: errors.length ? errors : ["no valid rows parsed"] });
+      }
+      const result = await storage.createGeofencesFromCsv(rows);
+      res.json({ ...result, errors });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // List geofence groups (grouped by jobId)
+  app.get("/api/geofence/groups", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const allGeofences = await storage.getGeofences({ active: true });
+      // Group by jobId, fall back to source if no jobId
+      const groups: Record<string, { id: string; label: string; count: number; source: string }> = {};
+      for (const g of allGeofences) {
+        const groupKey = g.jobId || g.source || "ungrouped";
+        if (!groups[groupKey]) {
+          groups[groupKey] = {
+            id: groupKey,
+            label: g.jobId ? `Supreme Job ${g.jobId.slice(0, 8)}` : (g.source === "csv_upload" ? "CSV Upload" : (g.source || "Manual")),
+            count: 0,
+            source: g.source || "unknown",
+          };
+        }
+        groups[groupKey].count++;
+      }
+      res.json(Object.values(groups).sort((a, b) => b.count - a.count));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Link all geofences in a group to a campaign
+  app.post("/api/campaigns/:id/link-group", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { groupId } = req.body;
+      if (!groupId) return res.status(400).json({ error: "groupId required" });
+      const campaignId = req.params.id;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "campaign not found" });
+
+      // Find all geofences in this group (by jobId or source)
+      const allGeofences = await storage.getGeofences({});
+      const groupGeofenceIds = allGeofences
+        .filter(g => (g.jobId || g.source || "ungrouped") === groupId)
+        .map(g => g.id);
+
+      if (groupGeofenceIds.length === 0) {
+        return res.json({ linked: 0, message: "No geofences found in this group" });
+      }
+
+      let linked = 0;
+      for (const gid of groupGeofenceIds) {
+        try {
+          await storage.linkGeofenceToCampaign(campaignId, gid);
+          linked++;
+        } catch {
+          // already linked — skip
+        }
+      }
+      res.json({ linked, message: `Linked ${linked} geofences from group` });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // List geofences
   app.get("/api/geofence", requireAuth, async (req: Request, res: Response) => {
     try {
