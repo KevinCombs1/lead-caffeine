@@ -1147,14 +1147,19 @@ function Line2Tab({ isActive: _parentActive, activeLine: _parentActiveLine, caps
           {displayJobId && !isRunning && (
             <button
               onClick={async () => {
-                const res = await apiRequest("POST", "/api/supreme/line2/regeocode", {
-                  sourceJobId: displayJobId,
-                  includeScraped: true,
-                  includeFailed: true,
-                });
-                const data = await res.json();
-                alert(data.message);
-                window.location.reload();
+                try {
+                  const res = await apiRequest("POST", "/api/supreme/line2/regeocode", {
+                    sourceJobId: displayJobId,
+                    includeScraped: true,
+                    includeFailed: true,
+                  });
+                  const data = await res.json();
+                  toast({ title: `Reset ${data.reset} companies to pending — click Start Line 2 to re-geocode` });
+                  queryClient.invalidateQueries({ queryKey: ["supreme-companies"] });
+                  queryClient.invalidateQueries({ queryKey: ["supreme-jobs"] });
+                } catch (err: any) {
+                  toast({ title: `Re-geocode failed: ${err.message}`, variant: "destructive" });
+                }
               }}
               className="flex items-center gap-2 px-3 py-2 bg-amber-700 hover:bg-amber-600 text-white text-xs font-semibold rounded transition-colors"
               title="Reset failed and scraped companies back to pending so Line 2 can try again"
