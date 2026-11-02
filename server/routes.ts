@@ -4816,14 +4816,15 @@ export async function registerRoutes(
       if (includeFailed !== false) statuses.push("failed");
 
       // Reset matching companies to "pending" so Line 2 reprocesses them
-      const result = await db.execute(sql`
+      const statusesStr = statuses.map(s => `'${s}'`).join(',');
+      const result = await db.execute(sql.raw(`
         UPDATE supreme_companies
         SET status = 'pending', error = NULL
-        WHERE job_id = ${sourceJobId}
+        WHERE job_id = '${sourceJobId}'
           AND line = 'line1'
-          AND status = ANY(${statuses}::text[])
+          AND status = ANY(ARRAY[${statusesStr}]::text[])
           AND (address IS NOT NULL AND address != '' OR city IS NOT NULL AND city != '')
-      `);
+      `));
 
       const resetCount = (result as any).rowCount || 0;
       res.json({ reset: resetCount, message: `${resetCount} companies reset to pending. Run Line 2 again to re-geocode them.` });
