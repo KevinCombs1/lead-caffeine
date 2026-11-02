@@ -4811,6 +4811,14 @@ export async function registerRoutes(
       const { sourceJobId, includeScraped, includeFailed } = req.body;
       if (!sourceJobId) return res.status(400).json({ error: "sourceJobId required" });
 
+      // The sourceJobId might be a Line 2 job ID. If so, resolve the actual
+      // Line 1 job ID from the Line 2 job's params.
+      let line1JobId = sourceJobId;
+      const job = await storage.getSupremeJob(sourceJobId);
+      if (job && (job as any).params?.sourceJobId) {
+        line1JobId = (job as any).params.sourceJobId;
+      }
+
       const statuses: string[] = ["pending"];
       if (includeScraped) statuses.push("scraped");
       if (includeFailed !== false) statuses.push("failed");
@@ -4820,7 +4828,7 @@ export async function registerRoutes(
       const result = await db.execute(sql.raw(`
         UPDATE supreme_companies
         SET status = 'pending', error = NULL
-        WHERE job_id = '${sourceJobId}'
+        WHERE job_id = '${line1JobId}'
           AND line = 'line1'
           AND status = ANY(ARRAY[${statusesStr}]::text[])
           AND (address IS NOT NULL AND address != '' OR city IS NOT NULL AND city != '')
