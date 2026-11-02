@@ -79,7 +79,7 @@ services:
     image:
       url: docker.io/clickhouse/clickhouse-server:latest
     plan: starter
-    dockerCommand: sh -c "chown -R clickhouse:clickhouse /var/lib/clickhouse /var/log/clickhouse-server && exec su clickhouse -s /bin/sh -c 'clickhouse-server --config-file=/etc/clickhouse-server/config.xml'"
+    dockerCommand: clickhouse-server --config-file=/etc/clickhouse-server/config.xml
     envVars:
       - key: CLICKHOUSE_DB
         value: default
@@ -87,6 +87,8 @@ services:
         value: default
       - key: CLICKHOUSE_PASSWORD
         sync: false
+      - key: CLICKHOUSE_RUN_AS_ROOT
+        value: "1"
     disk:
       name: ch-data
       mountPath: /var/lib/clickhouse
