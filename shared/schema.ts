@@ -2051,7 +2051,7 @@ export const creatives = pgTable("creatives", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  // 'image' | 'video'
+  // 'image' | 'video' | 'native'
   type: text("type").notNull(),
   // Relative path to the file on disk (under /data/creatives)
   filePath: text("file_path").notNull(),
@@ -2065,6 +2065,13 @@ export const creatives = pgTable("creatives", {
   duration: real("duration"),
   // Landing page URL
   clickUrl: text("click_url"),
+  // Ad text fields (like Meta Ads Manager) — assembled into the ad markup
+  headline: text("headline"),           // Short bold title (e.g. "Get 20% Off Oil Changes")
+  description: text("description"),       // Body text below the headline
+  ctaText: text("cta_text"),             // Call-to-action button text (e.g. "Book Now", "Call Now", "Learn More")
+  displayUrl: text("display_url"),        // URL shown to the user (e.g. "JJAutoRepair.com")
+  // Icon/logo image (optional, for native ad format)
+  iconPath: text("icon_path"),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [

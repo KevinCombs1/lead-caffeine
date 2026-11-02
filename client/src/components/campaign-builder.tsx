@@ -33,6 +33,10 @@ interface Creative {
   height: number | null;
   duration: number | null;
   clickUrl: string | null;
+  headline: string | null;
+  description: string | null;
+  ctaText: string | null;
+  displayUrl: string | null;
   status: string;
   createdAt: string;
 }
@@ -243,6 +247,10 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
   // Creative upload form state
   const [creativeName, setCreativeName] = useState("");
   const [clickUrl, setClickUrl] = useState("");
+  const [headline, setHeadline] = useState("");
+  const [creativeDescription, setCreativeDescription] = useState("");
+  const [ctaText, setCtaText] = useState("");
+  const [displayUrl, setDisplayUrl] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   // CSV paste state
@@ -261,11 +269,17 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
   });
 
   const uploadCreativeMutation = useMutation({
-    mutationFn: async ({ file, name, clickUrl: url }: { file: File; name: string; clickUrl?: string }) => {
+    mutationFn: async ({ file, name, clickUrl: url, headline: hl, description: desc, ctaText: cta, displayUrl: durl }: {
+      file: File; name: string; clickUrl?: string; headline?: string; description?: string; ctaText?: string; displayUrl?: string;
+    }) => {
       const formData = new FormData();
       formData.append("file", file);
       if (name) formData.append("name", name);
       if (url) formData.append("clickUrl", url);
+      if (hl) formData.append("headline", hl);
+      if (desc) formData.append("description", desc);
+      if (cta) formData.append("ctaText", cta);
+      if (durl) formData.append("displayUrl", durl);
       const res = await fetch(`/api/campaigns/${campaignId}/creatives`, {
         method: "POST",
         body: formData,
@@ -280,6 +294,10 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
       toast({ title: `Creative uploaded: ${data.name}` });
       setCreativeName("");
       setClickUrl("");
+      setHeadline("");
+      setCreativeDescription("");
+      setCtaText("");
+      setDisplayUrl("");
       setPendingFile(null);
       queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] });
     },
@@ -514,6 +532,8 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
                 <div className="text-[10px] text-muted-foreground">
                   {c.type} {c.width && `${c.width}x${c.height}`} {c.mimeType}
                 </div>
+                {(c as any).headline && <div className="text-[10px] font-semibold truncate">{(c as any).headline}</div>}
+                {(c as any).ctaText && <div className="text-[10px] text-blue-400">CTA: {(c as any).ctaText}</div>}
                 {c.clickUrl && (
                   <div className="text-[10px] text-blue-400 truncate">→ {c.clickUrl}</div>
                 )}
@@ -537,24 +557,76 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
         />
 
         {/* Creative metadata fields */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-2 border-t pt-3">
+          <p className="text-xs font-medium">Ad Text (shown to phone user)</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium block mb-1">Creative Name (optional)</label>
+              <input
+                value={creativeName}
+                onChange={(e) => setCreativeName(e.target.value)}
+                placeholder={pendingFile ? pendingFile.name : "e.g. Auto Repair Banner"}
+                className="bg-input border rounded px-2 py-1 text-xs w-full"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1">Click URL (landing page)</label>
+              <input
+                value={clickUrl}
+                onChange={(e) => setClickUrl(e.target.value)}
+                placeholder="https://your-landing-page.com"
+                className="bg-input border rounded px-2 py-1 text-xs w-full"
+              />
+            </div>
+          </div>
           <div>
-            <label className="text-xs font-medium block mb-1">Creative Name (optional)</label>
+            <label className="text-xs font-medium block mb-1">Headline (bold title shown on ad)</label>
             <input
-              value={creativeName}
-              onChange={(e) => setCreativeName(e.target.value)}
-              placeholder={pendingFile ? pendingFile.name : "e.g. Auto Repair Banner 320x50"}
+              value={headline}
+              onChange={(e) => setHeadline(e.target.value)}
+              placeholder="e.g. Get 20% Off Your Next Oil Change"
+              maxLength={40}
               className="bg-input border rounded px-2 py-1 text-xs w-full"
             />
           </div>
           <div>
-            <label className="text-xs font-medium block mb-1">Click URL (where the ad links to)</label>
-            <input
-              value={clickUrl}
-              onChange={(e) => setClickUrl(e.target.value)}
-              placeholder="https://your-landing-page.com"
-              className="bg-input border rounded px-2 py-1 text-xs w-full"
+            <label className="text-xs font-medium block mb-1">Description (body text under headline)</label>
+            <textarea
+              value={creativeDescription}
+              onChange={(e) => setCreativeDescription(e.target.value)}
+              placeholder="e.g. J&J Auto Repair in Poughkeepsie — full-service oil changes, brake repair, and more. Walk-ins welcome."
+              maxLength={125}
+              className="bg-input border rounded px-2 py-1 text-xs w-full h-16 resize-none"
             />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium block mb-1">CTA Button Text</label>
+              <select
+                value={ctaText}
+                onChange={(e) => setCtaText(e.target.value)}
+                className="bg-input border rounded px-2 py-1 text-xs w-full"
+              >
+                <option value="">No button</option>
+                <option value="Learn More">Learn More</option>
+                <option value="Book Now">Book Now</option>
+                <option value="Call Now">Call Now</option>
+                <option value="Shop Now">Shop Now</option>
+                <option value="Sign Up">Sign Up</option>
+                <option value="Get Offer">Get Offer</option>
+                <option value="Get Directions">Get Directions</option>
+                <option value="Visit Site">Visit Site</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1">Display URL (shown to user)</label>
+              <input
+                value={displayUrl}
+                onChange={(e) => setDisplayUrl(e.target.value)}
+                placeholder="e.g. JJAutoRepair.com"
+                className="bg-input border rounded px-2 py-1 text-xs w-full"
+              />
+            </div>
           </div>
         </div>
 
@@ -569,7 +641,7 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
           </button>
           {pendingFile && (
             <button
-              onClick={() => uploadCreativeMutation.mutate({ file: pendingFile, name: creativeName, clickUrl })}
+              onClick={() => uploadCreativeMutation.mutate({ file: pendingFile, name: creativeName, clickUrl, headline, description: creativeDescription, ctaText, displayUrl })}
               disabled={uploadCreativeMutation.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-green-600 text-white text-xs font-medium hover:bg-green-700 disabled:opacity-50"
             >

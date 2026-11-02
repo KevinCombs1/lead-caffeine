@@ -5424,6 +5424,10 @@ export async function registerRoutes(
       const relativePath = `${campaignId}/${file.filename}`;
       const name = (req.body.name as string) || file.originalname;
       const clickUrl = (req.body.clickUrl as string) || undefined;
+      const headline = (req.body.headline as string) || undefined;
+      const description = (req.body.description as string) || undefined;
+      const ctaText = (req.body.ctaText as string) || undefined;
+      const displayUrl = (req.body.displayUrl as string) || undefined;
 
       const created = await storage.createCreative({
         campaignId,
@@ -5433,6 +5437,10 @@ export async function registerRoutes(
         fileSize: file.size,
         mimeType: file.mimetype,
         clickUrl,
+        headline,
+        description,
+        ctaText,
+        displayUrl,
       });
       res.json(created);
     } catch (err: any) {
@@ -5477,7 +5485,8 @@ export async function registerRoutes(
   <Ad id="${creative.id}">
     <InLine>
       <AdSystem>LeadCaffeine Geofence</AdSystem>
-      <AdTitle>${escapeXml(creative.name)}</AdTitle>
+      <AdTitle>${escapeXml(creative.headline || creative.name)}</AdTitle>
+      <Description>${escapeXml(creative.description || "")}</Description>
       <Impression><![CDATA[${serverDomain}/api/openrtb/win?creative=${encodeURIComponent(creative.id)}&price=\${AUCTION_PRICE}]]></Impression>
       <Creatives>
         <Creative id="${creative.id}">
@@ -5498,6 +5507,21 @@ export async function registerRoutes(
             </MediaFiles>
           </Linear>
         </Creative>
+        ${creative.headline || creative.ctaText ? `<Creative id="${creative.id}-companion">
+          <CompanionAds>
+            <Companion width="${width}" height="${height}">
+              <CompanionClickThrough><![CDATA[${clickUrl}]]></CompanionClickThrough>
+              <HTMLResource><![CDATA[
+                <div style="font-family:Arial,sans-serif;padding:12px;background:#fff;border-radius:8px;max-width:${width}px;">
+                  ${creative.headline ? `<div style="font-size:16px;font-weight:bold;color:#1a1a1a;margin-bottom:4px;">${escapeHtml(creative.headline)}</div>` : ""}
+                  ${creative.description ? `<div style="font-size:13px;color:#666;margin-bottom:8px;">${escapeHtml(creative.description)}</div>` : ""}
+                  ${creative.ctaText ? `<a href="${clickUrl}" style="display:inline-block;background:#1877F2;color:#fff;font-size:13px;font-weight:bold;padding:6px 16px;border-radius:6px;text-decoration:none;">${escapeHtml(creative.ctaText)}</a>` : ""}
+                  ${creative.displayUrl ? `<div style="font-size:11px;color:#385898;margin-top:6px;">${escapeHtml(creative.displayUrl)}</div>` : ""}
+                </div>
+              ]]></HTMLResource>
+            </Companion>
+          </CompanionAds>
+        </Creative>` : ""}
       </Creatives>
     </InLine>
   </Ad>
@@ -5823,6 +5847,25 @@ export async function registerRoutes(
             const w = imp.banner.w || imageCreative.width || 320;
             const h = imp.banner.h || imageCreative.height || 50;
 
+            // Build rich ad card with headline, description, CTA, display URL (like Meta Ads)
+            const headline = imageCreative.headline ? escapeHtml(imageCreative.headline) : "";
+            const desc = imageCreative.description ? escapeHtml(imageCreative.description) : "";
+            const cta = imageCreative.ctaText ? escapeHtml(imageCreative.ctaText) : "";
+            const displayUrl = imageCreative.displayUrl ? escapeHtml(imageCreative.displayUrl) : "";
+
+            // Rich HTML ad card (works in banner slots that support HTML adm)
+            const adm = `<a href="${clickUrl}" target="_blank" style="display:block;text-decoration:none;font-family:Arial,sans-serif;max-width:${w}px;box-sizing:border-box;">
+  <div style="overflow:hidden;border-radius:8px;border:1px solid #e0e0e0;background:#fff;">
+    <img src="${imgUrl}" width="${w}" height="${h}" style="display:block;width:100%;height:auto;object-fit:cover;" border="0" alt="${escapeHtml(campaign.name)}"/>
+    ${headline ? `<div style="padding:6px 8px 2px;font-size:14px;font-weight:bold;color:#1a1a1a;line-height:1.3;">${headline}</div>` : ""}
+    ${desc ? `<div style="padding:0 8px 4px;font-size:12px;color:#666;line-height:1.4;">${desc}</div>` : ""}
+    <div style="padding:0 8px 8px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      ${displayUrl ? `<span style="font-size:11px;color:#385898;font-weight:500;">${displayUrl}</span>` : ""}
+      ${cta ? `<span style="background:#1877F2;color:#fff;font-size:12px;font-weight:bold;padding:4px 12px;border-radius:6px;white-space:nowrap;">${cta}</span>` : ""}
+    </div>
+  </div>
+</a>`;
+
             const bidResponse = {
               id: bid.id || bidId,
               seatbid: [{
@@ -5832,7 +5875,7 @@ export async function registerRoutes(
                   impid: imp.id || "1",
                   price: bidPrice,
                   adid: campaign.id,
-                  adm: `<a href="${clickUrl}"><img src="${imgUrl}" width="${w}" height="${h}" border="0" alt="${escapeHtml(campaign.name)}"/></a>`,
+                  adm,
                   nurl: `${serverDomain}/api/openrtb/win?price=\${AUCTION_PRICE}&maid=${encodeURIComponent(maid || "")}&geofence=${encodeURIComponent(match.id)}&campaign=${encodeURIComponent(campaign.id)}&creative=${encodeURIComponent(imageCreative.id)}`,
                   w,
                   h,

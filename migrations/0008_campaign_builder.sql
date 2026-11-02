@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS "creatives" (
   "height" integer,
   "duration" real,
   "click_url" text,
+  "headline" text,
+  "description" text,
+  "cta_text" text,
+  "display_url" text,
+  "icon_path" text,
   "status" text NOT NULL DEFAULT 'active',
   "created_at" timestamp DEFAULT now()
 );
