@@ -79,7 +79,7 @@ services:
     image:
       url: docker.io/clickhouse/clickhouse-server:latest
     plan: starter
-    dockerCommand: clickhouse-server --config-file=/etc/clickhouse-server/config.xml
+    dockerCommand: bash -c "chown -R clickhouse:clickhouse /var/lib/clickhouse /var/log/clickhouse-server && su clickhouse -s /bin/bash -c 'clickhouse-server --config-file=/etc/clickhouse-server/config.xml'"
     envVars:
       - key: CLICKHOUSE_DB
         value: default
