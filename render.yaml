@@ -45,7 +45,7 @@ services:
     name: lead-caffeine-db
     runtime: image
     image:
-      url: postgis/postgis:18-3.7
+      url: postgis/postgis:18-3.6
     plan: starter
     envVars:
       - key: POSTGRES_USER
@@ -94,5 +94,5 @@ services:
     name: lead-caffeine-flaresolverr
     runtime: image
     image:
-      url: ghcr.io/rix1337/flaresolverr-next:latest
+      url: ghcr.io/flaresolverr/flaresolverr:latest
     plan: starter
