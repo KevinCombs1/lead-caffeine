@@ -1230,6 +1230,13 @@ function Line2Tab({ isActive: _parentActive, activeLine: _parentActiveLine, caps
                 <Download className="w-3.5 h-3.5" /> Meta CSV
               </a>
               <a
+                href={`/api/supreme/line2/export/campaign?jobId=${displayJobId}`}
+                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded border border-blue-600 bg-blue-900/40 text-blue-300 hover:text-blue-200"
+                title="CSV ready to upload to Geofence → Campaigns tab"
+              >
+                <Download className="w-3.5 h-3.5" /> Campaign CSV
+              </a>
+              <a
                 href={`/api/supreme/line2/export/json?jobId=${displayJobId}`}
                 className="flex items-center gap-1 text-xs px-3 py-1.5 rounded border border-indigo-700 bg-indigo-900/40 text-indigo-300 hover:text-indigo-200"
               >
