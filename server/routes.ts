@@ -6207,15 +6207,14 @@ export async function registerRoutes(
     try {
       const { provider, credentials, segmentName, geofenceIds } = req.body;
 
-      // Validate with Zod-style checks
       if (!provider || !["epom", "smartyads"].includes(provider)) {
         return res.status(400).json({ error: "provider must be 'epom' or 'smartyads'" });
       }
       if (!credentials || !segmentName || !geofenceIds || !Array.isArray(geofenceIds)) {
         return res.status(400).json({ error: "credentials, segmentName, and geofenceIds[] required" });
       }
-      if (provider === "epom" && (!credentials.apiKey || !credentials.networkDomain)) {
-        return res.status(400).json({ error: "Epom requires apiKey and networkDomain" });
+      if (provider === "epom" && (!credentials.login || !credentials.password)) {
+        return res.status(400).json({ error: "Epom requires login and password" });
       }
       if (provider === "smartyads" && !credentials.apiToken) {
         return res.status(400).json({ error: "SmartyAds requires apiToken" });
@@ -6223,6 +6222,38 @@ export async function registerRoutes(
 
       const { executeDspSync } = await import("./dsp/orchestrator");
       const result = await executeDspSync({ provider, credentials, segmentName, geofenceIds });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Sync geofence polygons to Epom
+  app.post("/api/dsp/epom/sync-geofences", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { login, password, baseUrl } = req.body;
+      if (!login || !password) {
+        return res.status(400).json({ error: "Epom login and password required" });
+      }
+
+      // Fetch all active geofences from our database
+      const allGeofences = await storage.getGeofences({ active: true });
+      const epomGeofences = allGeofences.map((g: any) => ({
+        name: g.name || `Geofence ${g.id.slice(0, 8)}`,
+        latitude: g.latitude,
+        longitude: g.longitude,
+        radiusM: g.radiusM,
+      }));
+
+      if (epomGeofences.length === 0) {
+        return res.json({ uploaded: 0, success: false, error: "No active geofences to sync" });
+      }
+
+      const { syncGeofencesToEpom } = await import("./dsp/orchestrator");
+      const result = await syncGeofencesToEpom(
+        { login, password, baseUrl: baseUrl || "https://api.epom.com" },
+        epomGeofences,
+      );
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

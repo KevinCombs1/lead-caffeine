@@ -728,14 +728,17 @@ function BidstreamTest({ onSend, isPending }: { onSend: (lat: number, lng: numbe
 
 function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; geofences: Geofence[] }) {
   const [dsp, setDsp] = useState<"epom" | "smartyads">("epom");
-  const [apiKey, setApiKey] = useState("");
-  const [networkDomain, setNetworkDomain] = useState("");
+  const [epomLogin, setEpomLogin] = useState("");
+  const [epomPassword, setEpomPassword] = useState("");
+  const [epomBaseUrl, setEpomBaseUrl] = useState("https://api.epom.com");
   const [apiToken, setApiToken] = useState("");
   const [audienceName, setAudienceName] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<any>(null);
   const [syncLogs, setSyncLogs] = useState<any[]>([]);
   const [sdkResult, setSdkResult] = useState<string | null>(null);
+  const [geoSyncing, setGeoSyncing] = useState(false);
+  const [geoSyncResult, setGeoSyncResult] = useState<any>(null);
   const { toast } = useToast();
 
   const activeGeofenceIds = geofences.filter((g) => g.active).map((g) => g.id);
@@ -755,8 +758,8 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
       toast({ title: "Audience name required", variant: "destructive" });
       return;
     }
-    if (dsp === "epom" && (!apiKey || !networkDomain)) {
-      toast({ title: "Epom requires API key and network domain", variant: "destructive" });
+    if (dsp === "epom" && (!epomLogin || !epomPassword)) {
+      toast({ title: "Epom requires login and password", variant: "destructive" });
       return;
     }
     if (dsp === "smartyads" && !apiToken) {
@@ -767,7 +770,7 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
     setSyncResult(null);
     try {
       const credentials = dsp === "epom"
-        ? { apiKey, networkDomain }
+        ? { login: epomLogin, password: epomPassword, baseUrl: epomBaseUrl }
         : { apiToken };
       const res = await apiRequest("POST", "/api/dsp/sync", {
         provider: dsp,
@@ -787,6 +790,32 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
       toast({ title: `Sync failed: ${err.message}`, variant: "destructive" });
     }
     setSyncing(false);
+  };
+
+  const handleGeoSync = async () => {
+    if (!epomLogin || !epomPassword) {
+      toast({ title: "Epom login and password required", variant: "destructive" });
+      return;
+    }
+    setGeoSyncing(true);
+    setGeoSyncResult(null);
+    try {
+      const res = await apiRequest("POST", "/api/dsp/epom/sync-geofences", {
+        login: epomLogin,
+        password: epomPassword,
+        baseUrl: epomBaseUrl,
+      });
+      const result = await res.json();
+      setGeoSyncResult(result);
+      if (result.success) {
+        toast({ title: `Synced ${result.uploaded} geofences to Epom` });
+      } else {
+        toast({ title: `Geofence sync failed: ${result.error || "unknown error"}`, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: `Geofence sync failed: ${err.message}`, variant: "destructive" });
+    }
+    setGeoSyncing(false);
   };
 
   const testSdkIngest = async () => {
@@ -845,7 +874,7 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
             onClick={() => setDsp("epom")}
             className={`px-3 py-1.5 rounded text-xs font-medium ${dsp === "epom" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
           >
-            Epom (CSV Upload)
+            Epom (REST API)
           </button>
           <button
             onClick={() => setDsp("smartyads")}
@@ -857,23 +886,34 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
 
         {/* Credentials */}
         {dsp === "epom" ? (
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs font-medium block mb-1">API Key</label>
-              <input
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                type="password"
-                placeholder="Epom API key"
-                className="bg-input border rounded px-2 py-1 text-xs w-full"
-              />
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-medium block mb-1">Epom Login (username)</label>
+                <input
+                  value={epomLogin}
+                  onChange={(e) => setEpomLogin(e.target.value)}
+                  placeholder="your-email@example.com"
+                  className="bg-input border rounded px-2 py-1 text-xs w-full"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1">Epom Password</label>
+                <input
+                  value={epomPassword}
+                  onChange={(e) => setEpomPassword(e.target.value)}
+                  type="password"
+                  placeholder="Your Epom password"
+                  className="bg-input border rounded px-2 py-1 text-xs w-full"
+                />
+              </div>
             </div>
             <div>
-              <label className="text-xs font-medium block mb-1">Network Domain</label>
+              <label className="text-xs font-medium block mb-1">API Base URL</label>
               <input
-                value={networkDomain}
-                onChange={(e) => setNetworkDomain(e.target.value)}
-                placeholder="e.g. your-network.epom.com"
+                value={epomBaseUrl}
+                onChange={(e) => setEpomBaseUrl(e.target.value)}
+                placeholder="https://api.epom.com"
                 className="bg-input border rounded px-2 py-1 text-xs w-full"
               />
             </div>
@@ -922,6 +962,31 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
           </div>
         )}
       </div>
+
+      {/* Epom Geofence Sync */}
+      {dsp === "epom" && (
+        <div className="bg-card border rounded-lg p-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Sync Geofences to Epom</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Push all {activeGeofenceIds.length} active geofence polygons to Epom so campaigns can target by location directly on their platform.
+            </p>
+          </div>
+          <button
+            onClick={handleGeoSync}
+            disabled={geoSyncing || !epomLogin || !epomPassword || activeGeofenceIds.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+          >
+            {geoSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
+            Push {activeGeofenceIds.length} Geofences to Epom
+          </button>
+          {geoSyncResult && (
+            <div className="bg-muted/30 rounded p-2 text-xs font-mono">
+              <pre>{JSON.stringify(geoSyncResult, null, 2)}</pre>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Sync Logs */}
       {syncLogs.length > 0 && (
