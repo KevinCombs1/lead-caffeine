@@ -6228,17 +6228,26 @@ export async function registerRoutes(
     }
   });
 
-  // Sync geofence polygons to Epom
+  // Sync geofence polygons to Epom (optionally filtered by group)
   app.post("/api/dsp/epom/sync-geofences", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { login, password, baseUrl } = req.body;
+      const { login, password, baseUrl, groupIds } = req.body;
       if (!login || !password) {
         return res.status(400).json({ error: "Epom login and password required" });
       }
 
       // Fetch all active geofences from our database
       const allGeofences = await storage.getGeofences({ active: true });
-      const epomGeofences = allGeofences.map((g: any) => ({
+
+      // Filter by selected groups if provided
+      const filtered = groupIds && Array.isArray(groupIds) && groupIds.length > 0
+        ? allGeofences.filter((g: any) => {
+            const groupKey = g.jobId || g.source || "ungrouped";
+            return groupIds.includes(groupKey);
+          })
+        : allGeofences;
+
+      const epomGeofences = filtered.map((g: any) => ({
         name: g.name || `Geofence ${g.id.slice(0, 8)}`,
         latitude: g.latitude,
         longitude: g.longitude,

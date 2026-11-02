@@ -59,6 +59,13 @@ interface AudienceSegment {
   createdAt: string;
 }
 
+interface GeofenceGroup {
+  id: string;
+  label: string;
+  count: number;
+  source: string;
+}
+
 type Tab = "dashboard" | "geofences" | "devices" | "segments" | "bidstream" | "sync" | "campaigns";
 
 export default function GeofencePage() {
@@ -739,9 +746,29 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
   const [sdkResult, setSdkResult] = useState<string | null>(null);
   const [geoSyncing, setGeoSyncing] = useState(false);
   const [geoSyncResult, setGeoSyncResult] = useState<any>(null);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const { toast } = useToast();
 
-  const activeGeofenceIds = geofences.filter((g) => g.active).map((g) => g.id);
+  // Fetch geofence groups
+  const { data: groups = [] } = useQuery<GeofenceGroup[]>({
+    queryKey: ["geofence-groups"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/geofence/groups");
+      return res.json();
+    },
+  });
+
+  // Geofences belonging to selected groups (or all if none selected)
+  const selectedGeofenceIds = selectedGroupIds.length > 0
+    ? geofences.filter((g) => {
+        const groupKey = g.jobId || g.source || "ungrouped";
+        return selectedGroupIds.includes(groupKey) && g.active;
+      }).map((g) => g.id)
+    : geofences.filter((g) => g.active).map((g) => g.id);
+
+  const toggleGroup = (groupId: string) => {
+    setSelectedGroupIds(prev => prev.includes(groupId) ? prev.filter(g => g !== groupId) : [...prev, groupId]);
+  };
 
   const fetchLogs = async () => {
     try {
@@ -776,7 +803,7 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
         provider: dsp,
         credentials,
         segmentName: audienceName,
-        geofenceIds: activeGeofenceIds,
+        geofenceIds: selectedGeofenceIds,
       });
       const result = await res.json();
       setSyncResult(result);
@@ -804,6 +831,7 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
         login: epomLogin,
         password: epomPassword,
         baseUrl: epomBaseUrl,
+        groupIds: selectedGroupIds.length > 0 ? selectedGroupIds : undefined,
       });
       const result = await res.json();
       setGeoSyncResult(result);
@@ -864,9 +892,37 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
         <div>
           <h3 className="text-sm font-semibold">Automated DSP Audience Sync</h3>
           <p className="text-xs text-muted-foreground mt-1">
-            Push captured MAIDs to Epom or SmartyAds. Batch upload in chunks of 50,000 with exponential backoff retry.
+            Push captured MAIDs and geofence polygons to Epom or SmartyAds. Select which geofence groups to sync — each group stays separate so you can target different campaigns independently.
           </p>
         </div>
+
+        {/* Geofence Group Selector */}
+        {groups.length > 0 && (
+          <div className="bg-muted/20 rounded p-2">
+            <p className="text-xs font-medium mb-1.5">Select Geofence Groups to Sync:</p>
+            <div className="space-y-1">
+              {groups.map((g) => (
+                <label key={g.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/40 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedGroupIds.includes(g.id)}
+                    onChange={() => toggleGroup(g.id)}
+                    className="w-3.5 h-3.5"
+                  />
+                  <span className="text-xs font-medium flex-1">{g.label}</span>
+                  <span className="text-[10px] text-muted-foreground">{g.count} geofences</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{g.source}</span>
+                </label>
+              ))}
+            </div>
+            {selectedGroupIds.length === 0 && (
+              <p className="text-[10px] text-muted-foreground mt-1">No groups selected — will sync ALL {geofences.filter(g => g.active).length} active geofences</p>
+            )}
+            {selectedGroupIds.length > 0 && (
+              <p className="text-[10px] text-primary mt-1">{selectedGeofenceIds.length} geofences selected from {selectedGroupIds.length} group(s)</p>
+            )}
+          </div>
+        )}
 
         {/* DSP selector */}
         <div className="flex gap-2">
@@ -952,7 +1008,7 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
             Sync to {dsp === "epom" ? "Epom" : "SmartyAds"}
           </button>
           <span className="text-xs text-muted-foreground">
-            {activeGeofenceIds.length} geofences → {stats?.totalDevices ?? 0} captured MAIDs
+            {selectedGeofenceIds.length} geofences → {stats?.totalDevices ?? 0} captured MAIDs
           </span>
         </div>
 
@@ -969,16 +1025,16 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
           <div>
             <h3 className="text-sm font-semibold">Sync Geofences to Epom</h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Push all {activeGeofenceIds.length} active geofence polygons to Epom so campaigns can target by location directly on their platform.
+              Push {selectedGeofenceIds.length} geofence{selectedGroupIds.length > 0 ? " (selected groups only)" : " (all)"} to Epom so campaigns can target by location directly on their platform.
             </p>
           </div>
           <button
             onClick={handleGeoSync}
-            disabled={geoSyncing || !epomLogin || !epomPassword || activeGeofenceIds.length === 0}
+            disabled={geoSyncing || !epomLogin || !epomPassword || selectedGeofenceIds.length === 0}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
           >
             {geoSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
-            Push {activeGeofenceIds.length} Geofences to Epom
+            Push {selectedGeofenceIds.length} Geofences to Epom
           </button>
           {geoSyncResult && (
             <div className="bg-muted/30 rounded p-2 text-xs font-mono">
