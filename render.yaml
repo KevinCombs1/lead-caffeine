@@ -58,7 +58,7 @@ services:
         value: leadcaffeine
     disk:
       name: pg-data
-      mountPath: /var/lib/postgresql/data
+      mountPath: /var/lib/postgresql
       sizeGB: 10
 
   # ── Redis (private service) ────────────────────────────────────────────
