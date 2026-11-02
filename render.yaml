@@ -73,21 +73,28 @@ services:
         value: redis://lead-caffeine-redis:6379
 
   # ── ClickHouse (private service) ────────────────────────────────────────
+  # The official ClickHouse Docker image has an entrypoint.sh that:
+  #   1. Creates/chowns data directories
+  #   2. Optionally starts a temp server to run init scripts, then kills it
+  #   3. Starts the real server via: exec clickhouse su "${USER}:${GROUP}" clickhouse-server
+  # The "kill" in step 2 fails on Render with "Operation not permitted".
+  # Fix: Don't set CLICKHOUSE_DB (so step 2 is skipped entirely — no temp server, no kill).
+  # Set CLICKHOUSE_RUN_AS_ROOT=1 so the entrypoint skips chown (which can fail on Render disks).
+  # Don't set dockerCommand — let the entrypoint run normally and exec the server itself.
   - type: pserv
     name: lead-caffeine-clickhouse
     runtime: image
     image:
       url: docker.io/clickhouse/clickhouse-server:latest
     plan: starter
-    dockerCommand: clickhouse-server --config-file=/etc/clickhouse-server/config.xml
     envVars:
-      - key: CLICKHOUSE_DB
-        value: default
+      - key: CLICKHOUSE_RUN_AS_ROOT
+        value: "1"
       - key: CLICKHOUSE_USER
         value: default
       - key: CLICKHOUSE_PASSWORD
         sync: false
-      - key: CLICKHOUSE_RUN_AS_ROOT
+      - key: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
         value: "1"
     disk:
       name: ch-data
