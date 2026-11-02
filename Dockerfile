@@ -10,15 +10,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy package files and install
+# Copy package files and install ALL deps (including dev for build tools)
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev || npm install
+RUN npm ci || npm install
 
 # Copy source
 COPY . .
 
-# Build client + server
+# Build client + server (needs tsx, esbuild, vite from devDeps)
 RUN npm run build
+
+# Prune dev dependencies — only keep what the production bundle needs
+RUN npm prune --omit=dev
 
 # Expose port
 ENV PORT=5001
