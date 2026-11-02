@@ -276,9 +276,19 @@ export async function registerRoutes(
         tableName: "user_sessions",
         createTableIfMissing: true,
       });
+      // Ensure the session table exists
+      await pgPool.query(`
+        CREATE TABLE IF NOT EXISTS "user_sessions" (
+          "sid" varchar NOT NULL COLLATE "default" PRIMARY KEY,
+          "sess" json NOT NULL,
+          "expire" timestamp(6) NOT NULL
+        ) WITHOUT OIDS;
+        CREATE INDEX IF NOT EXISTS "IDX_user_sessions_expire" ON "user_sessions" ("expire");
+      `);
       console.log("[SESSION] Using PostgreSQL session store");
     } catch (err: any) {
-      console.warn("[SESSION] connect-pg-simple not available, using MemoryStore:", err.message);
+      console.warn("[SESSION] connect-pg-simple failed, using MemoryStore:", err.message);
+      store = undefined; // Fall back to MemoryStore
     }
   }
 
