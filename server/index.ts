@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { mkdirSync } from "fs";
 
 // Prevent crashes during startup when dependent services (DB, Redis, ClickHouse)
 // are temporarily unavailable. Once they come up, connections retry automatically.
@@ -22,6 +23,15 @@ process.on("unhandledRejection", (err: any) => {
 
 const app = express();
 const httpServer = createServer(app);
+
+// Ensure the creative upload directory exists on the persistent disk
+// (Render mounts the persistent disk at /data). Created at boot so the
+// creative serving + upload routes work immediately.
+try {
+  mkdirSync("/data/creatives", { recursive: true });
+} catch (err: any) {
+  console.warn("[startup] Could not create /data/creatives directory:", err.message);
+}
 
 declare module "http" {
   interface IncomingMessage {

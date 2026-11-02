@@ -15,6 +15,7 @@ const allowlist = [
   "express-session",
   "https-proxy-agent",
   "ioredis",
+  "multer",
   "pg",
   "socks-proxy-agent",
   "ws",

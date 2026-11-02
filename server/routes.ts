@@ -1,13 +1,15 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import path from "path";
-import { existsSync } from "fs";
+import { existsSync, mkdirSync } from "fs";
+import { randomUUID } from "crypto";
 import session from "express-session";
 import { z } from "zod";
+import multer from "multer";
 import { storage } from "./storage";
 import { db } from "./db";
 import { sql, eq, inArray, count } from "drizzle-orm";
-import { scrapedResults, scrapeJobs, domainSecurityProfiles, fiscalLeads, hiveCategories, compassProfiles, compassDiscoveries, mandyProfiles, mandyJobs, backstageProfiles, backstageJobs } from "@shared/schema";
+import { scrapedResults, scrapeJobs, domainSecurityProfiles, fiscalLeads, hiveCategories, compassProfiles, compassDiscoveries, mandyProfiles, mandyJobs, backstageProfiles, backstageJobs, geofences, creatives, campaigns } from "@shared/schema";
 import { TAX_CREDIT_UNIVERSE, matchLeadCredits, analyzeCompanyCreditPosition, analyzeMultiYearTrends, analyzeCreditInteractions, applyInteractionAdjustments, computeIndustryBenchmarks, compareToIndustryPeers } from "./credit-universe";
 import { scanSingleLead, type SingleLeadGapResult } from "./credit-gap-engine";
 import { SIC_INDUSTRIES, findCompaniesBySIC, findCompaniesByFormD, findCompaniesByFilingText, getCompanyDetails, loadAllCompanies, companyIndex, type RecentEvent } from "./gradient-sweep";
@@ -23,6 +25,90 @@ import { initializeSources, getSources, fetchSource, fetchAllSources, getEvents,
 import { runFullEnrichment, isEnrichmentRunning, type FullEnrichmentResult } from "./full-enrichment";
 function getOwnerPassword() {
   return process.env.SCANNER_PASSWORD || "passwardo";
+}
+
+// Escape a string for safe inclusion in XML text content
+function escapeXml(s: string): string {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+// Escape a string for safe inclusion in HTML text/attributes
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Simple CSV parser — no papaparse dependency.
+// Handles basic quoted values (commas inside quotes) and trims whitespace.
+// Expected columns: name, latitude, longitude, radius_m, address, city, state
+// Returns { rows, errors }.
+function parseCsv(csvText: string): { rows: Array<{ name: string; latitude: number; longitude: number; radiusM: number; address?: string; city?: string; state?: string }>; errors: string[] } {
+  const errors: string[] = [];
+  const rows: any[] = [];
+  const lines = csvText.split(/\r?\n/);
+  if (lines.length === 0) return { rows, errors: ["empty CSV"] };
+
+  // Parse a single CSV line into fields, respecting quoted values
+  const parseLine = (line: string): string[] => {
+    const fields: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { cur += '"'; i++; }
+          else inQuotes = false;
+        } else {
+          cur += ch;
+        }
+      } else {
+        if (ch === '"') inQuotes = true;
+        else if (ch === ",") { fields.push(cur); cur = ""; }
+        else cur += ch;
+      }
+    }
+    fields.push(cur);
+    return fields.map((f) => f.trim());
+  };
+
+  // Detect header row
+  const first = parseLine(lines[0]);
+  const hasHeader = first.some((f) => isNaN(Number(f)) && /name|latitude|longitude|radius/i.test(f));
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  for (let i = 0; i < dataLines.length; i++) {
+    const line = dataLines[i];
+    if (!line || line.trim() === "") continue;
+    const fields = parseLine(line);
+    if (fields.length < 4) {
+      errors.push(`row ${i + (hasHeader ? 2 : 1)}: not enough columns`);
+      continue;
+    }
+    const name = fields[0];
+    const lat = parseFloat(fields[1]);
+    const lng = parseFloat(fields[2]);
+    const radiusM = parseFloat(fields[3]) || 250;
+    const address = fields[4] || undefined;
+    const city = fields[5] || undefined;
+    const state = fields[6] || undefined;
+
+    if (!name || isNaN(lat) || isNaN(lng)) {
+      errors.push(`row ${i + (hasHeader ? 2 : 1)}: invalid name/lat/lng`);
+      continue;
+    }
+    rows.push({ name, latitude: lat, longitude: lng, radiusM, address, city, state });
+  }
+  return { rows, errors };
 }
 
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
@@ -307,6 +393,49 @@ export async function registerRoutes(
   });
 
   app.use(sessionMiddleware);
+
+  // Ensure the creative upload directory exists on the persistent disk.
+  // Render mounts the persistent disk at /data, so creative files survive deploys.
+  try {
+    mkdirSync("/data/creatives", { recursive: true });
+  } catch (err: any) {
+    console.warn("[creatives] Could not create /data/creatives directory:", err.message);
+  }
+
+  // Multer storage config: saves uploaded creative files to
+  // /data/creatives/{campaignId}/{uuid}.{ext} on the persistent disk.
+  const creativeUpload = multer({
+    storage: multer.diskStorage({
+      destination: (req, _file, cb) => {
+        const campaignId = req.params.id;
+        const dir = `/data/creatives/${campaignId}`;
+        try {
+          mkdirSync(dir, { recursive: true });
+        } catch {
+          // ignore — mkdirSync may throw if dir already exists on some platforms
+        }
+        cb(null, dir);
+      },
+      filename: (_req, file, cb) => {
+        // uuid + original extension
+        const ext = path.extname(file.originalname).toLowerCase() || "";
+        const unique = `${randomUUID()}${ext}`;
+        cb(null, unique);
+      },
+    }),
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max (video)
+    fileFilter: (_req, file, cb) => {
+      const allowed = [
+        "image/png", "image/jpeg", "image/gif", "image/webp",
+        "video/mp4", "video/webm",
+      ];
+      if (allowed.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error(`Unsupported file type: ${file.mimetype}`));
+      }
+    },
+  });
 
   app.post("/api/auth/login", rateLimitLogin, (req, res) => {
     const { password } = req.body;
@@ -5100,6 +5229,306 @@ export async function registerRoutes(
     }
   });
 
+  // ── Campaign Builder ─────────────────────────────────────────────────
+  // All campaign/creative management routes live ABOVE /api/geofence/:id
+  // so that Express doesn't match "campaigns" or "creative" against the
+  // single-geofence route.
+
+  // List campaigns (optional ?status= filter)
+  app.get("/api/campaigns", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const list = await storage.getCampaigns(status ? { status } : undefined);
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get a single campaign with its linked geofences and creatives
+  app.get("/api/campaigns/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.id);
+      if (!campaign) return res.status(404).json({ error: "not found" });
+      const [geofenceIds, campaignCreatives] = await Promise.all([
+        storage.getCampaignGeofenceIds(req.params.id),
+        storage.getCreativesByCampaign(req.params.id),
+      ]);
+      res.json({ ...campaign, geofenceIds, creatives: campaignCreatives });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Create a campaign
+  app.post("/api/campaigns", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { name, description, bidPriceCpm, dailyBudget, totalBudget, startDate, endDate } = req.body;
+      if (!name || typeof name !== "string") {
+        return res.status(400).json({ error: "name required" });
+      }
+      const created = await storage.createCampaign({
+        name,
+        description,
+        bidPriceCpm: typeof bidPriceCpm === "number" ? bidPriceCpm : 0.50,
+        dailyBudget,
+        totalBudget,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+      });
+      res.json(created);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Update a campaign
+  app.patch("/api/campaigns/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const updates: any = { ...req.body };
+      // Coerce date strings to Date objects
+      if (updates.startDate) updates.startDate = new Date(updates.startDate);
+      if (updates.endDate) updates.endDate = new Date(updates.endDate);
+      // Don't allow updating stats directly via PATCH
+      delete updates.totalSpent;
+      delete updates.totalImpressions;
+      delete updates.totalClicks;
+      delete updates.totalWins;
+      delete updates.id;
+      delete updates.createdAt;
+      const updated = await storage.updateCampaign(req.params.id, updates);
+      if (!updated) return res.status(404).json({ error: "not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Delete a campaign (cascade removes creatives + geofence links)
+  app.delete("/api/campaigns/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      await storage.deleteCampaign(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // List creatives for a campaign
+  app.get("/api/campaigns/:id/creatives", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const list = await storage.getCreativesByCampaign(req.params.id);
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Upload a creative (multipart/form-data)
+  app.post("/api/campaigns/:id/creatives", requireAuth, creativeUpload.single("file"), async (req: Request, res: Response) => {
+    try {
+      const file = req.file as any;
+      if (!file) return res.status(400).json({ error: "file required" });
+      const campaignId = req.params.id;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "campaign not found" });
+
+      // Enforce per-type size limits
+      const isImage = file.mimetype.startsWith("image/");
+      const isVideo = file.mimetype.startsWith("video/");
+      if (isImage && file.size > 10 * 1024 * 1024) {
+        return res.status(413).json({ error: "Image files must be ≤ 10MB" });
+      }
+      if (isVideo && file.size > 50 * 1024 * 1024) {
+        return res.status(413).json({ error: "Video files must be ≤ 50MB" });
+      }
+
+      const type = isImage ? "image" : isVideo ? "video" : "image";
+      // Store the relative path (relative to /data/creatives) — the serving
+      // route reads from the absolute disk path.
+      const relativePath = `${campaignId}/${file.filename}`;
+      const name = (req.body.name as string) || file.originalname;
+      const clickUrl = (req.body.clickUrl as string) || undefined;
+
+      const created = await storage.createCreative({
+        campaignId,
+        name,
+        type,
+        filePath: relativePath,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        clickUrl,
+      });
+      res.json(created);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Serve a creative file (PUBLIC — no auth, loaded by the SSP)
+  app.get("/api/creative/:id", async (req: Request, res: Response) => {
+    try {
+      const creative = await storage.getCreative(req.params.id);
+      if (!creative) return res.status(404).json({ error: "not found" });
+      const absPath = path.join("/data/creatives", creative.filePath);
+      if (!existsSync(absPath)) return res.status(404).json({ error: "file missing" });
+      res.setHeader("Content-Type", creative.mimeType || "application/octet-stream");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      // Stream the file from disk
+      const { createReadStream } = await import("fs");
+      createReadStream(absPath).pipe(res);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Serve VAST 4.0 XML for a video creative (PUBLIC — no auth)
+  app.get("/api/creative/:id/vast", async (req: Request, res: Response) => {
+    try {
+      const creative = await storage.getCreative(req.params.id);
+      if (!creative) return res.status(404).json({ error: "not found" });
+      if (creative.type !== "video") {
+        return res.status(400).json({ error: "creative is not a video" });
+      }
+      const serverDomain = process.env.BIDDER_DOMAIN || `https://leadcaffeine.com`;
+      const mediaFileUrl = `${serverDomain}/api/creative/${creative.id}`;
+      const clickUrl = creative.clickUrl || serverDomain;
+      const duration = creative.duration ? Math.round(creative.duration) : 15;
+      const width = creative.width || 640;
+      const height = creative.height || 360;
+
+      const vast = `<?xml version="1.0" encoding="UTF-8"?>
+<VAST version="4.0">
+  <Ad id="${creative.id}">
+    <InLine>
+      <AdSystem>LeadCaffeine Geofence</AdSystem>
+      <AdTitle>${escapeXml(creative.name)}</AdTitle>
+      <Impression><![CDATA[${serverDomain}/api/openrtb/win?creative=${encodeURIComponent(creative.id)}&price=\${AUCTION_PRICE}]]></Impression>
+      <Creatives>
+        <Creative id="${creative.id}">
+          <Linear>
+            <Duration>00:00:${String(duration).padStart(2, "0")}</Duration>
+            <TrackingEvents>
+              <Tracking event="start"><![CDATA[${serverDomain}/api/openrtb/track?creative=${encodeURIComponent(creative.id)}&event=start]]></Tracking>
+              <Tracking event="midpoint"><![CDATA[${serverDomain}/api/openrtb/track?creative=${encodeURIComponent(creative.id)}&event=midpoint]]></Tracking>
+              <Tracking event="complete"><![CDATA[${serverDomain}/api/openrtb/track?creative=${encodeURIComponent(creative.id)}&event=complete]]></Tracking>
+            </TrackingEvents>
+            <VideoClicks>
+              <ClickThrough><![CDATA[${clickUrl}]]></ClickThrough>
+            </VideoClicks>
+            <MediaFiles>
+              <MediaFile delivery="progressive" type="${creative.mimeType || "video/mp4"}" width="${width}" height="${height}">
+                <![CDATA[${mediaFileUrl}]]>
+              </MediaFile>
+            </MediaFiles>
+          </Linear>
+        </Creative>
+      </Creatives>
+    </InLine>
+  </Ad>
+</VAST>`;
+      res.setHeader("Content-Type", "application/xml");
+      res.send(vast);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Delete a creative
+  app.delete("/api/creatives/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const creative = await storage.getCreative(req.params.id);
+      if (!creative) return res.status(404).json({ error: "not found" });
+      // Best-effort delete of the file on disk
+      try {
+        const absPath = path.join("/data/creatives", creative.filePath);
+        const fs = await import("fs");
+        if (fs.existsSync(absPath)) {
+          await fs.promises.unlink(absPath);
+        }
+      } catch {
+        // ignore disk errors
+      }
+      await storage.deleteCreative(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // List geofences linked to a campaign
+  app.get("/api/campaigns/:id/geofences", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const ids = await storage.getCampaignGeofenceIds(req.params.id);
+      if (ids.length === 0) return res.json([]);
+      // Fetch geofence rows
+      const { inArray: inArr } = await import("drizzle-orm");
+      const rows = await db.select().from(geofences).where(inArr(geofences.id, ids));
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Link geofence(s) to a campaign
+  app.post("/api/campaigns/:id/geofences", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { geofenceIds } = req.body;
+      if (!Array.isArray(geofenceIds) || geofenceIds.length === 0) {
+        return res.status(400).json({ error: "geofenceIds array required" });
+      }
+      for (const gid of geofenceIds) {
+        await storage.linkGeofenceToCampaign(req.params.id, gid);
+      }
+      res.json({ linked: geofenceIds.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Unlink a geofence from a campaign
+  app.delete("/api/campaigns/:id/geofences/:geofenceId", requireAuth, async (req: Request, res: Response) => {
+    try {
+      await storage.unlinkGeofenceFromCampaign(req.params.id, req.params.geofenceId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Upload CSV of pre-geocoded businesses → create geofences + link to campaign
+  app.post("/api/campaigns/:id/upload-csv", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const campaignId = req.params.id;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "campaign not found" });
+
+      // The CSV content arrives as raw text in the body OR as a multipart file.
+      // Support both: if a file was uploaded via multer, read it; otherwise read req.body.csv.
+      let csvText: string | undefined;
+      if (req.body && typeof req.body.csv === "string") {
+        csvText = req.body.csv;
+      } else if (req.body && typeof req.body === "string") {
+        csvText = req.body;
+      }
+
+      if (!csvText) {
+        // Fall back: try to read from a multipart file (text/csv) — accept field "file"
+        // We didn't wire multer here, so if neither present, error.
+        return res.status(400).json({ error: "csv content required (send as text body or {csv: '...'} JSON)" });
+      }
+
+      const { rows, errors } = parseCsv(csvText);
+      if (rows.length === 0) {
+        return res.status(400).json({ created: 0, skipped: 0, errors: errors.length ? errors : ["no valid rows parsed"] });
+      }
+      const result = await storage.createGeofencesFromCsv(rows, campaignId);
+      res.json({ ...result, errors });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Get a single geofence (MUST be after /stats, /devices, /segments, /check, /capture, /analytics, /maids)
   app.get("/api/geofence/:id", requireAuth, async (req: Request, res: Response) => {
     try {
@@ -5292,7 +5721,107 @@ export async function registerRoutes(
         hit_count: captureResult.device.hitCount,
       });
 
-      // Step 5: Check targeting — should we bid on this device?
+      // Step 5: Bidding logic
+      // First try campaign-based bidding: look up active campaigns linked
+      // to the matched geofence. If any exist and have a matching creative,
+      // bid at the campaign's bidPriceCpm. Otherwise fall back to the legacy
+      // target_maids Redis logic.
+      const activeCampaigns = await storage.getActiveCampaignsForGeofence(match.id);
+
+      if (activeCampaigns.length > 0 && imps.length > 0) {
+        // Pick the first active campaign (could rotate between them later)
+        const campaign = activeCampaigns[0];
+        const campaignCreatives = await storage.getCreativesByCampaign(campaign.id);
+        const activeCreatives = campaignCreatives.filter((c) => c.status === "active");
+
+        const imp = imps[0];
+        const bidId = `bid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const serverDomain = process.env.BIDDER_DOMAIN || `https://leadcaffeine.com`;
+        const bidPrice = campaign.bidPriceCpm;
+
+        // Banner impression: need an image creative
+        if (imp.banner) {
+          const imageCreative = activeCreatives.find((c) => c.type === "image");
+          if (imageCreative) {
+            const clickUrl = imageCreative.clickUrl || `${serverDomain}/api/openrtb/click?maid=${encodeURIComponent(maid || "")}&creative=${encodeURIComponent(imageCreative.id)}`;
+            const imgUrl = `${serverDomain}/api/creative/${imageCreative.id}`;
+            const w = imp.banner.w || imageCreative.width || 320;
+            const h = imp.banner.h || imageCreative.height || 50;
+
+            const bidResponse = {
+              id: bid.id || bidId,
+              seatbid: [{
+                seat: "geofence_bidder",
+                bid: [{
+                  id: bidId,
+                  impid: imp.id || "1",
+                  price: bidPrice,
+                  adid: campaign.id,
+                  adm: `<a href="${clickUrl}"><img src="${imgUrl}" width="${w}" height="${h}" border="0" alt="${escapeHtml(campaign.name)}"/></a>`,
+                  nurl: `${serverDomain}/api/openrtb/win?price=\${AUCTION_PRICE}&maid=${encodeURIComponent(maid || "")}&geofence=${encodeURIComponent(match.id)}&campaign=${encodeURIComponent(campaign.id)}&creative=${encodeURIComponent(imageCreative.id)}`,
+                  w,
+                  h,
+                }],
+              }],
+              cur: ["USD"],
+            };
+
+            // Fire-and-forget stat increment
+            storage.incrementCampaignStats(campaign.id, { impressions: 1 }).catch(() => {});
+
+            return res.status(200).json(bidResponse);
+          }
+          // No image creative — fall through to no-bid
+        }
+
+        // Video impression: need a video creative + VAST adm
+        if (imp.video) {
+          const videoCreative = activeCreatives.find((c) => c.type === "video");
+          if (videoCreative) {
+            const vastUrl = `${serverDomain}/api/creative/${videoCreative.id}/vast`;
+            // Build VAST 4.0 wrapper adm pointing to our VAST endpoint
+            const adm = `<?xml version="1.0" encoding="UTF-8"?>
+<VAST version="4.0">
+  <Ad id="${campaign.id}">
+    <Wrapper>
+      <AdSystem>LeadCaffeine Geofence</AdSystem>
+      <VASTAdTagURI><![CDATA[${vastUrl}]]></VASTAdTagURI>
+    </Wrapper>
+  </Ad>
+</VAST>`;
+            const w = imp.video.w || videoCreative.width || 640;
+            const h = imp.video.h || videoCreative.height || 360;
+
+            const bidResponse = {
+              id: bid.id || bidId,
+              seatbid: [{
+                seat: "geofence_bidder",
+                bid: [{
+                  id: bidId,
+                  impid: imp.id || "1",
+                  price: bidPrice,
+                  adid: campaign.id,
+                  adm,
+                  nurl: `${serverDomain}/api/openrtb/win?price=\${AUCTION_PRICE}&maid=${encodeURIComponent(maid || "")}&geofence=${encodeURIComponent(match.id)}&campaign=${encodeURIComponent(campaign.id)}&creative=${encodeURIComponent(videoCreative.id)}`,
+                  w,
+                  h,
+                }],
+              }],
+              cur: ["USD"],
+            };
+
+            storage.incrementCampaignStats(campaign.id, { impressions: 1 }).catch(() => {});
+
+            return res.status(200).json(bidResponse);
+          }
+          // No video creative — fall through to no-bid
+        }
+
+        // Impression type doesn't match any creative — fall through to no-bid
+        return res.status(204).json({});
+      }
+
+      // Fall back to legacy target_maids Redis logic
       const targeted = maid ? await isTargetedMaid(maid) : false;
 
       if (targeted && imps.length > 0) {

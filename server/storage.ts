@@ -37,6 +37,9 @@ import {
   geofences, type Geofence, type InsertGeofence,
   capturedDevices, type CapturedDevice, type InsertCapturedDevice,
   audienceSegments, type AudienceSegment, type InsertAudienceSegment,
+  campaigns, type Campaign, type InsertCampaign,
+  creatives, type Creative, type InsertCreative,
+  campaignGeofences, type CampaignGeofence,
 } from "@shared/schema";
 import { ilike, or, count, inArray } from "drizzle-orm";
 
@@ -245,6 +248,29 @@ export interface IStorage {
   createAudienceSegment(segment: InsertAudienceSegment): Promise<AudienceSegment>;
   getAudienceSegments(): Promise<AudienceSegment[]>;
   updateAudienceSegment(id: string, updates: Partial<AudienceSegment>): Promise<AudienceSegment | undefined>;
+
+  // ── Campaign Builder ────────────────────────────────────────────────
+  createCampaign(campaign: InsertCampaign): Promise<Campaign>;
+  getCampaign(id: string): Promise<Campaign | undefined>;
+  getCampaigns(filters?: { status?: string }): Promise<Campaign[]>;
+  updateCampaign(id: string, updates: Partial<Campaign>): Promise<Campaign | undefined>;
+  deleteCampaign(id: string): Promise<void>;
+  incrementCampaignStats(id: string, stats: { impressions?: number; clicks?: number; wins?: number; spent?: number }): Promise<void>;
+
+  // Creatives
+  createCreative(creative: InsertCreative): Promise<Creative>;
+  getCreative(id: string): Promise<Creative | undefined>;
+  getCreativesByCampaign(campaignId: string): Promise<Creative[]>;
+  deleteCreative(id: string): Promise<void>;
+
+  // Campaign-Geofence links
+  linkGeofenceToCampaign(campaignId: string, geofenceId: string): Promise<void>;
+  unlinkGeofenceFromCampaign(campaignId: string, geofenceId: string): Promise<void>;
+  getCampaignGeofenceIds(campaignId: string): Promise<string[]>;
+  getActiveCampaignsForGeofence(geofenceId: string): Promise<Campaign[]>;
+
+  // CSV upload geofences
+  createGeofencesFromCsv(rows: Array<{ name: string; latitude: number; longitude: number; radiusM: number; address?: string; city?: string; state?: string }>, campaignId?: string): Promise<{ created: number; skipped: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1770,6 +1796,162 @@ export class DatabaseStorage implements IStorage {
   async updateAudienceSegment(id: string, updates: Partial<AudienceSegment>): Promise<AudienceSegment | undefined> {
     const [updated] = await db.update(audienceSegments).set(updates).where(eq(audienceSegments.id, id)).returning();
     return updated;
+  }
+
+  // ── Campaigns ─────────────────────────────────────────────────────────
+
+  async createCampaign(campaign: InsertCampaign): Promise<Campaign> {
+    const [created] = await db.insert(campaigns).values(campaign).returning();
+    return created;
+  }
+
+  async getCampaign(id: string): Promise<Campaign | undefined> {
+    const [c] = await db.select().from(campaigns).where(eq(campaigns.id, id));
+    return c;
+  }
+
+  async getCampaigns(filters?: { status?: string }): Promise<Campaign[]> {
+    const query = db.select().from(campaigns);
+    if (filters?.status) {
+      return await query.where(eq(campaigns.status, filters.status)).orderBy(desc(campaigns.createdAt));
+    }
+    return await query.orderBy(desc(campaigns.createdAt));
+  }
+
+  async updateCampaign(id: string, updates: Partial<Campaign>): Promise<Campaign | undefined> {
+    const [updated] = await db.update(campaigns).set({ ...updates, updatedAt: new Date() }).where(eq(campaigns.id, id)).returning();
+    return updated;
+  }
+
+  async deleteCampaign(id: string): Promise<void> {
+    // cascade handles creatives + campaign_geofences
+    await db.delete(campaigns).where(eq(campaigns.id, id));
+  }
+
+  async incrementCampaignStats(id: string, stats: { impressions?: number; clicks?: number; wins?: number; spent?: number }): Promise<void> {
+    const sets: Record<string, any> = {};
+    if (stats.impressions) sets.totalImpressions = sql`${campaigns.totalImpressions} + ${stats.impressions}`;
+    if (stats.clicks) sets.totalClicks = sql`${campaigns.totalClicks} + ${stats.clicks}`;
+    if (stats.wins) sets.totalWins = sql`${campaigns.totalWins} + ${stats.wins}`;
+    if (stats.spent) sets.totalSpent = sql`${campaigns.totalSpent} + ${stats.spent}`;
+    if (Object.keys(sets).length === 0) return;
+    sets.updatedAt = new Date();
+    await db.update(campaigns).set(sets).where(eq(campaigns.id, id));
+  }
+
+  // ── Creatives ──────────────────────────────────────────────────────────
+
+  async createCreative(creative: InsertCreative): Promise<Creative> {
+    const [created] = await db.insert(creatives).values(creative).returning();
+    return created;
+  }
+
+  async getCreative(id: string): Promise<Creative | undefined> {
+    const [c] = await db.select().from(creatives).where(eq(creatives.id, id));
+    return c;
+  }
+
+  async getCreativesByCampaign(campaignId: string): Promise<Creative[]> {
+    return await db.select().from(creatives).where(eq(creatives.campaignId, campaignId)).orderBy(desc(creatives.createdAt));
+  }
+
+  async deleteCreative(id: string): Promise<void> {
+    await db.delete(creatives).where(eq(creatives.id, id));
+  }
+
+  // ── Campaign-Geofence links ───────────────────────────────────────────
+
+  async linkGeofenceToCampaign(campaignId: string, geofenceId: string): Promise<void> {
+    // Insert, ignore if link already exists (unique constraint)
+    try {
+      await db.insert(campaignGeofences).values({ campaignId, geofenceId });
+    } catch {
+      // already linked — ignore duplicate key violation
+    }
+  }
+
+  async unlinkGeofenceFromCampaign(campaignId: string, geofenceId: string): Promise<void> {
+    await db.delete(campaignGeofences).where(
+      and(eq(campaignGeofences.campaignId, campaignId), eq(campaignGeofences.geofenceId, geofenceId)),
+    );
+  }
+
+  async getCampaignGeofenceIds(campaignId: string): Promise<string[]> {
+    const rows = await db.select({ geofenceId: campaignGeofences.geofenceId })
+      .from(campaignGeofences)
+      .where(eq(campaignGeofences.campaignId, campaignId));
+    return rows.map((r) => r.geofenceId);
+  }
+
+  async getActiveCampaignsForGeofence(geofenceId: string): Promise<Campaign[]> {
+    // Join campaign_geofences → campaigns, filter active
+    const rows = await db.select({
+      id: campaigns.id,
+      name: campaigns.name,
+      description: campaigns.description,
+      status: campaigns.status,
+      bidPriceCpm: campaigns.bidPriceCpm,
+      dailyBudget: campaigns.dailyBudget,
+      totalBudget: campaigns.totalBudget,
+      totalSpent: campaigns.totalSpent,
+      totalImpressions: campaigns.totalImpressions,
+      totalClicks: campaigns.totalClicks,
+      totalWins: campaigns.totalWins,
+      startDate: campaigns.startDate,
+      endDate: campaigns.endDate,
+      createdAt: campaigns.createdAt,
+      updatedAt: campaigns.updatedAt,
+    })
+      .from(campaignGeofences)
+      .innerJoin(campaigns, eq(campaignGeofences.campaignId, campaigns.id))
+      .where(and(eq(campaignGeofences.geofenceId, geofenceId), eq(campaigns.status, "active")));
+    return rows;
+  }
+
+  // ── CSV upload geofences ───────────────────────────────────────────────
+
+  async createGeofencesFromCsv(
+    rows: Array<{ name: string; latitude: number; longitude: number; radiusM: number; address?: string; city?: string; state?: string }>,
+    campaignId?: string,
+  ): Promise<{ created: number; skipped: number }> {
+    if (rows.length === 0) return { created: 0, skipped: 0 };
+
+    const toCreate: InsertGeofence[] = rows.map((r) => ({
+      name: r.name,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      radiusM: r.radiusM,
+      address: r.address,
+      city: r.city,
+      state: r.state,
+      source: "csv_upload",
+    }));
+
+    let created = 0;
+    let skipped = 0;
+    const createdIds: string[] = [];
+
+    for (const g of toCreate) {
+      try {
+        const [row] = await db.insert(geofences).values(g).returning({ id: geofences.id });
+        createdIds.push(row.id);
+        created++;
+      } catch {
+        skipped++;
+      }
+    }
+
+    if (campaignId && createdIds.length > 0) {
+      for (const gid of createdIds) {
+        try {
+          await db.insert(campaignGeofences).values({ campaignId, geofenceId: gid });
+        } catch {
+          // ignore duplicate
+        }
+      }
+    }
+
+    return { created, skipped };
   }
 }
 

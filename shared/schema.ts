@@ -2007,3 +2007,90 @@ export const insertAudienceSegmentSchema = createInsertSchema(audienceSegments).
 });
 export type AudienceSegment = typeof audienceSegments.$inferSelect;
 export type InsertAudienceSegment = z.infer<typeof insertAudienceSegmentSchema>;
+
+// ── Campaign Builder ────────────────────────────────────────────────────
+//
+// Campaigns are the top-level advertising object. Each campaign has a CPM
+// bid, optional budgets, and is linked to one or more geofences via the
+// campaign_geofences join table. Creatives (banner images / video) are
+// attached to a campaign and served by the OpenRTB auction handler when a
+// device falls inside a linked geofence.
+
+export const campaigns = pgTable("campaigns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  // active | paused | archived
+  status: text("status").notNull().default("active"),
+  // CPM bid for this campaign (USD)
+  bidPriceCpm: real("bid_price_cpm").notNull().default(0.50),
+  // Optional daily spend cap (USD)
+  dailyBudget: real("daily_budget"),
+  // Optional total spend cap (USD)
+  totalBudget: real("total_budget"),
+  // Running spend / delivery stats
+  totalSpent: real("total_spent").notNull().default(0),
+  totalImpressions: integer("total_impressions").notNull().default(0),
+  totalClicks: integer("total_clicks").notNull().default(0),
+  totalWins: integer("total_wins").notNull().default(0),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("campaign_status_idx").on(table.status),
+]);
+
+export const insertCampaignSchema = createInsertSchema(campaigns).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type Campaign = typeof campaigns.$inferSelect;
+export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
+
+export const creatives = pgTable("creatives", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  // 'image' | 'video'
+  type: text("type").notNull(),
+  // Relative path to the file on disk (under /data/creatives)
+  filePath: text("file_path").notNull(),
+  fileSize: integer("file_size"),
+  // e.g. 'image/png' | 'image/jpeg' | 'video/mp4'
+  mimeType: text("mime_type"),
+  // Image dimensions
+  width: integer("width"),
+  height: integer("height"),
+  // Video duration in seconds
+  duration: real("duration"),
+  // Landing page URL
+  clickUrl: text("click_url"),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("creative_campaign_idx").on(table.campaignId),
+]);
+
+export const insertCreativeSchema = createInsertSchema(creatives).omit({
+  id: true, createdAt: true,
+});
+export type Creative = typeof creatives.$inferSelect;
+export type InsertCreative = z.infer<typeof insertCreativeSchema>;
+
+// Join table: many-to-many between campaigns and geofences
+export const campaignGeofences = pgTable("campaign_geofences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  geofenceId: varchar("geofence_id").notNull().references(() => geofences.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("campaign_geofence_unique_idx").on(table.campaignId, table.geofenceId),
+  index("cg_campaign_idx").on(table.campaignId),
+  index("cg_geofence_idx").on(table.geofenceId),
+]);
+
+export const insertCampaignGeofenceSchema = createInsertSchema(campaignGeofences).omit({
+  id: true, createdAt: true,
+});
+export type CampaignGeofence = typeof campaignGeofences.$inferSelect;
+export type InsertCampaignGeofence = z.infer<typeof insertCampaignGeofenceSchema>;

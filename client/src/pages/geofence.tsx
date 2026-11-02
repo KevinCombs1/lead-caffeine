@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MapPin, Radio, Users, Loader2, Power, Trash2, RefreshCw, Smartphone, Send, Zap } from "lucide-react";
+import { MapPin, Radio, Users, Loader2, Power, Trash2, RefreshCw, Smartphone, Send, Zap, Megaphone } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import CampaignBuilder from "@/components/campaign-builder";
 
 interface Geofence {
   id: string;
@@ -58,7 +59,7 @@ interface AudienceSegment {
   createdAt: string;
 }
 
-type Tab = "dashboard" | "geofences" | "devices" | "segments" | "bidstream" | "sync";
+type Tab = "dashboard" | "geofences" | "devices" | "segments" | "bidstream" | "sync" | "campaigns";
 
 export default function GeofencePage() {
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -191,6 +192,7 @@ export default function GeofencePage() {
     { key: "segments", label: "Audience Segments", icon: Users },
     { key: "bidstream", label: "Bidstream Test", icon: Radio },
     { key: "sync", label: "DSP Sync", icon: Send },
+    { key: "campaigns", label: "Campaigns", icon: Megaphone },
   ];
 
   return (
@@ -501,6 +503,11 @@ export default function GeofencePage() {
         {/* DSP Sync tab */}
         {tab === "sync" && (
           <DspSyncTab stats={stats} geofences={geofences} />
+        )}
+
+        {/* Campaign Builder tab */}
+        {tab === "campaigns" && (
+          <CampaignBuilder />
         )}
       </div>
     </div>

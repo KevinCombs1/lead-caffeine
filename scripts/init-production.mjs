@@ -43,16 +43,19 @@ async function initPostgres() {
   await pool.query('CREATE EXTENSION IF NOT EXISTS postgis;');
   console.log('  ✓ PostGIS enabled');
 
-  console.log('[2/4] Running Supreme migration...');
+  console.log('[2/5] Running Supreme migration...');
   await runSqlFile(path.join(__dirname, '..', 'migrations', '0006_supreme.sql'), 'Supreme tables created');
 
-  console.log('[3/4] Running Geofence platform migration...');
+  console.log('[3/5] Running Geofence platform migration...');
   await runSqlFile(path.join(__dirname, '..', 'migrations', '0007_geofence_platform.sql'), 'Geofence tables created (with PostGIS geometry + GIST index)');
+
+  console.log('[4/5] Running Campaign Builder migration...');
+  await runSqlFile(path.join(__dirname, '..', 'migrations', '0008_campaign_builder.sql'), 'Campaign, creative, and campaign_geofences tables created');
 }
 
 // ── ClickHouse: Create analytics tables ──────────────────────────────────
 async function initClickHouse() {
-  console.log('[4/4] Creating ClickHouse tables...');
+  console.log('[5/5] Creating ClickHouse tables...');
 
   const authHeader = 'Basic ' + Buffer.from(`${CH_USER}:${CH_PASSWORD}`).toString('base64');
 
