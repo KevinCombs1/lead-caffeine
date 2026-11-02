@@ -28,10 +28,7 @@ services:
       - key: DATABASE_URL
         value: postgresql://leadcaffeine:changeme@lead-caffeine-db:5432/leadcaffeine
       - key: REDIS_URL
-        fromService:
-          type: pserv
-          name: lead-caffeine-redis
-          envVarKey: REDIS_URL
+        value: redis://lead-caffeine-redis:6379
       - key: CLICKHOUSE_URL
         value: http://lead-caffeine-clickhouse:8123
       - key: CLICKHOUSE_PASSWORD
@@ -47,7 +44,8 @@ services:
   - type: pserv
     name: lead-caffeine-db
     runtime: image
-    image: postgis/postgis:18-3.7
+    image:
+      url: postgis/postgis:18-3.7
     plan: starter
     envVars:
       - key: POSTGRES_USER
@@ -65,7 +63,8 @@ services:
   - type: pserv
     name: lead-caffeine-redis
     runtime: image
-    image: redis:7-alpine
+    image:
+      url: redis:7-alpine
     plan: starter
     envVars:
       - key: REDIS_URL
@@ -75,7 +74,8 @@ services:
   - type: pserv
     name: lead-caffeine-clickhouse
     runtime: image
-    image: clickhouse/clickhouse-server:latest
+    image:
+      url: clickhouse/clickhouse-server:latest
     plan: starter
     envVars:
       - key: CLICKHOUSE_DB
@@ -93,5 +93,6 @@ services:
   - type: pserv
     name: lead-caffeine-flaresolverr
     runtime: image
-    image: ghcr.io/rix1337/flaresolverr-next:latest
+    image:
+      url: ghcr.io/rix1337/flaresolverr-next:latest
     plan: starter
