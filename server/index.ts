@@ -3,6 +3,23 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
+// Prevent crashes during startup when dependent services (DB, Redis, ClickHouse)
+// are temporarily unavailable. Once they come up, connections retry automatically.
+process.on("uncaughtException", (err) => {
+  if (err.message?.includes("ENOTFOUND") || err.message?.includes("ECONNREFUSED") || err.message?.includes("connect")) {
+    console.error("[startup] Non-fatal connection error (service still starting):", err.message);
+    return;
+  }
+  console.error("[startup] Uncaught exception:", err);
+});
+process.on("unhandledRejection", (err: any) => {
+  if (err?.message?.includes("ENOTFOUND") || err?.message?.includes("ECONNREFUSED") || err?.message?.includes("connect")) {
+    console.error("[startup] Non-fatal connection rejection (service still starting):", err?.message);
+    return;
+  }
+  console.error("[startup] Unhandled rejection:", err);
+});
+
 const app = express();
 const httpServer = createServer(app);
 
