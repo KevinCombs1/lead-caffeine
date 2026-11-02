@@ -1,8 +1,8 @@
-# Lead Caffeine — Geofence Platform How-To Guide
+# Lead Caffeine — Geofence Platform How-To Guide v2
 
-The Geofence tab is the operational hub for your hyperlocal advertising engine. It connects four pipeline layers — PostGIS geofences, OpenRTB bidstream processing, Redis/ClickHouse analytics, and DSP audience sync — into one dashboard.
+> **v2 adds:** Campaign Builder with multi-campaign support, per-campaign CPM bidding, CSV geofence upload, image/video ad creative management, Supreme Line 2 → Campaign CSV export, and smart CSV column detection.
 
-This guide covers every tab, every action, and every endpoint in detail.
+The Geofence tab is the operational hub for your hyperlocal advertising engine. It connects five pipeline layers — PostGIS geofences, OpenRTB bidstream processing, Redis/ClickHouse analytics, DSP audience sync, and Campaign Builder with creative delivery — into one dashboard.
 
 ---
 
@@ -14,10 +14,13 @@ This guide covers every tab, every action, and every endpoint in detail.
 4. [Audience Segments Tab — Building Audiences](#4-audience-segments-tab)
 5. [Bidstream Test Tab — Simulating Bid Requests](#5-bidstream-test-tab)
 6. [DSP Sync Tab — Pushing Audiences to Ad Platforms](#6-dsp-sync-tab)
-7. [API Reference — All Endpoints](#7-api-reference)
-8. [Architecture — How It All Works](#8-architecture)
-9. [Common Workflows — Step by Step](#9-common-workflows)
-10. [Troubleshooting](#10-troubleshooting)
+7. [Campaigns Tab — Campaign Builder (NEW)](#7-campaigns-tab)
+8. [API Reference — All Endpoints](#8-api-reference)
+9. [Architecture — How It All Works](#9-architecture)
+10. [Common Workflows — Step by Step](#10-common-workflows)
+11. [Troubleshooting](#11-troubleshooting)
+12. [Plain English Guide — How to Actually Use This Thing](#12-plain-english-guide)
+13. [Which Routes Get What CPMs](#13-which-routes-get-what-cpms)
 
 ---
 
@@ -31,90 +34,65 @@ Five cards show live metrics, refreshing every 5 seconds:
 
 | Card | What It Shows | Color |
 |------|--------------|-------|
-| **Total Geofences** | All geofences in the database | Blue |
-| **Active Geofences** | Geofences currently turned ON (devices inside these will be captured) | Green |
+| **Total Geofences** | All geofences in the database (across all campaigns + Supreme-generated) | Blue |
+| **Active Geofences** | Geofences currently turned ON | Green |
 | **Captured Devices** | Unique MAIDs harvested from the bidstream | Orange |
 | **Unsynced** | Devices captured but not yet pushed to a DSP | Yellow |
 | **Segments** | Audience segments created for DSP delivery | Purple |
 
 ### Generate Geofences from Supreme Line 2
 
-This is the quickest way to populate geofences. It reads every company in the `supreme_companies` table that has latitude/longitude coordinates (from Supreme Line 2 geocoding) and creates a circular polygon geofence around each one.
+Creates polygon geofences around every geocoded company from Supreme Line 2.
 
-**How to use:**
+1. Select a radius (100m, 250m, 500m, 750m, or 1000m)
+2. Click **Generate Geofences**
+3. The system creates PostGIS polygons with GIST spatial index
 
-1. Run Supreme Line 1 to discover companies (keyword + city/state search)
-2. Run Supreme Line 2 to geocode each company's address to lat/lng
-3. Come to this tab and select a radius:
-   - **100m** — very tight (device must be essentially at the business)
-   - **250m** — tight (default; covers the business + immediate surrounding)
-   - **500m** — medium (covers the business + neighboring shops)
-   - **750m** — wide (covers a small shopping center)
-   - **1000m** — very wide (covers a neighborhood block)
-4. Click **Generate Geofences**
-5. The system reports how many were created vs. skipped (already existed)
-
-**What happens behind the scenes:**
-- A PostGIS polygon is created for each company using `ST_Buffer` in Web Mercator (SRID 3857) for accurate metric buffering, then transformed back to WGS84 (SRID 4326)
-- A database trigger (`update_geofence_geom`) auto-updates the geometry whenever lat/lng/radius changes
-- A GIST spatial index enables millisecond `ST_Contains` lookups
+> **v2 note:** For per-campaign geofences, use the Campaigns tab instead. This button creates geofences not linked to any specific campaign.
 
 ### Pipeline Status
 
-Shows the four-layer architecture and which layers are operational:
+Shows the five-layer architecture status:
 
-- **Layer 1: PostGIS Geofence Layer** — Shows count of active geofences
-- **Layer 2: OpenRTB Bid Handler** — The auction endpoint at `/api/openrtb/auction`
-- **Layer 3: Redis + ClickHouse** — Dedup, audience sets, and analytics warehouse
-- **Layer 4: DSP API Sync** — MAID export and DSP API integration
+| Layer | Description |
+|-------|-------------|
+| 1. PostGIS Geofence Layer | Geofence polygons with spatial index |
+| 2. OpenRTB Bid Handler | Auction endpoint with campaign-aware bidding |
+| 3. Redis + ClickHouse | Dedup, audience sets, analytics warehouse |
+| 4. DSP API Sync | MAID CSV export + DSP API integration |
+| 5. Campaign Builder (NEW) | Multi-campaign creatives with per-campaign CPM |
 
 ### Capture Analytics (ClickHouse)
 
-A live table from ClickHouse showing capture activity per geofence:
-
-| Column | Description |
-|--------|-------------|
-| **Geofence** | Name of the geofence |
-| **Captures** | Total bid requests that matched this geofence |
-| **Unique Devices** | Distinct MAIDs captured |
-| **First Capture** | Timestamp of first device capture |
-| **Last Capture** | Timestamp of most recent device capture |
-
-This data comes directly from the `device_captures` table in ClickHouse, queried with `GROUP BY geofence_name`.
+Live table from ClickHouse showing capture activity per geofence — total captures, unique devices, first/last capture timestamps.
 
 ### DSP Sync Quick Export
 
-A shortcut button to download all captured MAIDs as a CSV file. Same as the export in the DSP Sync tab, but accessible from the dashboard.
+Shortcut button to download all captured MAIDs as a CSV file.
 
 ---
 
 ## 2. Geofences Tab
 
-A searchable, sortable table of all geofences in the system.
+A searchable, sortable table of all geofences in the system — including geofences created by Supreme, CSV upload, or manually.
 
 ### Columns
 
 | Column | Description |
 |--------|-------------|
-| **Name** | Geofence name (usually the company name from Supreme) |
+| **Name** | Geofence name (usually the company name) |
 | **Address** | Street address, city, state |
-| **Lat** | Latitude (6 decimal places) |
-| **Lng** | Longitude (6 decimal places) |
+| **Lat / Lng** | GPS coordinates (6 decimal places) |
 | **Radius** | Radius in metres |
-| **Active** | ON/OFF toggle — only active geofences capture devices |
-| **Actions** | Delete button (trash icon) |
+| **Active** | ON/OFF toggle |
+| **Actions** | Delete button |
 
 ### Actions
 
-- **Toggle Active/Inactive:** Click the ON/OFF button. Inactive geofences are still in the database but devices inside them are NOT captured. Use this to pause a geofence without deleting it.
-- **Delete:** Permanently removes the geofence. The PostGIS geometry and all index entries are removed.
-- **Scroll:** The table shows up to 200 geofences at a time. If you have more, scroll within the table.
+- **Toggle ON/OFF** — Pauses a geofence without deleting it. Inactive geofences don't capture devices.
+- **Delete** — Permanently removes the geofence.
 
-### When to Use This Tab
-
-- **After generating geofences:** Verify they were created correctly with the right coordinates and radius
-- **To pause a location:** Toggle a geofence OFF if a business closed or you want to stop capturing there
-- **To clean up:** Delete geofences for businesses you no longer want to target
+> **v2 note:** Geofences created via CSV upload in the Campaigns tab will also appear here. Their source will show as `csv_upload`.
 
 ---
 
@@ -126,33 +104,25 @@ A live, auto-refreshing (every 5 seconds) table of every device captured by the 
 
 | Column | Description |
 |--------|-------------|
-| **MAID** | Mobile Advertising ID (IDFA/AAID) — the unique device identifier |
-| **Device** | Manufacturer and model (e.g., "Google Pixel 8") |
-| **OS** | Operating system and version (e.g., "Android 14.0") |
+| **MAID** | Mobile Advertising ID (IDFA/AAID) |
+| **Device** | Manufacturer and model |
+| **OS** | Operating system and version |
 | **Geofence** | Which geofence the device was inside when captured |
 | **Lat/Lng** | GPS coordinates at time of capture |
-| **Hits** | How many bid requests matched this device (deduplicated by Redis) |
-| **Synced** | Whether this MAID has been pushed to a DSP (shows DSP name or "pending") |
-| **Last Seen** | Timestamp of most recent bid request from this device |
+| **Hits** | How many bid requests matched this device |
+| **Synced** | Whether this MAID has been pushed to a DSP |
+| **Last Seen** | Timestamp of most recent bid request |
 
 ### How Devices Get Captured
 
-A device is captured when:
-
-1. An SSP/exchange sends a bid request to `/api/openrtb/auction`
-2. The bid request contains `device.geo.lat` and `device.geo.lon`
-3. The coordinates fall inside an active geofence (PostGIS `ST_Contains`)
-4. The MAID is extracted from `device.ifa` (or `idfa`, `aaid`, `dpid`, `rida`)
-5. Redis deduplicates (won't re-capture the same MAID within 5 minutes)
-6. The device is upserted into PostgreSQL (`captured_devices` table)
-7. The capture event is logged to ClickHouse (`device_captures` table)
-8. The MAID is added to a Redis audience set for that geofence
-
-### What You Can Do Here
-
-- **Monitor live traffic:** Watch devices appear in real-time as bid requests come in
-- **Verify capture quality:** Check that MAIDs, device info, and geofence matches look correct
-- **Track sync status:** See which devices have been pushed to a DSP and which are pending
+1. SSP/exchange sends bid request to `/api/openrtb/auction`
+2. Bid request contains `device.geo.lat` and `device.geo.lon`
+3. Coordinates fall inside an active geofence (PostGIS `ST_Contains`)
+4. MAID extracted from `device.ifa`
+5. Redis deduplicates (5-minute window)
+6. Device upserted into PostgreSQL
+7. Capture event logged to ClickHouse
+8. MAID added to Redis audience set for that geofence
 
 ---
 
@@ -166,170 +136,200 @@ Audience segments group geofences together into a targetable audience for DSP de
 2. Enter an optional **Description**
 3. Click **Create Segment**
 
-The segment automatically includes ALL currently active geofences. The system counts captured devices across those geofences as the segment's device count.
-
-### Segment Table
-
-| Column | Description |
-|--------|-------------|
-| **Name** | Segment name |
-| **Description** | Optional description |
-| **Geofences** | Number of geofences in this segment |
-| **Devices** | Total captured devices across all included geofences |
-| **Status** | Active or inactive |
-| **Created** | Date created |
-
-### When to Create Segments
-
-- **By industry:** "Auto Repair Shops", "Dental Offices", "Coffee Shops"
-- **By geography:** "Poughkeepsie Audience", "Hudson Valley Medical"
-- **By campaign:** "Q1 Oil Change Campaign", "Holiday Dental Promotion"
-
-Create a segment first, then use the DSP Sync tab to push it to an ad platform.
+The segment includes ALL currently active geofences. Captured devices across those geofences become the audience.
 
 ---
 
 ## 5. Bidstream Test Tab
 
-A built-in tool to simulate OpenRTB bid requests without needing a real SSP connection. This lets you test your geofences and capture pipeline end-to-end.
+A built-in tool to simulate OpenRTB bid requests without needing a real SSP connection.
 
 ### How to Use
 
-1. **Latitude:** Enter a latitude that falls inside one of your geofences (default: 41.681427 — Poughkeepsie, NY)
-2. **Longitude:** Enter the matching longitude (default: -73.855606)
-3. **MAID (IFA):** A test device ID is auto-generated, or you can type your own
-4. Click **Send Bid Request**
+1. Enter a **Latitude** and **Longitude** that falls inside one of your geofences
+2. A test **MAID** is auto-generated (or type your own)
+3. Click **Send Bid Request**
 
-### What Happens
+### Response Codes
 
-The tool sends a POST to `/api/openrtb/auction` with this payload:
+| Response | Meaning |
+|----------|---------|
+| **204** | Device is outside all geofences, OR inside a geofence but no active campaign/creative matches |
+| **200** | Device is inside a geofence linked to an active campaign with a matching creative — bid returned at the campaign's CPM |
 
-```json
-{
-  "device": {
-    "ifa": "your-maid-here",
-    "geo": { "lat": 41.681427, "lon": -73.855606 },
-    "os": "Android",
-    "osv": "14.0",
-    "make": "Google",
-    "model": "Pixel 8"
-  },
-  "app": { "name": "TestApp" }
-}
-```
-
-The response will be:
-- **204 No Content** — device is outside all geofences, or inside a geofence but not in the target list (free harvest)
-- **200 with bid response** — device is inside a geofence AND in the `audience:target_maids` Redis set (would bid $0.50 CPM)
-
-### Testing Tips
-
-- Use the lat/lng from the Geofences tab to test specific locations
-- Send multiple requests with the same MAID to see the dedup in action (Redis 5-minute window)
-- After sending a request, switch to the Captured Devices tab to see the device appear
-- Check the Dashboard tab for ClickHouse analytics updating
+> **v2 change:** The auction handler now checks for campaigns linked to the matched geofence before falling back to the Redis target_maids logic. If a campaign with matching creatives exists, it bids at the campaign's CPM with the campaign's creative.
 
 ---
 
 ## 6. DSP Sync Tab
 
-The most complex tab — handles pushing captured audiences to Demand-Side Platforms (DSPs) for actual ad delivery.
+Push captured audiences to Demand-Side Platforms (DSPs) for ad delivery.
 
 ### Selective Bidding Architecture
 
-Two cards at the top explain the bidding model:
-
 | Response | Scenario | Cost |
 |----------|----------|------|
-| **204** | Non-targeted MAID inside geofence | Free — we harvest the MAID for future targeting |
-| **200** | Targeted MAID inside geofence | $0.50 CPM bid — we buy the impression |
-
-This means you can capture devices for free (204 no-bid) and only spend money when you actively target a specific MAID.
+| **204** | Non-targeted MAID, no campaign match | Free harvest |
+| **200** | Campaign match with creative | Campaign's CPM (per-campaign, not hardcoded) |
 
 ### Automated DSP Audience Sync
 
-Push captured MAIDs directly to a DSP via API. Two providers supported:
-
 #### Epom (CSV Upload)
-
-1. Select the **Epom** tab
-2. Enter your **API Key** (from your Epom account)
-3. Enter your **Network Domain** (e.g., `your-network.epom.com`)
-4. Enter a **Segment Name** for the audience
-5. Click **Sync to Epom**
-
-The system uploads captured MAIDs as a CSV multipart form to Epom's API. Batches of 50,000 MAIDs with exponential backoff retry.
+1. Select **Epom** tab
+2. Enter **API Key** and **Network Domain**
+3. Enter **Segment Name**
+4. Click **Sync to Epom**
+5. Uploads in batches of 50,000 with retry
 
 #### SmartyAds (JSON API)
-
-1. Select the **SmartyAds** tab
-2. Enter your **API Token** (from your SmartyAds DSP account)
-3. Enter a **Segment Name**
+1. Select **SmartyAds** tab
+2. Enter **API Token**
+3. Enter **Segment Name**
 4. Click **Sync to SmartyAds**
-
-The system creates an audience segment via SmartyAds' JSON API and uploads MAIDs in batches.
-
-### Sync History
-
-After a sync completes, a history table appears showing:
-
-| Column | Description |
-|--------|-------------|
-| **Provider** | Epom or SmartyAds |
-| **Segment** | Audience segment name |
-| **MAIDs** | Total devices in the upload |
-| **Uploaded** | How many were successfully uploaded |
-| **Status** | Success or failed |
-| **Duration** | How long the sync took |
 
 ### Manual MAID Export (No API Needed)
 
-If you don't have DSP API credentials yet, you can download all captured MAIDs as a CSV file and upload them manually to any DSP:
+Download all captured MAIDs as a CSV file. Upload manually to any DSP.
 
-1. Click **Download MAIDs CSV**
-2. The file contains all captured device IDs with geofence and device metadata
-3. Upload to The Trade Desk, StackAdapt, Beeswax, or any DSP with bulk import
+### Direct SDK Ingestion
 
-### Direct SDK Ingestion (Bypass SSP)
-
-Mobile apps can send device data directly to your platform without going through an SSP/exchange. The endpoint is:
-
-```
-POST /api/ingest
-Content-Type: application/json
-
-{
-  "lat": 41.681427,
-  "lng": -73.855606,
-  "maid": "device-idfa-xxx",
-  "os": "iOS",
-  "osv": "17.0",
-  "make": "Apple",
-  "model": "iPhone 15"
-}
-```
-
-**Response (inside geofence):**
-```json
-{ "captured": true, "geofence": "J&J Auto", "new_device": true }
-```
-
-**Response (outside geofence):**
-```json
-{ "captured": false, "reason": "outside_geofence" }
-```
-
-Click **Test SDK Ingest** to simulate a direct SDK ping from the dashboard.
+Mobile apps can ping `POST /api/ingest` directly with JSON — no SSP needed.
 
 ### Self-Serve DSP Registration
 
-Quick links to register for self-serve DSP accounts:
-- **SmartyAds** — self-serve, DSP API access, no minimum spend
-- **Epom** — self-serve, no minimum, CSV bulk upload
+Quick links to register for SmartyAds and Epom self-serve accounts.
 
 ---
 
-## 7. API Reference
+## 7. Campaigns Tab (NEW in v2)
+
+The Campaign Builder is where you create and manage advertising campaigns. Each campaign has its own:
+- **Geofences** (uploaded via CSV or linked from existing)
+- **Ad creatives** (images or video, uploaded directly)
+- **CPM bid price** (set per campaign, not hardcoded)
+- **Budgets** (optional daily and total spend caps)
+- **Stats** (impressions, clicks, wins, spend — tracked automatically)
+
+### Campaign List
+
+The default view shows all campaigns. Each card shows:
+- Campaign name and status (active/paused/archived)
+- Per-campaign CPM bid
+- Total impressions and clicks
+- Click any campaign to open its detail page
+
+### Creating a Campaign
+
+1. Click **New Campaign**
+2. Fill in:
+   - **Campaign Name** (required) — e.g., "Q1 Auto Repair Poughkeepsie"
+   - **Description** (optional)
+   - **Bid CPM** (default $0.50) — this is what you pay per 1,000 impressions
+   - **Daily Budget** (optional) — spending cap per day
+   - **Total Budget** (optional) — total spending cap
+   - **Start Date** and **End Date** (optional)
+3. Click **Create Campaign**
+
+### Campaign Detail Page
+
+The detail page has five sections:
+
+#### Stats Bar
+
+Shows Bid CPM, total Impressions, Clicks, and Spent — updating live as the campaign runs.
+
+#### Settings
+
+- **Status dropdown** — switch between active, paused, archived
+- **Bid CPM field** — change the bid price anytime (updates take effect immediately on the next bid request)
+
+#### Upload Geofences CSV
+
+Upload a CSV with pre-geocoded businesses to create geofences for this campaign.
+
+**Supported CSV format:**
+```
+name,latitude,longitude,radius_m,address,city,state
+J&J Auto Repair,41.681427,-73.855606,250,123 Main St,Poughkeepsie,NY
+```
+
+**Smart column detection:** The parser auto-detects columns by header name, so you can also upload any of the existing Supreme exports (Meta, Basis, StackAdapt format). It will find the right columns regardless of order. Radius can be in yards, miles, km, or metres — it auto-converts to metres.
+
+**Export from Supreme:** Download a campaign-ready CSV directly from the Supreme tab using the "Export Campaign CSV" endpoint (`/api/supreme/line2/export/campaign?jobId=YOUR_JOB_ID`). This outputs the exact format the Campaign Builder expects, with radius auto-converted from yards to metres.
+
+**How to upload:**
+1. Click **Upload CSV**
+2. Select a .csv file from your computer
+3. Geofences are created with `source='csv_upload'` and automatically linked to this campaign
+4. You'll see a success message showing how many were created vs. skipped
+
+#### Linked Geofences
+
+Shows all geofences currently linked to this campaign. You can:
+- **Unlink** a geofence (removes it from the campaign but doesn't delete it)
+- **Link existing geofences** from the list below (geofences not yet linked to this campaign)
+- **Link all** — one click to link every unlinked geofence
+
+#### Ad Creatives
+
+Upload and manage image and video creatives for this campaign.
+
+**Supported formats:**
+- **Images:** PNG, JPG, GIF, WebP (up to 10MB)
+- **Video:** MP4, WebM (up to 50MB)
+
+**How to upload:**
+1. Click **Upload Creative (Image or Video)**
+2. Select a file from your computer
+3. The file is stored on the Render persistent disk
+4. A preview thumbnail appears (images show inline, video shows with player)
+5. Each creative gets a public URL: `https://leadcaffeine.com/api/creative/{id}`
+
+**Creative serving in the auction:**
+- When a device enters a geofence linked to this campaign:
+  - If the impression is a **banner** (`imp.banner`): the system finds an image creative and returns `<a href="clickUrl"><img src="creative-url"></a>` as the ad markup
+  - If the impression is a **video** (`imp.video`): the system finds a video creative and returns VAST 4.0 XML pointing to the video file
+  - If no creative matches the impression type: returns 204 no-bid (no cost)
+- The bid price is the campaign's CPM (not the old hardcoded $0.50)
+
+**Deleting a creative:** Click the trash icon. The file is removed from disk and the database.
+
+### How Campaigns Interact with the Auction
+
+When a bid request comes in and a device is inside a geofence:
+
+1. The system looks up which campaigns are linked to that geofence
+2. If one or more active campaigns exist:
+   - Picks the first active campaign
+   - Checks if it has a creative matching the impression type (banner → image, video → video)
+   - If yes: bids at that campaign's CPM with that creative
+   - If no: returns 204 (free harvest, no bid)
+3. If no campaigns are linked to the geofence:
+   - Falls back to the old Redis `audience:target_maids` logic
+   - If the MAID is in the target list: bids $0.50 CPM (legacy behavior)
+   - If not: returns 204 (free harvest)
+
+This means campaigns take priority over the legacy targeting system. If a geofence has a campaign, the campaign's CPM and creatives are used. If no campaign, the old $0.50 target list logic applies.
+
+### Running Multiple Campaigns Simultaneously
+
+You can have many campaigns active at the same time:
+- Each campaign has its own geofences, creatives, and CPM
+- A single geofence can only be linked to campaigns that have matching creatives for the impression type
+- If multiple campaigns link to the same geofence, the first active campaign with a matching creative wins the bid
+- Budgets are tracked per campaign — when a campaign hits its budget cap, you should set it to "paused"
+
+### Campaign Status Flow
+
+| Status | Behavior |
+|--------|----------|
+| **active** | Campaign bids on impressions, creatives are served, stats are tracked |
+| **paused** | Campaign is dormant — no bids, no spend. Geofences stay linked. |
+| **archived** | Campaign is hidden from active rotation. Can be reactivated by setting to "active". |
+
+---
+
+## 8. API Reference
 
 All endpoints are relative to your domain (e.g., `https://leadcaffeine.com`).
 
@@ -342,18 +342,18 @@ All endpoints are relative to your domain (e.g., `https://leadcaffeine.com`).
 | `POST` | `/api/geofence` | Yes | Create a geofence manually |
 | `PATCH` | `/api/geofence/:id` | Yes | Update geofence (toggle active, change radius) |
 | `DELETE` | `/api/geofence/:id` | Yes | Delete a geofence |
-| `POST` | `/api/geofence/generate` | Yes | Auto-generate geofences from Supreme Line 2 data |
-| `POST` | `/api/geofence/check` | Yes | Check if a lat/lng point falls inside any geofence |
-| `POST` | `/api/geofence/capture` | Yes | Manually capture a device at a location |
-| `GET` | `/api/geofence/stats` | Yes | Get dashboard statistics |
-| `GET` | `/api/geofence/analytics` | Yes | Get ClickHouse capture analytics |
+| `POST` | `/api/geofence/generate` | Yes | Auto-generate geofences from Supreme Line 2 |
+| `POST` | `/api/geofence/check` | Yes | Check if a lat/lng falls inside any geofence |
+| `POST` | `/api/geofence/capture` | Yes | Manually capture a device |
+| `GET` | `/api/geofence/stats` | Yes | Dashboard statistics |
+| `GET` | `/api/geofence/analytics` | Yes | ClickHouse capture analytics |
 
 ### Device Management
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/api/geofence/devices` | Yes | List captured devices (query: `?limit=100`) |
-| `GET` | `/api/geofence/export-maids` | Yes | Download all captured MAIDs as CSV |
+| `GET` | `/api/geofence/devices` | Yes | List captured devices (`?limit=100`) |
+| `GET` | `/api/geofence/export-maids` | Yes | Download captured MAIDs as CSV |
 
 ### Audience Segments
 
@@ -363,22 +363,57 @@ All endpoints are relative to your domain (e.g., `https://leadcaffeine.com`).
 | `POST` | `/api/geofence/segments` | Yes | Create a new segment |
 | `POST` | `/api/geofence/maids` | Yes | Add MAIDs to a segment |
 
-### Targeting
+### Targeting (Legacy — use Campaigns instead)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/api/geofence/targeting/add` | Yes | Add a MAID to the target list (will bid $0.50) |
+| `POST` | `/api/geofence/targeting/add` | Yes | Add a MAID to the target list ($0.50 bidding) |
 | `POST` | `/api/geofence/targeting/remove` | Yes | Remove a MAID from the target list |
 | `GET` | `/api/geofence/targeting/count` | Yes | Count of targeted MAIDs |
 | `GET` | `/api/geofence/targeting/list` | Yes | List all targeted MAIDs |
+
+### Campaigns (NEW)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/campaigns` | Yes | List all campaigns (`?status=active`) |
+| `GET` | `/api/campaigns/:id` | Yes | Get campaign with geofences and creatives |
+| `POST` | `/api/campaigns` | Yes | Create campaign (name, bidPriceCpm, budgets, dates) |
+| `PATCH` | `/api/campaigns/:id` | Yes | Update campaign (status, bidPriceCpm, budgets) |
+| `DELETE` | `/api/campaigns/:id` | Yes | Delete campaign (cascades to creatives and links) |
+
+### Campaign Geofences (NEW)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/campaigns/:id/geofences` | Yes | List geofences linked to campaign |
+| `POST` | `/api/campaigns/:id/geofences` | Yes | Link geofence(s) to campaign (body: `{geofenceIds: []}`) |
+| `DELETE` | `/api/campaigns/:id/geofences/:geofenceId` | Yes | Unlink geofence from campaign |
+| `POST` | `/api/campaigns/:id/upload-csv` | Yes | Upload CSV to create + link geofences (body: `{csv: "..."}`) |
+
+### Creatives (NEW)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/campaigns/:id/creatives` | Yes | List creatives for a campaign |
+| `POST` | `/api/campaigns/:id/creatives` | Yes | Upload creative (multipart file upload) |
+| `GET` | `/api/creative/:id` | No | Serve creative file (public — SSP loads this) |
+| `GET` | `/api/creative/:id/vast` | No | Serve VAST 4.0 XML for video creatives |
+| `DELETE` | `/api/creatives/:id` | Yes | Delete creative (removes file + DB row) |
+
+### Supreme → Campaign Export (NEW)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/supreme/line2/export/campaign?jobId=X` | Yes | Download campaign-ready CSV (name, lat, lng, radius_m, address, city, state) |
 
 ### OpenRTB Bidstream
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/api/openrtb/auction` | No | OpenRTB 2.5 auction endpoint (SSP-facing) |
+| `POST` | `/api/openrtb/auction` | No | OpenRTB 2.5 auction endpoint (campaign-aware bidding) |
 | `GET` | `/api/openrtb/win` | No | Win notice (called by SSP when bid wins) |
-| `GET` | `/api/openrtb/creative` | No | Creative pixel (1x1 tracking image) |
+| `GET` | `/api/openrtb/creative` | No | Legacy creative pixel |
 | `GET` | `/api/openrtb/click` | No | Click redirect |
 
 ### Direct SDK Ingestion
@@ -397,114 +432,110 @@ All endpoints are relative to your domain (e.g., `https://leadcaffeine.com`).
 
 ---
 
-## 8. Architecture
+## 9. Architecture
 
-### The Four-Layer Pipeline
+### The Five-Layer Pipeline
 
 ```
 Layer 1: PostGIS Geofences
    ↓ (ST_Contains query)
-Layer 2: OpenRTB Bid Handler
-   ↓ (capture MAID)
+Layer 2: OpenRTB Bid Handler (campaign-aware)
+   ↓ (capture MAID, check campaigns)
 Layer 3: Redis + ClickHouse
    ↓ (dedup, audience sets, analytics)
 Layer 4: DSP Audience Sync
    ↓ (push MAIDs to ad platforms)
+Layer 5: Campaign Builder (NEW)
+   ↓ (per-campaign creatives, CPM, budgets)
 ```
 
-### Data Flow: Bid Request to Ad Delivery
+### Data Flow: Bid Request to Ad Delivery (v2)
 
 1. **SSP sends bid request** → `POST /api/openrtb/auction`
-   - Contains device GPS coordinates and MAID
-2. **PostGIS lookup** → `ST_Contains(geom, ST_MakePoint(lng, lat))`
-   - GIST index returns matching geofence in <1ms
-3. **Redis dedup** → `SETEX maid:{id} 300`
-   - Prevents re-capturing same device within 5 minutes
-4. **PostgreSQL upsert** → `captured_devices` table
-   - New device = INSERT, existing = UPDATE hit_count + last_seen
+2. **PostGIS lookup** → `ST_Contains(geom, ST_MakePoint(lng, lat))` — finds matching geofence
+3. **Redis dedup** → prevents re-capturing same device within 5 minutes
+4. **PostgreSQL upsert** → `captured_devices` table (new device = INSERT, existing = UPDATE)
 5. **Redis audience set** → `SADD audience:geofence:{id} {maid}`
-   - Builds real-time audience sets per geofence
-6. **ClickHouse log** → `device_captures` table
-   - Analytics warehouse — captures, unique devices, timestamps
-7. **Targeting check** → `SISMEMBER audience:target_maids {maid}`
-   - If targeted: return $0.50 CPM bid (200)
-   - If not targeted: return 204 no-bid (free harvest)
-8. **DSP sync** → Push captured MAIDs to Epom/SmartyAds
-   - CSV or JSON API, 50k batch chunks
-
-### Selective Bidding Explained
-
-The platform uses a "harvest then target" strategy:
-
-**Phase 1: Harvest (Free)**
-- All bid requests inside geofences are processed
-- MAIDs are captured and stored regardless of targeting status
-- The SSP sees a 204 no-bid (no cost to you)
-- You're building an audience database for free
-
-**Phase 2: Target (Paid)**
-- Add specific MAIDs to the `audience:target_maids` Redis set
-- When a targeted MAID enters a geofence, the platform bids $0.50 CPM
-- The bid includes a creative pixel and click redirect
-- Win notices are logged to ClickHouse for billing reconciliation
+6. **ClickHouse log** → `device_captures` table (analytics warehouse)
+7. **Campaign check (NEW)** → `getActiveCampaignsForGeofence(match.id)`
+   - If active campaign found with matching creative:
+     - Banner impression → image creative → bid at campaign CPM
+     - Video impression → VAST XML → bid at campaign CPM
+     - No matching creative → 204 no-bid (free harvest)
+   - If no campaign found:
+     - Fall back to Redis `audience:target_maids` check
+     - Targeted → $0.50 bid (legacy)
+     - Not targeted → 204 no-bid (free harvest)
+8. **Win notice** → `GET /api/openrtb/win` logs to ClickHouse `bid_wins` table
+9. **Stats increment** → campaign impressions, clicks, wins, spend updated
 
 ---
 
-## 9. Common Workflows
+## 10. Common Workflows
 
-### Workflow A: Full Pipeline (First Time)
+### Workflow A: Full Pipeline with Campaigns (v2)
 
 1. **Supreme Line 1** → Discover companies by keyword + city/state
 2. **Supreme Line 2** → Geocode each company to lat/lng
-3. **Dashboard tab** → Generate geofences (250m radius recommended)
-4. **Geofences tab** → Verify geofences look correct
-5. **Bidstream Test tab** → Send a test bid request with coordinates inside a geofence
-6. **Captured Devices tab** → Verify the device was captured
-7. **Dashboard tab** → Check ClickHouse analytics updated
-8. **Segments tab** → Create an audience segment from active geofences
-9. **DSP Sync tab** → Sync to Epom or SmartyAds (or export CSV manually)
-10. **Targeting API** → Add specific MAIDs to target list for $0.50 bidding
+3. **Supreme tab** → Download Campaign CSV: `GET /api/supreme/line2/export/campaign?jobId=YOUR_JOB_ID`
+4. **Geofence → Campaigns tab** → Click "New Campaign"
+   - Name it (e.g., "Q1 Auto Repair Poughkeepsie")
+   - Set your CPM bid (e.g., $0.75)
+   - Set optional budgets and dates
+   - Click "Create Campaign"
+5. **Campaign detail → Upload Geofences CSV** → Upload the CSV from Step 3
+6. **Campaign detail → Upload Creative** → Upload an image (PNG/JPG) or video (MP4)
+7. **Bidstream Test tab** → Test with coordinates inside one of the campaign's geofences
+8. **Captured Devices tab** → Verify the device was captured
+9. **Campaign detail** → Check that impressions counter incremented
+10. **DSP Sync tab** → Export captured MAIDs for additional DSP targeting
 
-### Workflow B: Test the Full Capture Pipeline
+### Workflow B: Multiple Campaigns for Different Industries
+
+1. Run Supreme for "auto repair" in Poughkeepsie → Export Campaign CSV
+2. Run Supreme for "dentist" in Poughkeepsie → Export Campaign CSV
+3. Create Campaign A: "Auto Repair Ads" → $0.75 CPM → Upload auto CSV → Upload auto ad image
+4. Create Campaign B: "Dental Ads" → $0.30 CPM → Upload dental CSV → Upload dental ad image
+5. Both campaigns run simultaneously
+6. Devices entering auto repair geofences see auto ads at $0.75 CPM
+7. Devices entering dental geofences see dental ads at $0.30 CPM
+8. Each campaign tracks its own impressions, clicks, and spend independently
+
+### Workflow C: Test the Full Capture Pipeline
 
 1. Go to **Bidstream Test** tab
-2. Copy a lat/lng from the **Geofences** tab
+2. Copy a lat/lng from a geofence linked to your campaign
 3. Paste into the test form
 4. Click **Send Bid Request**
-5. Switch to **Captured Devices** tab — device should appear within 5 seconds
-6. Switch to **Dashboard** tab — ClickHouse analytics should show 1 capture
-7. Click **Export MAIDs CSV** — the device should be in the file
+5. If the campaign has a matching creative → you'll get a 200 response with the bid
+6. Switch to **Captured Devices** tab — device should appear
+7. Switch to **Campaigns** → open your campaign — impressions should increment
 
-### Workflow C: Start Paid Bidding
+### Workflow D: Start Paid Bidding (Two Options)
 
-1. Capture devices using the free harvest (204 no-bid) approach
-2. Review captured MAIDs in the **Captured Devices** tab
-3. Identify high-value devices to target
-4. Add them to the target list via API:
-   ```
-   POST /api/geofence/targeting/add
-   { "maid": "device-idfa-xxx" }
-   ```
-5. From now on, when that device enters a geofence, the platform bids $0.50 CPM
-6. Check ClickHouse `bid_wins` table for win notifications and billing
+**Option 1: Campaign-based (recommended)**
+1. Create a campaign with your desired CPM
+2. Upload geofences (CSV) and creatives (image/video)
+3. Set campaign to "active"
+4. The system automatically bids at your CPM when devices enter those geofences
+5. Track spend in the campaign stats
 
-### Workflow D: Push Audience to DSP
+**Option 2: Legacy target list**
+1. Capture devices using the free harvest (204 no-bid)
+2. Add specific MAIDs to the target list via API
+3. The system bids $0.50 CPM for those specific devices
+4. Use this only for geofences NOT linked to a campaign
+
+### Workflow E: Push Audience to DSP
 
 1. Capture devices across multiple geofences
-2. Go to **Segments** tab → Create a segment (groups all active geofences)
-3. Go to **DSP Sync** tab
-4. Choose your DSP (Epom or SmartyAds)
-5. Enter credentials and segment name
-6. Click **Sync** — MAIDs are uploaded in 50k batches
-7. Check **Sync History** for success/failure
-8. Or click **Download MAIDs CSV** for manual upload to any DSP
+2. Go to **Segments** tab → Create a segment
+3. Go to **DSP Sync** tab → Sync to Epom or SmartyAds (or download CSV)
+4. The DSP runs retargeting campaigns to those captured MAIDs
 
-### Workflow E: Mobile SDK Integration
-
-For mobile apps to ping your platform directly (no SSP needed):
+### Workflow F: Mobile SDK Integration
 
 ```javascript
-// In your mobile app or web SDK
 fetch('https://leadcaffeine.com/api/ingest', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -520,378 +551,228 @@ fetch('https://leadcaffeine.com/api/ingest', {
 });
 ```
 
-The endpoint returns whether the device was captured and which geofence it matched.
-
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 ### No devices appearing in Captured Devices
 
-**Cause:** No bid requests are reaching the auction endpoint, or coordinates are outside all geofences.
+**Cause:** No bid requests reaching the auction endpoint, or coordinates outside all geofences.
 
 **Fix:**
-1. Use the **Bidstream Test** tab to send a test request with coordinates from a geofence
-2. Verify the geofence is **Active** (ON) in the Geofences tab
-3. Check that the lat/lng in the test request actually falls inside the geofence polygon
+1. Use the **Bidstream Test** tab with coordinates from a linked geofence
+2. Verify the geofence is **Active** (ON)
+3. Check that the lat/lng actually falls inside the geofence
 
 ### ClickHouse analytics not updating
 
-**Cause:** ClickHouse connection failed or the `device_captures` table doesn't exist.
+**Cause:** ClickHouse connection failed or `device_captures` table doesn't exist.
 
 **Fix:**
-1. Verify ClickHouse is running (check Render dashboard)
-2. Verify `CLICKHOUSE_URL` and `CLICKHOUSE_PASSWORD` env vars are set on the web service
-3. Run the init script: `node scripts/init-production.mjs` from the web service shell
+1. Verify ClickHouse is running on Render
+2. Verify `CLICKHOUSE_URL` and `CLICKHOUSE_PASSWORD` env vars
+3. Run `node scripts/init-production.mjs` from the web service shell
 
 ### "Session save failed" on login
 
-**Cause:** The `user_sessions` table doesn't exist in PostgreSQL.
+**Cause:** `user_sessions` table doesn't exist.
+
+**Fix:** The table is now auto-created on startup. Redeploy the web service.
+
+### Campaign bids not firing (204 instead of 200)
+
+**Cause:** No creative matching the impression type, or campaign is paused/archived.
 
 **Fix:**
-1. Ensure `DATABASE_URL` is set correctly in the web service Environment tab
-2. The table is now auto-created on startup — redeploy the web service
+1. Open the campaign detail page
+2. Verify campaign status is "active"
+3. Verify at least one creative is uploaded
+4. For banner impressions: upload an image creative
+5. For video impressions: upload a video creative
+6. Verify the geofence is linked to the campaign
+
+### CSV upload fails or creates 0 geofences
+
+**Cause:** CSV format doesn't match expected columns, or no valid lat/lng values.
+
+**Fix:**
+1. Use the Supreme export endpoint: `/api/supreme/line2/export/campaign?jobId=X`
+2. The smart parser auto-detects columns by header name
+3. Ensure each row has a name, latitude, and longitude
+4. Radius is optional (defaults to 250m) — accepts yards, miles, km, or metres
+
+### Creative not showing on devices
+
+**Cause:** Creative URL not accessible, or SSP doesn't render the ad markup.
+
+**Fix:**
+1. Open the creative URL directly in a browser: `https://leadcaffeine.com/api/creative/{id}`
+2. If it loads, the creative is served correctly
+3. The SSP must support image creatives (banner) or VAST XML (video)
+4. Check that the creative's campaign is "active"
 
 ### DSP sync fails
 
-**Cause:** Invalid credentials or DSP API is down.
-
 **Fix:**
-1. Verify your Epom API key and network domain, or SmartyAds API token
-2. Check the sync history table for error details
-3. Use **Download MAIDs CSV** as a fallback for manual upload
-
-### Geofence generation shows 0 created
-
-**Cause:** No companies in `supreme_companies` table have latitude/longitude coordinates.
-
-**Fix:**
-1. Run Supreme Line 1 first to discover companies
-2. Run Supreme Line 2 to geocode their addresses
-3. Verify companies have lat/lng in the Supreme tab before generating geofences
-
-### Bid request returns 204 but device not captured
-
-**Cause:** The coordinates might not fall inside any geofence polygon.
-
-**Fix:**
-1. Use the exact lat/lng from a geofence in the Geofences tab
-2. Remember the geofence is a circle — if you're testing with coordinates near the edge, try the exact center coordinates
-3. Check that the geofence is active (ON)
-4. If the MAID was captured recently (within 5 minutes), Redis dedup may be blocking it — try a different MAID
+1. Verify Epom API key + network domain, or SmartyAds API token
+2. Check sync history for error details
+3. Use **Download MAIDs CSV** as a fallback
 
 ---
 
-## 11. Plain English Guide — How to Actually Use This Thing
-
-This section skips the technical jargon. If you just want to get your geofence advertising up and running, follow these steps in order.
+## 12. Plain English Guide
 
 ### What This Platform Does (In One Sentence)
 
-It draws invisible circles around businesses on a map, and when people's phones enter those circles, it grabs the phone's advertising ID so you can show ads to those people later.
-
-### The Big Picture (Why You Care)
-
-Imagine you own an auto repair shop. You want to show ads to people who visit your competitors' shops. This platform:
-
-1. Finds auto repair shops in your area (Supreme engine)
-2. Draws a circle around each one (geofence)
-3. When someone's phone enters that circle, it silently captures their phone's ad ID
-4. You take all those ad IDs and upload them to an ad platform (like Epom or SmartyAds)
-5. Now you can show ads to people who physically visited your competitors
-
-The best part? Steps 1-4 are **free**. You only pay when you start bidding on ads in Step 5.
-
----
-
-### Step 1: Find Businesses (Supreme Tab)
-
-Before you can draw circles around businesses, you need to find them.
-
-1. Click on the **Supreme** tab (not the Geofence tab — that comes next)
-2. **Line 1 (Find Businesses):**
-   - Type a city and state (e.g., "Poughkeepsie, NY")
-   - Type keywords for the businesses you want (e.g., "auto repair, oil change, mechanic")
-   - Click Start
-   - The system searches the internet for matching businesses and saves their names, addresses, and websites
-   - Wait for it to finish — you'll see a list of companies
-
-3. **Line 2 (Get Coordinates):**
-   - Once Line 1 is done, run Line 2
-   - This looks up each business's address and converts it to exact GPS coordinates (latitude/longitude)
-   - This is what makes the "circles on a map" possible
-   - Wait for it to finish — each company should now have a latitude and longitude
-
-**How to know it worked:** The Supreme tab should show companies with coordinates (numbers like 41.681427, -73.855606). If the latitude/longitude columns are empty, Line 2 didn't finish or failed.
-
----
-
-### Step 2: Draw the Circles (Geofence Tab → Dashboard)
-
-Now you turn those GPS coordinates into invisible circles on the map.
-
-1. Click on the **Geofence** tab
-2. Make sure you're on the **Dashboard** sub-tab (it's the default)
-3. Find the "Generate Geofences from Supreme Line 2" section
-4. Pick a radius from the dropdown:
-   - **250m** is a good starting point — it covers the business and its immediate area (about 2-3 football fields)
-   - Use **100m** if you only want to capture people who are basically inside the business
-   - Use **500m+** if you want to capture people in the surrounding shopping center
-5. Click **Generate Geofences**
-6. You'll see a message like "Created 196 geofences"
-
-**How to know it worked:** The "Total Geofences" number at the top should increase. Click the **Geofences** sub-tab to see the list — each row is one business with its address, coordinates, and radius.
-
----
-
-### Step 3: Test It (Geofence Tab → Bidstream Test)
-
-Before connecting real ad exchanges, let's make sure the system actually captures phones.
-
-1. Click the **Bidstream Test** sub-tab
-2. You'll see three fields: Latitude, Longitude, and MAID
-3. The default coordinates (41.681427, -73.855606) are in Poughkeepsie, NY — if your geofences are there, great. If not:
-   - Go to the **Geofences** sub-tab
-   - Find a geofence near you
-   - Copy its Latitude and Longitude numbers
-   - Paste them into the Bidstream Test fields
-4. The MAID field already has a random test ID — leave it as is
-5. Click **Send Bid Request**
-6. You should see a toast message saying "Bid request sent"
-
-**How to know it worked:**
-- Click the **Captured Devices** sub-tab
-- You should see a device appear in the table within 5 seconds
-- The MAID, device info, and geofence name should all be filled in
-- If you don't see it, the coordinates might not be inside a geofence — try different ones
-
----
-
-### Step 4: See Your Captures (Geofence Tab → Captured Devices)
-
-This is where you watch phones get captured in real-time.
-
-1. Click the **Captured Devices** sub-tab
-2. Every time a phone enters one of your geofences (either from the test or from real traffic), it shows up here
-3. The table auto-refreshes every 5 seconds
-4. Key things to look at:
-   - **MAID** — This is the phone's advertising ID. This is what you'll give to the ad platform.
-   - **Geofence** — Which business circle the phone was inside
-   - **Hits** — How many times this phone has been seen
-   - **Last Seen** — When the phone was last detected
-
-**The more phones that appear here, the bigger your audience gets.**
-
----
-
-### Step 5: Check Your Stats (Geofence Tab → Dashboard)
-
-Go back to the Dashboard sub-tab and look at the top row of numbers:
-
-- **Total Geofences** — How many circles you've drawn
-- **Active Geofences** — How many are turned on (devices inside these get captured)
-- **Captured Devices** — How many unique phones you've grabbed
-- **Unsynced** — How many phones you haven't sent to the ad platform yet
-- **Segments** — How many audience groups you've created
-
-Scroll down to see the **Capture Analytics** table from ClickHouse — it shows which geofences are getting the most traffic and how many unique phones each one has captured.
-
----
-
-### Step 6: Create an Audience Group (Geofence Tab → Segments)
-
-An audience segment is just a group of geofences that you want to target together.
-
-1. Click the **Segments** sub-tab
-2. Type a name like "Poughkeepsie Auto Repair Audience"
-3. Optionally type a description
-4. Click **Create Segment**
-5. The segment automatically includes ALL geofences that are currently turned ON
-6. All captured devices from those geofences become your audience
-
-**Think of it this way:** The segment is the bucket. The geofences fill the bucket with phone IDs. You'll give the bucket to the ad platform.
-
----
-
-### Step 7: Send Phone IDs to an Ad Platform (Geofence Tab → DSP Sync)
-
-This is where you take all those captured phone IDs and push them to an ad platform so you can show ads to those people.
-
-#### Option A: Download a File (Easiest)
-
-1. Click the **DSP Sync** sub-tab
-2. Scroll down to "Manual MAID Export"
-3. Click **Download MAIDs CSV**
-4. A file downloads with all your captured phone IDs
-5. Upload that file to any ad platform (The Trade Desk, StackAdapt, etc.) using their bulk import feature
-
-#### Option B: Send Directly to Epom
-
-1. In the DSP Sync tab, make sure the **Epom** button is selected
-2. Type your Epom **API Key** (you get this from your Epom account)
-3. Type your Epom **Network Domain** (e.g., your-network.epom.com)
-4. Type a **Segment Name** (e.g., "Poughkeepsie Auto Audience")
-5. Click **Sync to Epom**
-6. Wait — it uploads in batches of 50,000 at a time
-7. Check the Sync History table below for the result
-
-#### Option C: Send Directly to SmartyAds
-
-1. Click the **SmartyAds** button
-2. Type your SmartyAds **API Token** (from your SmartyAds DSP account)
-3. Type a **Segment Name**
-4. Click **Sync to SmartyAds**
-5. Check Sync History for the result
-
-**Which should you pick?** If you don't have an Epom or SmartyAds account yet, use Option A (download the file) and upload it manually wherever you want.
-
----
-
-### Step 8: Start Showing Ads (On the Ad Platform)
-
-This step happens on Epom, SmartyAds, or whichever ad platform you chose — not on Lead Caffeine. But here's the idea:
-
-1. Log into your ad platform (Epom, SmartyAds, etc.)
-2. Find the audience segment you uploaded (it contains all the phone IDs from your geofences)
-3. Create a campaign targeting that audience
-4. Set your budget and bid price
-5. Launch the campaign
-
-Now, when someone whose phone was captured in your geofence opens an app or visits a website, your ad platform recognizes their phone ID and shows them your ad.
-
----
-
-### Step 9: Optional — Start Bidding Directly (Advanced)
-
-If you want Lead Caffeine to bid on ad impressions directly (instead of just harvesting IDs for free), you can add specific phone IDs to a "target list":
-
-1. Go to the **Captured Devices** sub-tab
-2. Find phone IDs you want to target
-3. Use the API to add them to the target list (this requires a technical person):
-   ```
-   POST https://leadcaffeine.com/api/geofence/targeting/add
-   { "maid": "the-phone-id-here" }
-   ```
-4. Now when that phone enters a geofence, Lead Caffeine will bid $0.50 per 1,000 impressions to show an ad
-5. You can see which bids won in the ClickHouse `bid_wins` table
-
-**This costs money.** The free harvest (steps 1-8) costs nothing. Only do Step 9 when you're ready to pay for impressions.
-
----
-
-### Quick Reference: What Each Tab Does (Plain English)
-
-| Tab | What It Does | When to Use It |
-|-----|-------------|----------------|
-| **Dashboard** | Shows your stats and lets you generate geofences | First stop — check your numbers and create geofences |
-| **Geofences** | Lists all your circles with on/off switches | When you want to turn off a location or delete one |
-| **Captured Devices** | Shows every phone you've grabbed | When you want to see who's visiting your target businesses |
-| **Segments** | Lets you group geofences into audiences | Before sending phone IDs to an ad platform |
-| **Bidstream Test** | Lets you test with fake phone pings | When you want to verify the system works |
-| **DSP Sync** | Sends phone IDs to ad platforms | When you're ready to start showing ads |
-
----
+It draws invisible circles around businesses on a map, and when people's phones enter those circles, it shows them your ad — at a price you control per campaign.
 
 ### The Short Version (TL;DR)
 
 1. **Supreme tab** → Find businesses and get their GPS coordinates
-2. **Geofence → Dashboard** → Click "Generate Geofences" to draw circles around them
-3. **Geofence → Bidstream Test** → Test that it captures phones
-4. **Geofence → Captured Devices** → Watch phones get captured
-5. **Geofence → Segments** → Create an audience group
-6. **Geofence → DSP Sync** → Download the phone IDs or send them to an ad platform
-7. **Ad platform** → Create a campaign targeting those phone IDs
+2. **Supreme tab** → Download Campaign CSV (ready for upload)
+3. **Geofence → Campaigns** → Create a campaign with your CPM and budget
+4. **Campaign detail** → Upload the CSV (creates geofences) and upload ad images/video
+5. **Geofence → Bidstream Test** → Test that it captures phones and bids
+6. **Geofence → Captured Devices** → Watch phones get captured
+7. **Campaign detail** → Check impressions and spend
+8. **Geofence → DSP Sync** → Download captured MAIDs for DSP retargeting
 
-That's it. You find businesses, draw circles around them, capture phones that enter those circles, and show ads to those people.
+### Step-by-Step for Non-Technical Users
+
+#### Step 1: Find Businesses (Supreme Tab)
+
+1. Click **Supreme** tab
+2. **Line 1:** Type city/state + keywords → Start → wait for results
+3. **Line 2:** Run Line 2 to geocode addresses to GPS coordinates
+4. Download the Campaign CSV (this gives you a file ready for Step 3)
+
+#### Step 2: Create a Campaign (Geofence → Campaigns Tab)
+
+1. Click **Geofence** tab → **Campaigns** sub-tab
+2. Click **New Campaign**
+3. Type a name (e.g., "Q1 Auto Repair Poughkeepsie")
+4. Set your bid price (CPM) — this is what you pay per 1,000 ad views
+5. Optionally set a daily or total budget cap
+6. Click **Create Campaign**
+
+#### Step 3: Upload Geofences (Campaign Detail → Upload CSV)
+
+1. Open your campaign
+2. Click **Upload CSV** in the geofences section
+3. Select the CSV file you downloaded in Step 1
+4. Geofences are created and linked to this campaign automatically
+
+#### Step 4: Upload Your Ad (Campaign Detail → Upload Creative)
+
+1. In the same campaign detail page
+2. Click **Upload Creative (Image or Video)**
+3. Select an image (PNG, JPG, GIF, WebP up to 10MB) or video (MP4, WebM up to 50MB)
+4. A preview appears in the UI
+5. This ad will be shown to devices that enter your geofences
+
+#### Step 5: Test It (Geofence → Bidstream Test)
+
+1. Copy a latitude/longitude from one of your campaign's geofences
+2. Paste into the Bidstream Test form
+3. Click **Send Bid Request**
+4. If you get a 200 response, your campaign is bidding with your creative
+
+#### Step 6: Watch It Run
+
+- **Captured Devices tab** — See phones being captured
+- **Campaign detail** — Watch impressions, clicks, and spend accumulate
+- **Dashboard tab** — See overall stats and ClickHouse analytics
+
+#### Step 7: Export for DSP Retargeting (Optional)
+
+1. Go to **DSP Sync** tab
+2. Download MAIDs CSV or sync to Epom/SmartyAds
+3. Retarget captured devices on other ad platforms
+
+### Quick Reference: What Each Tab Does
+
+| Tab | What It Does | When to Use It |
+|-----|-------------|----------------|
+| **Dashboard** | Stats overview + generate geofences from Supreme | Check your numbers |
+| **Geofences** | List all geofences with on/off switches | Manage individual geofences |
+| **Captured Devices** | Live feed of captured phone IDs | See who's visiting target businesses |
+| **Segments** | Group geofences into audiences | Before DSP sync |
+| **Bidstream Test** | Test with fake phone pings | Verify system works |
+| **DSP Sync** | Send phone IDs to ad platforms | Start retargeting |
+| **Campaigns** | Create campaigns, upload CSVs + creatives, set CPM | Run ad campaigns with custom creatives |
 
 ---
 
-## 12. Which Routes Get What CPMs (Cost Per Thousand Impressions)
+## 13. Which Routes Get What CPMs
 
-Every route that touches the bidding pipeline has a specific cost (or no cost). Here's the complete breakdown:
+### The Two Bidding Paths
 
-### The Two Outcomes
+| Path | Route | Outcome | CPM | Who Pays | When |
+|------|-------|---------|-----|---------|------|
+| **Campaign** | `POST /api/openrtb/auction` | **200 Bid** | Campaign's CPM | You | Geofence linked to active campaign with matching creative |
+| **Legacy Target** | `POST /api/openrtb/auction` | **200 Bid** | $0.50 (hardcoded) | You | MAID in `audience:target_maids` Redis set, no campaign on geofence |
+| **Free Harvest** | `POST /api/openrtb/auction` | **204 No-Bid** | $0.00 | Nobody | Device in geofence but no campaign and not in target list |
+| **Outside** | `POST /api/openrtb/auction` | **204 No-Bid** | $0.00 | Nobody | Device outside all geofences |
 
-| Route | Outcome | CPM | Who Pays | When |
-|-------|---------|-----|---------|------|
-| `POST /api/openrtb/auction` | **204 No-Bid** (free harvest) | $0.00 | Nobody | Device is inside a geofence but NOT on your target list |
-| `POST /api/openrtb/auction` | **200 Bid Response** | $0.50 | You | Device is inside a geofence AND on your target list |
+### How Campaign Bidding Works
 
-### How It Works
+The auction handler checks in this order:
 
-There's only **one bidding route** — `POST /api/openrtb/auction`. But it has two possible outcomes depending on whether the phone's advertising ID is in your target list:
-
-**Outcome 1: Free Harvest (204 No-Bid) — $0.00 CPM**
-
-The phone enters a geofence. The system captures its MAID and stores it. But the system tells the ad exchange "no bid" (HTTP 204). The exchange shows someone else's ad. You pay nothing. You got the phone ID for free.
-
-This happens when:
-- The MAID is NOT in the `audience:target_maids` Redis set
-- The device is inside an active geofence
-- You're in harvest mode (collecting IDs for later)
-
-**Outcome 2: Paid Bid (200 Response) — $0.50 CPM**
-
-The phone enters a geofence. The system recognizes the MAID is on your target list. It submits a bid of $0.50 per 1,000 impressions. If you win the auction, the exchange charges you $0.50 and shows your ad.
-
-This happens when:
-- The MAID IS in the `audience:target_maids` Redis set (you added it via the targeting API)
-- The device is inside an active geofence
-- You're in targeting mode (actively buying impressions)
+1. **Campaign check** (new): Is the matched geofence linked to an active campaign with a matching creative?
+   - Yes → Bid at **campaign's CPM** with campaign's creative → 200 response
+   - No → Continue to step 2
+2. **Legacy target check**: Is the MAID in the Redis target list?
+   - Yes → Bid at **$0.50 CPM** with generic creative → 200 response
+   - No → Return 204 (free harvest)
 
 ### All Routes and Their Costs
 
-| Route | Method | Cost | What It Does |
-|-------|--------|------|-------------|
-| `/api/openrtb/auction` | POST | **$0.00 or $0.50** | The only bidding route. Free harvest (204) or $0.50 bid (200) depending on targeting |
-| `/api/openrtb/win` | GET | $0.00 | Win notice — called by the exchange after you win. Logs the actual price paid to ClickHouse |
-| `/api/openrtb/creative` | GET | $0.00 | Serves the 1x1 tracking pixel for your ad creative |
-| `/api/openrtb/click` | GET | $0.00 | Click redirect — tracks when someone clicks your ad |
-| `/api/ingest` | POST | **$0.00** | Direct SDK ingestion — captures a MAID without any bidding. Always free, never bids |
-| `/api/geofence/generate` | POST | $0.00 | Creates geofences from Supreme data |
-| `/api/geofence/capture` | POST | $0.00 | Manually captures a device |
-| `/api/geofence/export-maids` | GET | $0.00 | Downloads captured MAIDs as CSV |
-| `/api/dsp/sync` | POST | $0.00 | Pushes MAIDs to Epom/SmartyAds (the DSP charges you, not this platform) |
-| `/api/geofence/targeting/add` | POST | $0.00 | Adds a MAID to the target list (switches them from free to $0.50 bidding) |
-| `/api/geofence/targeting/remove` | POST | $0.00 | Removes a MAID from the target list (back to free harvest) |
+| Route | Method | Cost | Notes |
+|-------|--------|------|-------|
+| `/api/openrtb/auction` | POST | **$0.00 or campaign CPM** | Free harvest (204) or campaign bid (200) |
+| `/api/openrtb/win` | GET | $0.00 | Win notice — logs actual price to ClickHouse |
+| `/api/openrtb/creative` | GET | $0.00 | Legacy tracking pixel |
+| `/api/openrtb/click` | GET | $0.00 | Click redirect |
+| `/api/ingest` | POST | **$0.00** | Direct SDK — always free, never bids |
+| `/api/creative/:id` | GET | $0.00 | Serves creative file (public) |
+| `/api/creative/:id/vast` | GET | $0.00 | Serves VAST XML for video (public) |
+| `/api/campaigns` | POST | $0.00 | Create campaign |
+| `/api/campaigns/:id/creatives` | POST | $0.00 | Upload creative |
+| `/api/campaigns/:id/upload-csv` | POST | $0.00 | Upload geofences CSV |
+| `/api/supreme/line2/export/campaign` | GET | $0.00 | Download campaign-ready CSV |
+| `/api/geofence/generate` | POST | $0.00 | Generate geofences from Supreme |
+| `/api/geofence/export-maids` | GET | $0.00 | Download captured MAIDs |
+| `/api/dsp/sync` | POST | $0.00 | Push MAIDs to DSP |
+| `/api/geofence/targeting/add` | POST | $0.00 | Add MAID to legacy target list |
 
-### Where the $0.50 Comes From
+### How to Set Per-Campaign CPM
 
-The $0.50 CPM is hardcoded in the OpenRTB auction handler:
-
-```javascript
-const bidPrice = 0.50;  // $0.50 per 1,000 impressions
+When creating a campaign:
+```
+POST /api/campaigns
+{
+  "name": "Q1 Auto Repair",
+  "bidPriceCpm": 0.75,
+  "dailyBudget": 50.00,
+  "totalBudget": 500.00
+}
 ```
 
-This means you pay $0.50 for every 1,000 ad impressions you win. To change the bid price, edit this value in `server/routes.ts` on line ~5301 and redeploy.
-
-### How to Control Who Gets the $0.50 Treatment
-
-Phones in your `audience:target_maids` Redis set get bids. Phones not in the set get free harvest. You manage the set through:
-
+Change it anytime:
 ```
-# Add a phone to the target list (they'll start getting $0.50 bids)
-POST /api/geofence/targeting/add
-{ "maid": "device-idfa-xxx" }
-
-# Remove a phone (back to free harvest, no bids)
-POST /api/geofence/targeting/remove
-{ "maid": "device-idfa-xxx" }
-
-# See how many phones are on the target list
-GET /api/geofence/targeting/count
-
-# List all targeted phones
-GET /api/geofence/targeting/list
+PATCH /api/campaigns/:id
+{ "bidPriceCpm": 1.00 }
 ```
+
+Or use the Bid CPM field in the Campaign detail page UI.
 
 ### Cost Summary (Plain English)
 
 - **Finding businesses and drawing circles:** Free
-- **Capturing phone IDs that enter your circles:** Free
-- **Downloading the phone IDs:** Free
-- **Sending phone IDs to an ad platform:** Free (the ad platform may charge you separately)
-- **Direct SDK pings from mobile apps:** Free
-- **Bidding on ad impressions through the OpenRTB auction:** $0.50 per 1,000 impressions (only for phones you specifically add to the target list)
-
-You control the spending. The system harvests for free by default. You only spend money when you explicitly add a phone ID to the target list and the system bids on an ad impression for that phone.
+- **Capturing phone IDs:** Free
+- **Uploading creatives:** Free
+- **Uploading geofence CSVs:** Free
+- **Downloading phone IDs:** Free
+- **Bidding on impressions:** Campaign's CPM per 1,000 impressions (you set the price per campaign)
+- **Direct SDK pings:** Free
+- **Legacy target list bidding:** $0.50 per 1,000 impressions (only for geofences without campaigns)
