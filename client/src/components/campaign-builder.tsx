@@ -240,6 +240,15 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
     },
   });
 
+  // Creative upload form state
+  const [creativeName, setCreativeName] = useState("");
+  const [clickUrl, setClickUrl] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+
+  // CSV paste state
+  const [csvText, setCsvText] = useState("");
+  const [showCsvPaste, setShowCsvPaste] = useState(false);
+
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("PATCH", `/api/campaigns/${campaignId}`, data);
@@ -252,9 +261,11 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
   });
 
   const uploadCreativeMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, name, clickUrl: url }: { file: File; name: string; clickUrl?: string }) => {
       const formData = new FormData();
       formData.append("file", file);
+      if (name) formData.append("name", name);
+      if (url) formData.append("clickUrl", url);
       const res = await fetch(`/api/campaigns/${campaignId}/creatives`, {
         method: "POST",
         body: formData,
@@ -267,6 +278,9 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
     },
     onSuccess: (data) => {
       toast({ title: `Creative uploaded: ${data.name}` });
+      setCreativeName("");
+      setClickUrl("");
+      setPendingFile(null);
       queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] });
     },
     onError: (err: any) => {
@@ -275,13 +289,14 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
   });
 
   const uploadCsvMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const text = await file.text();
-      const res = await apiRequest("POST", `/api/campaigns/${campaignId}/upload-csv`, { csv: text });
+    mutationFn: async (csv: string) => {
+      const res = await apiRequest("POST", `/api/campaigns/${campaignId}/upload-csv`, { csv });
       return res.json();
     },
     onSuccess: (data) => {
       toast({ title: `CSV imported: ${data.created} geofences created, ${data.skipped} skipped` });
+      setCsvText("");
+      setShowCsvPaste(false);
       queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["geofences"] });
     },
@@ -379,9 +394,12 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
             type="file"
             accept=".csv,text/csv"
             className="hidden"
-            onChange={(e) => {
+            onChange={async (e) => {
               const f = e.target.files?.[0];
-              if (f) uploadCsvMutation.mutate(f);
+              if (f) {
+                const text = await f.text();
+                uploadCsvMutation.mutate(text);
+              }
               e.target.value = "";
             }}
           />
@@ -391,12 +409,36 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
             className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
           >
             {uploadCsvMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-            Upload CSV
+            Upload CSV File
+          </button>
+          <button
+            onClick={() => setShowCsvPaste(!showCsvPaste)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-medium hover:bg-muted/30"
+          >
+            {showCsvPaste ? "Hide Paste" : "Paste CSV Text"}
           </button>
           {uploadCsvMutation.data && (
             <span className="text-xs text-green-400">✓ {uploadCsvMutation.data.created} created</span>
           )}
         </div>
+        {showCsvPaste && (
+          <div className="space-y-2">
+            <textarea
+              value={csvText}
+              onChange={(e) => setCsvText(e.target.value)}
+              placeholder="name,latitude,longitude,radius_m,address,city,state&#10;J&J Auto Repair,41.681427,-73.855606,250,123 Main St,Poughkeepsie,NY"
+              className="bg-input border rounded px-2 py-1 text-xs w-full font-mono h-32"
+            />
+            <button
+              onClick={() => csvText && uploadCsvMutation.mutate(csvText)}
+              disabled={uploadCsvMutation.isPending || !csvText}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+            >
+              {uploadCsvMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+              Import Pasted CSV
+            </button>
+          </div>
+        )}
         <div className="bg-muted/30 rounded p-2 text-[10px] font-mono text-muted-foreground">
           name,latitude,longitude,radius_m,address,city,state<br/>
           J&J Auto Repair,41.681427,-73.855606,250,123 Main St,Poughkeepsie,NY
@@ -472,6 +514,9 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
                 <div className="text-[10px] text-muted-foreground">
                   {c.type} {c.width && `${c.width}x${c.height}`} {c.mimeType}
                 </div>
+                {c.clickUrl && (
+                  <div className="text-[10px] text-blue-400 truncate">→ {c.clickUrl}</div>
+                )}
               </div>
             ))}
           </div>
@@ -486,19 +531,54 @@ function CampaignDetailPage({ campaignId, onBack }: { campaignId: string; onBack
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) uploadCreativeMutation.mutate(f);
+            if (f) setPendingFile(f);
             e.target.value = "";
           }}
         />
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploadCreativeMutation.isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
-        >
-          {uploadCreativeMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-          Upload Creative (Image or Video)
-        </button>
-        <p className="text-[10px] text-muted-foreground">Max 10MB for images, 50MB for video. Supports PNG, JPG, GIF, WebP, MP4, WebM.</p>
+
+        {/* Creative metadata fields */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs font-medium block mb-1">Creative Name (optional)</label>
+            <input
+              value={creativeName}
+              onChange={(e) => setCreativeName(e.target.value)}
+              placeholder={pendingFile ? pendingFile.name : "e.g. Auto Repair Banner 320x50"}
+              className="bg-input border rounded px-2 py-1 text-xs w-full"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium block mb-1">Click URL (where the ad links to)</label>
+            <input
+              value={clickUrl}
+              onChange={(e) => setClickUrl(e.target.value)}
+              placeholder="https://your-landing-page.com"
+              className="bg-input border rounded px-2 py-1 text-xs w-full"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploadCreativeMutation.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+          >
+            {uploadCreativeMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+            {pendingFile ? `Upload: ${pendingFile.name}` : "Choose File"}
+          </button>
+          {pendingFile && (
+            <button
+              onClick={() => uploadCreativeMutation.mutate({ file: pendingFile, name: creativeName, clickUrl })}
+              disabled={uploadCreativeMutation.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-green-600 text-white text-xs font-medium hover:bg-green-700 disabled:opacity-50"
+            >
+              {uploadCreativeMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+              Upload Now
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] text-muted-foreground">Max 10MB for images, 50MB for video. Supports PNG, JPG, GIF, WebP, MP4, WebM. Click URL is where users go when they click your ad.</p>
       </div>
     </div>
   );
