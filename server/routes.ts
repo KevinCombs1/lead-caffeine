@@ -4804,6 +4804,34 @@ export async function registerRoutes(
     }
   });
 
+  // Re-geocode failed/scraped companies from a Line 1 job
+  // Resets their status to "pending" so Line 2 picks them up again
+  app.post("/api/supreme/line2/regeocode", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { sourceJobId, includeScraped, includeFailed } = req.body;
+      if (!sourceJobId) return res.status(400).json({ error: "sourceJobId required" });
+
+      const statuses: string[] = ["pending"];
+      if (includeScraped) statuses.push("scraped");
+      if (includeFailed !== false) statuses.push("failed");
+
+      // Reset matching companies to "pending" so Line 2 reprocesses them
+      const result = await db.execute(sql`
+        UPDATE supreme_companies
+        SET status = 'pending', error = NULL
+        WHERE job_id = ${sourceJobId}
+          AND line = 'line1'
+          AND status = ANY(${statuses}::text[])
+          AND (address IS NOT NULL AND address != '' OR city IS NOT NULL AND city != '')
+      `);
+
+      const resetCount = (result as any).rowCount || 0;
+      res.json({ reset: resetCount, message: `${resetCount} companies reset to pending. Run Line 2 again to re-geocode them.` });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/supreme/status", requireAuth, async (_req: Request, res: Response) => {
     try {
       const { getActiveSupremeEngine } = await import("./supreme-engine");

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Play, Square, Loader2, Download, Search, MapPin, Globe, Crosshair, Layers, Upload, Copy, Check } from "lucide-react";
+import { Play, Square, Loader2, Download, Search, MapPin, Globe, Crosshair, Layers, Upload, Copy, Check, RefreshCw } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -1124,25 +1124,46 @@ function Line2Tab({ isActive: _parentActive, activeLine: _parentActiveLine, caps
         </div>
 
         {/* Start / Stop */}
-        {!isRunning ? (
-          <button
-            onClick={() => handleStart()}
-            disabled={startLine2.isPending || (websiteText.split("\n").filter(l => l.trim()).length === 0 && line1Jobs.length === 0)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 text-white text-sm font-semibold rounded transition-colors"
-          >
-            {startLine2.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            Start Line 2
-          </button>
-        ) : (
-          <button
-            onClick={() => stopJob.mutate()}
-            disabled={stopJob.isPending}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded ring-2 ring-red-400 animate-pulse"
-          >
-            <Square className="w-4 h-4" />
-            Stop
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {!isRunning ? (
+            <button
+              onClick={() => handleStart()}
+              disabled={startLine2.isPending || (websiteText.split("\n").filter(l => l.trim()).length === 0 && line1Jobs.length === 0)}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 text-white text-sm font-semibold rounded transition-colors"
+            >
+              {startLine2.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              Start Line 2
+            </button>
+          ) : (
+            <button
+              onClick={() => stopJob.mutate()}
+              disabled={stopJob.isPending}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded ring-2 ring-red-400 animate-pulse"
+            >
+              <Square className="w-4 h-4" />
+              Stop
+            </button>
+          )}
+          {displayJobId && !isRunning && (
+            <button
+              onClick={async () => {
+                const res = await apiRequest("POST", "/api/supreme/line2/regeocode", {
+                  sourceJobId: displayJobId,
+                  includeScraped: true,
+                  includeFailed: true,
+                });
+                const data = await res.json();
+                alert(data.message);
+                window.location.reload();
+              }}
+              className="flex items-center gap-2 px-3 py-2 bg-amber-700 hover:bg-amber-600 text-white text-xs font-semibold rounded transition-colors"
+              title="Reset failed and scraped companies back to pending so Line 2 can try again"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Re-geocode Failed
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Inline progress banner — visible when running */}
