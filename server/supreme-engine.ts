@@ -1160,11 +1160,9 @@ export class SupremeEngine {
   }
 
   private async processLine2Company(company: SupremeCompany, workerId: number): Promise<void> {
-    const website = company.website;
-
-    // If no website AND no address, we can't geocode
-    if (!website && !company.address && !company.city) {
-      await storage.updateSupremeCompany(company.id, { status: "failed", error: "No website or address to geocode" });
+    // ── No address? Can't pin it. Skip. ──
+    if (!company.address && !company.city) {
+      await storage.updateSupremeCompany(company.id, { status: "failed", error: "No address to geocode" });
       this.failedCount++;
       return;
     }
@@ -1173,46 +1171,14 @@ export class SupremeEngine {
     let lng: number | undefined;
     let geoSource = "";
     let confidence = 0;
-    let foundAddress: ExtractedAddress = {};
 
-    // ── Step 1: Website scrape (only if we have a website) ──
-    if (website && this.line2Params.useWebsiteScrape) {
-      const homepage = await scrapeWebsite(website);
-      if (homepage) {
-        const pageHtmls = await scrapeContactPages(homepage.finalUrl, homepage.html);
-        for (const html of pageHtmls) {
-          if (lat && lng) break;
-          // Try coords first
-          const coords = extractCoordsFromHtml(html, homepage.finalUrl);
-          if (coords?.lat && coords.lng) {
-            lat = coords.lat;
-            lng = coords.lng;
-            geoSource = coords.source;
-            confidence = 85;
-            break;
-          }
-          // Try address
-          const addr = extractAddressFromHtml(html);
-          if (addr.city || addr.street) {
-            foundAddress = { ...foundAddress, ...addr };
-            if (!company.address && addr.street) {
-              company.address = buildFullAddress(addr);
-            }
-            if (!company.city && addr.city) company.city = addr.city;
-            if (!company.state && addr.state) company.state = addr.state;
-            if (!company.zip && addr.zip) company.zip = addr.zip;
-          }
-        }
-      }
-    }
-
-    // ── Step 2: Census Geocoder (if we have an address but no coords) ──
-    if (!lat && this.line2Params.useCensus && (company.address || (foundAddress.street && foundAddress.city))) {
+    // ── Step 1: Census Geocoder (address + city + state + zip) ──
+    if (!lat && this.line2Params.useCensus && company.address) {
       const result = await geocodeCensus(
-        company.address || foundAddress.street || "",
-        company.city || foundAddress.city,
-        company.state || foundAddress.state,
-        company.zip || foundAddress.zip
+        company.address,
+        company.city,
+        company.state,
+        company.zip
       );
       if (result) {
         lat = result.lat;
@@ -1222,13 +1188,13 @@ export class SupremeEngine {
       }
     }
 
-    // ── Step 2b: Census Geocoder retry with zip code only (city name mismatch is common) ──
-    if (!lat && this.line2Params.useCensus && (company.address || foundAddress.street) && (company.zip || foundAddress.zip)) {
+    // ── Step 1b: Census retry without city (hamlet/suburb names break Census) ──
+    if (!lat && this.line2Params.useCensus && company.address && company.zip) {
       const result = await geocodeCensus(
-        company.address || foundAddress.street || "",
-        undefined, // omit city — Census often fails on hamlet/suburb names
-        company.state || foundAddress.state,
-        company.zip || foundAddress.zip
+        company.address,
+        undefined,
+        company.state,
+        company.zip
       );
       if (result) {
         lat = result.lat;
@@ -1238,12 +1204,10 @@ export class SupremeEngine {
       }
     }
 
-    // ── Step 3: Nominatim — try business name + city first ──
-    if (!lat && this.line2Params.useNominatim) {
-      const query = company.name
-        ? `${company.name} ${company.city || ""} ${company.state || ""}`
-        : `${company.address || foundAddress.street || ""} ${company.city || foundAddress.city || ""} ${company.state || foundAddress.state || ""}`;
-      const result = await geocodeNominatim(this.nominatimGate, query.trim(), company.city || foundAddress.city, company.state || foundAddress.state);
+    // ── Step 2: Nominatim with full street address ──
+    if (!lat && this.line2Params.useNominatim && company.address) {
+      const addrQuery = `${company.address}, ${company.city || ""}, ${company.state || ""} ${company.zip || ""}`;
+      const result = await geocodeNominatim(this.nominatimGate, addrQuery.trim(), undefined, undefined);
       if (result) {
         lat = result.lat;
         lng = result.lng;
@@ -1252,41 +1216,18 @@ export class SupremeEngine {
       }
     }
 
-    // ── Step 3b: Nominatim — retry with full address (name-based search may fail for small businesses) ──
-    if (!lat && this.line2Params.useNominatim && (company.address || foundAddress.street)) {
-      const addrQuery = `${company.address || foundAddress.street || ""}, ${company.city || foundAddress.city || ""}, ${company.state || foundAddress.state || ""} ${company.zip || foundAddress.zip || ""}`;
-      const result = await geocodeNominatim(this.nominatimGate, addrQuery.trim(), undefined, undefined);
+    // ── Step 2b: Nominatim with just city (if no street address) ──
+    if (!lat && this.line2Params.useNominatim && !company.address && company.city) {
+      const result = await geocodeNominatim(
+        this.nominatimGate,
+        `${company.city}, ${company.state || ""}`,
+        company.city,
+        company.state
+      );
       if (result) {
         lat = result.lat;
         lng = result.lng;
-        geoSource = "nominatim-addr";
-        confidence = result.confidence;
-      }
-    }
-
-    // ── Step 4: Google Places (if still no coords) ──
-    if (!lat && this.line2Params.useGooglePlaces && company.name) {
-      const result = await geocodeGooglePlaces(company.name, company.city, company.state);
-      if (result) {
-        lat = result.lat;
-        lng = result.lng;
-        geoSource = "google-places";
-        confidence = result.confidence;
-      }
-    }
-
-    // ── Step 5: Chromium / Maps search via FlareSolverr (last resort) ──
-    if (!lat && this.line2Params.useChromium) {
-      const query = company.name
-        ? `${company.name} ${company.city || ""} ${company.state || ""}`
-        : website
-          ? website
-          : `${company.address || ""} ${company.city || ""} ${company.state || ""}`;
-      const result = await geocodeViaChromium(query.trim());
-      if (result) {
-        lat = result.lat;
-        lng = result.lng;
-        geoSource = "chromium-maps";
+        geoSource = "nominatim-city";
         confidence = result.confidence;
       }
     }
@@ -1301,24 +1242,24 @@ export class SupremeEngine {
         geocodeSource: geoSource,
         geocodeConfidence: confidence,
         pinQuery,
-        address: company.address || (foundAddress.street ? buildFullAddress(foundAddress) : null),
-        city: company.city || foundAddress.city || null,
-        state: company.state || foundAddress.state || null,
-        zip: company.zip || foundAddress.zip || null,
+        address: company.address || null,
+        city: company.city || null,
+        state: company.state || null,
+        zip: company.zip || null,
       });
       this.geocodedCount++;
-      this.log(`[W${workerId}] ✓ ${company.name || website || company.address || "unknown"} → ${pinQuery} (${geoSource}, ${confidence}%)`);
+      this.log(`[W${workerId}] ✓ ${company.name || company.address || "unknown"} → ${pinQuery} (${geoSource}, ${confidence}%)`);
     } else {
       await storage.updateSupremeCompany(company.id, {
         status: "failed",
         error: "No coordinates found from any source",
-        address: company.address || (foundAddress.street ? buildFullAddress(foundAddress) : null),
-        city: company.city || foundAddress.city || null,
-        state: company.state || foundAddress.state || null,
-        zip: company.zip || foundAddress.zip || null,
+        address: company.address || null,
+        city: company.city || null,
+        state: company.state || null,
+        zip: company.zip || null,
       });
       this.failedCount++;
-      this.log(`[W${workerId}] ✗ ${company.name || website || company.address || "unknown"} — no coordinates found`);
+      this.log(`[W${workerId}] ✗ ${company.name || company.address || "unknown"} — no coordinates found`);
     }
   }
 
