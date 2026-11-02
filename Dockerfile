@@ -20,9 +20,6 @@ COPY . .
 # Build client + server (needs tsx, esbuild, vite from devDeps)
 RUN npm run build
 
-# Prune dev dependencies — only keep what the production bundle needs
-RUN npm prune --omit=dev
-
 # Expose port
 ENV PORT=5001
 EXPOSE 5001
