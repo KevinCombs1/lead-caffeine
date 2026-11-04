@@ -184,21 +184,45 @@ export class EpomAdapter {
   // ── Geofences ────────────────────────────────────────────────────────
 
   /**
+   * Generate a GeoJSON Polygon approximating a circle.
+   * Uses 32 points around the circumference.
+   * Uses the equirectangular approximation for small-radius geofences.
+   */
+  private circleToGeoJson(lat: number, lng: number, radiusM: number) {
+    const points: number[][] = [];
+    const numPoints = 32;
+    const earthRadius = 6378137; // meters
+
+    for (let i = 0; i <= numPoints; i++) {
+      const angle = (2 * Math.PI * i) / numPoints;
+      const dx = radiusM * Math.cos(angle);
+      const dy = radiusM * Math.sin(angle);
+
+      // Convert meter offsets to lat/lng using equirectangular projection
+      const dLat = (dy / earthRadius) * (180 / Math.PI);
+      const dLng = (dx / (earthRadius * Math.cos((lat * Math.PI) / 180))) * (180 / Math.PI);
+
+      points.push([lng + dLng, lat + dLat]);
+    }
+
+    return {
+      type: "Polygon",
+      coordinates: [points],
+    };
+  }
+
+  /**
    * Create a single geo-fence on Epom.
-   * Epom supports circular geofences with lat/lng + radius.
    */
   async createGeofence(geo: EpomGeofence): Promise<string> {
     const headers = await this.authHeaders();
+    const geoJson = this.circleToGeoJson(geo.latitude, geo.longitude, geo.radiusM);
     const res = await fetch(`${this.credentials.baseUrl}/geofence`, {
       method: "POST",
       headers,
       body: JSON.stringify({
         name: geo.name,
-        type: "CIRCLE",
-        latitude: geo.latitude,
-        longitude: geo.longitude,
-        radius: geo.radiusM,
-        radiusUnit: "METER",
+        geoJson,
       }),
     });
 
@@ -213,7 +237,7 @@ export class EpomAdapter {
 
   /**
    * Bulk upload geofence polygons to Epom.
-   * Uploads all geofences as a batch.
+   * Epom expects an array of { name, geoJson } objects.
    */
   async uploadGeofenceBatch(geofences: EpomGeofence[]): Promise<{ uploaded: number; success: boolean }> {
     const token = await this.authenticate();
@@ -221,11 +245,7 @@ export class EpomAdapter {
 
     const payload = geofences.map((g) => ({
       name: g.name,
-      type: "CIRCLE",
-      latitude: g.latitude,
-      longitude: g.longitude,
-      radius: g.radiusM,
-      radiusUnit: "METER",
+      geoJson: this.circleToGeoJson(g.latitude, g.longitude, g.radiusM),
     }));
 
     const res = await fetch(url, {
