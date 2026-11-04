@@ -222,7 +222,7 @@ export class EpomAdapter {
       headers,
       body: JSON.stringify({
         name: geo.name,
-        geoJson,
+        geoJson: JSON.stringify(geoJson),
       }),
     });
 
@@ -245,7 +245,7 @@ export class EpomAdapter {
 
     const payload = geofences.map((g) => ({
       name: g.name,
-      geoJson: this.circleToGeoJson(g.latitude, g.longitude, g.radiusM),
+      geoJson: JSON.stringify(this.circleToGeoJson(g.latitude, g.longitude, g.radiusM)),
     }));
 
     const res = await fetch(url, {
