@@ -714,11 +714,8 @@ function Line2Tab({ isActive: _parentActive, activeLine: _parentActiveLine, caps
 
   const [websiteText, setWebsiteText] = useState("");
   const [radiusYards, setRadiusYards] = useState(250);
-  const [useWebsiteScrape, setUseWebsiteScrape] = useState(true);
   const [useCensus, setUseCensus] = useState(true);
   const [useNominatim, setUseNominatim] = useState(true);
-  const [useGooglePlaces, setUseGooglePlaces] = useState(false);
-  const [useChromium, setUseChromium] = useState(true);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [viewJobId, setViewJobId] = useState<string | null>(null);
@@ -880,11 +877,8 @@ function Line2Tab({ isActive: _parentActive, activeLine: _parentActiveLine, caps
       websites: sourceJobId || inputMode === "addresses" ? [] : websites,
       addresses: inputMode === "addresses" ? parsedAddresses : undefined,
       radiusYards,
-      useWebsiteScrape,
       useCensus,
       useNominatim,
-      useGooglePlaces,
-      useChromium,
       sourceJobId,
       onlyWithAddress,
     });
@@ -1100,11 +1094,8 @@ function Line2Tab({ isActive: _parentActive, activeLine: _parentActiveLine, caps
         <div>
           <label className="text-xs font-semibold text-gray-400 uppercase mb-2 block">Geocode Sources (cascading)</label>
           <div className="flex flex-wrap gap-3">
-            <SourceToggle label="Website Scrape" desc="JSON-LD, meta, Google Maps embed" enabled={useWebsiteScrape} setEnabled={setUseWebsiteScrape} disabled={isRunning} color="cyan" />
             <SourceToggle label="Census Geocoder" desc="Free, US addresses" enabled={useCensus} setEnabled={setUseCensus} disabled={isRunning} color="green" />
             <SourceToggle label="Nominatim" desc="OpenStreetMap, 1 req/s" enabled={useNominatim} setEnabled={setUseNominatim} disabled={isRunning} color="blue" />
-            <SourceToggle label="Google Places" desc={caps?.googlePlaces ? "API key detected" : "No API key"} enabled={useGooglePlaces} setEnabled={setUseGooglePlaces} disabled={isRunning || !caps?.googlePlaces} color="amber" />
-            <SourceToggle label="Chromium / Maps" desc={caps?.flaresolverr ? "FlareSolverr ready" : "FlareSolverr off"} enabled={useChromium} setEnabled={setUseChromium} disabled={isRunning} color="purple" />
           </div>
         </div>
 

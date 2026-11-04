@@ -49,13 +49,16 @@ async function initPostgres() {
   console.log('[3/5] Running Geofence platform migration...');
   await runSqlFile(path.join(__dirname, '..', 'migrations', '0007_geofence_platform.sql'), 'Geofence tables created (with PostGIS geometry + GIST index)');
 
-  console.log('[4/5] Running Campaign Builder migration...');
+  console.log('[4/6] Running Campaign Builder migration...');
   await runSqlFile(path.join(__dirname, '..', 'migrations', '0008_campaign_builder.sql'), 'Campaign, creative, and campaign_geofences tables created');
+
+  console.log('[5/6] Running DSP sync logs migration...');
+  await runSqlFile(path.join(__dirname, '..', 'migrations', '0009_dsp_sync_logs.sql'), 'DSP sync logs table created');
 }
 
 // ── ClickHouse: Create analytics tables ──────────────────────────────────
 async function initClickHouse() {
-  console.log('[5/5] Creating ClickHouse tables...');
+  console.log('[6/6] Creating ClickHouse tables...');
 
   const authHeader = 'Basic ' + Buffer.from(`${CH_USER}:${CH_PASSWORD}`).toString('base64');
 
