@@ -737,7 +737,7 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
   const [dsp, setDsp] = useState<"epom" | "smartyads">("epom");
   const [epomLogin, setEpomLogin] = useState("");
   const [epomPassword, setEpomPassword] = useState("");
-  const [epomBaseUrl, setEpomBaseUrl] = useState("https://api.epom.com");
+  const [epomBaseUrl, setEpomBaseUrl] = useState("https://dsp-api.epommarket.com");
   const [apiToken, setApiToken] = useState("");
   const [audienceName, setAudienceName] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -969,7 +969,7 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
               <input
                 value={epomBaseUrl}
                 onChange={(e) => setEpomBaseUrl(e.target.value)}
-                placeholder="https://api.epom.com"
+                placeholder="https://dsp-api.epommarket.com"
                 className="bg-input border rounded px-2 py-1 text-xs w-full"
               />
             </div>
