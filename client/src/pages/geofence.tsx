@@ -857,6 +857,7 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
       return;
     }
     setFetchingCampaigns(true);
+    setEpomCampaigns([]);
     try {
       const res = await apiRequest("POST", "/api/dsp/epom/campaigns", {
         login: epomLogin,
@@ -864,11 +865,24 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
         baseUrl: epomBaseUrl,
       });
       const data = await res.json();
-      setEpomCampaigns(data.campaigns || []);
-      if ((data.campaigns || []).length === 0) {
+      // Handle multiple possible response shapes
+      let campaigns = [];
+      if (Array.isArray(data)) {
+        campaigns = data;
+      } else if (Array.isArray(data.campaigns)) {
+        campaigns = data.campaigns;
+      } else if (Array.isArray(data.items)) {
+        campaigns = data.items;
+      } else if (data.id) {
+        campaigns = [data];
+      } else if (data.error) {
+        toast({ title: `Epom error: ${data.error}`, variant: "destructive" });
+      }
+      setEpomCampaigns(campaigns);
+      if (campaigns.length === 0 && !data.error) {
         toast({ title: "No campaigns found on Epom" });
-      } else {
-        toast({ title: `Found ${(data.campaigns || []).length} campaigns on Epom` });
+      } else if (campaigns.length > 0) {
+        toast({ title: `Found ${campaigns.length} campaigns on Epom` });
       }
     } catch (err: any) {
       toast({ title: `Failed to fetch campaigns: ${err.message}`, variant: "destructive" });
@@ -1133,32 +1147,37 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
 
           {epomCampaigns.length > 0 && (
             <div className="space-y-2">
-              {epomCampaigns.map((c: any) => (
-                <div key={c.id || c.campaignId} className="border rounded p-2 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-medium">{c.name || c.campaignName}</span>
-                      <span className="text-[10px] text-muted-foreground ml-2">ID: {c.id || c.campaignId}</span>
-                      {c.status && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground ml-2">{c.status}</span>}
-                    </div>
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => fetchEpomCreatives(c.id || c.campaignId)}
-                        className="px-2 py-1 rounded bg-muted hover:bg-muted/70 text-[10px] font-medium"
-                      >
-                        Show Creatives
-                      </button>
-                      <button
-                        onClick={() => approveAllCreatives(c.id || c.campaignId)}
-                        disabled={approvingAll}
-                        className="px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 text-[10px] font-medium disabled:opacity-50"
-                      >
-                        {approvingAll ? "Approving..." : "Approve All"}
-                      </button>
+              {epomCampaigns.map((c: any, idx: number) => {
+                const cid = c.id || c.campaignId || c.campaign || String(idx);
+                const cname = c.name || c.campaignName || `Campaign ${cid}`;
+                const cstatus = c.status || c.campaignStatus;
+                return (
+                  <div key={cid} className="border rounded p-2 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-medium">{cname}</span>
+                        <span className="text-[10px] text-muted-foreground ml-2">ID: {cid}</span>
+                        {cstatus && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground ml-2">{String(cstatus)}</span>}
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => fetchEpomCreatives(cid)}
+                          className="px-2 py-1 rounded bg-muted hover:bg-muted/70 text-[10px] font-medium"
+                        >
+                          Show Creatives
+                        </button>
+                        <button
+                          onClick={() => approveAllCreatives(cid)}
+                          disabled={approvingAll}
+                          className="px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 text-[10px] font-medium disabled:opacity-50"
+                        >
+                          {approvingAll ? "Approving..." : "Approve All"}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {approveResult && (
                 <div className="bg-muted/30 rounded p-2 text-xs font-mono">
                   <pre>{JSON.stringify(approveResult, null, 2)}</pre>
@@ -1171,40 +1190,45 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
             <div className="border rounded p-2">
               <p className="text-xs font-medium mb-1.5">Creatives:</p>
               <div className="space-y-1">
-                {epomCreatives.map((cr: any) => (
-                  <div key={cr.id || cr.creativeId} className="flex items-center justify-between p-1.5 rounded hover:bg-muted/30">
-                    <div>
-                      <span className="text-xs">{cr.name || cr.creativeName || "Unnamed"}</span>
-                      <span className="text-[10px] text-muted-foreground ml-2">ID: {cr.id || cr.creativeId}</span>
+                {epomCreatives.map((cr: any, idx: number) => {
+                  const crid = cr.id || cr.creativeId || String(idx);
+                  const crname = cr.name || cr.creativeName || `Creative ${crid}`;
+                  const crstatus = cr.approvalStatus || cr.approval;
+                  return (
+                    <div key={crid} className="flex items-center justify-between p-1.5 rounded hover:bg-muted/30">
+                      <div>
+                        <span className="text-xs">{crname}</span>
+                        <span className="text-[10px] text-muted-foreground ml-2">ID: {crid}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {crstatus && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            String(crstatus).toUpperCase() === "APPROVED" ? "bg-green-500/20 text-green-400" :
+                            String(crstatus).toUpperCase() === "DISAPPROVED" ? "bg-red-500/20 text-red-400" :
+                            "bg-yellow-500/20 text-yellow-400"
+                          }`}>{String(crstatus)}</span>
+                        )}
+                        <button
+                          onClick={() => {
+                            const campaignId = epomCampaigns[0]?.id || epomCampaigns[0]?.campaignId;
+                            if (campaignId) {
+                              apiRequest("POST", "/api/dsp/epom/creative/approve", {
+                                login: epomLogin, password: epomPassword, baseUrl: epomBaseUrl,
+                                campaignId, creativeId: crid,
+                              }).then(() => {
+                                toast({ title: "Creative approved" });
+                                fetchEpomCreatives(campaignId);
+                              }).catch((err: any) => toast({ title: `Failed: ${err.message}`, variant: "destructive" }));
+                            }
+                          }}
+                          className="text-[10px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700"
+                        >
+                          Approve
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {cr.approvalStatus && (
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                          cr.approvalStatus === "APPROVED" ? "bg-green-500/20 text-green-400" :
-                          cr.approvalStatus === "DISAPPROVED" ? "bg-red-500/20 text-red-400" :
-                          "bg-yellow-500/20 text-yellow-400"
-                        }`}>{cr.approvalStatus}</span>
-                      )}
-                      <button
-                        onClick={() => {
-                          const campaignId = epomCampaigns[0]?.id || epomCampaigns[0]?.campaignId;
-                          if (campaignId) {
-                            apiRequest("POST", "/api/dsp/epom/creative/approve", {
-                              login: epomLogin, password: epomPassword, baseUrl: epomBaseUrl,
-                              campaignId, creativeId: cr.id || cr.creativeId,
-                            }).then(() => {
-                              toast({ title: "Creative approved" });
-                              fetchEpomCreatives(campaignId);
-                            }).catch((err: any) => toast({ title: `Failed: ${err.message}`, variant: "destructive" }));
-                          }
-                        }}
-                        className="text-[10px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700"
-                      >
-                        Approve
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
