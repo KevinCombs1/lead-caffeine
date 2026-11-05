@@ -16,6 +16,7 @@ import { SIC_INDUSTRIES, findCompaniesBySIC, findCompaniesByFormD, findCompanies
 import { isInfrastructureDomain, getBlockedDomainCategory } from "./domain-blocklist";
 import { submitSingleForm, runBatchSubmission, isActionableForm, type SenderProfile, type FormTarget, type BatchItem } from "./form-submitter";
 import { checkMaidDedup, addToAudienceSet, getAudienceMAIDsForGeofences, logToClickHouse, getCaptureAnalytics, getTotalUniqueDevices, isTargetedMaid, addTargetMaids, removeTargetMaid, getTargetMaidCount, getTargetMaids, getClickHouse } from "./geofence-pipeline";
+import { incrementBidCount } from "./exchange-manager";
 import * as cheerio from "cheerio";
 import { smartGet } from "./smart-retry";
 import dns from "dns";
@@ -5907,7 +5908,6 @@ export async function registerRoutes(
       // Track bid request from exchange partner (non-blocking)
       if (apiKey) {
         try {
-          const { incrementBidCount } = await import("./exchange-manager");
           incrementBidCount(apiKey);
         } catch {}
       }
@@ -5919,10 +5919,17 @@ export async function registerRoutes(
       const lng = geo.lon;
       const maid = device.ifa || device.idfa || device.aaid || device.dpid || device.rida || null;
       const imps = bid?.imp || [];
+      const tmax = bid?.tmax || 200;
+      const deadline = Date.now() + tmax;
 
       // Reject immediately if no valid location data — 204 no-bid
       if (typeof lat !== "number" || typeof lng !== "number") {
-        return res.status(204).json({});
+        return res.status(204).end();
+      }
+
+      // tmax deadline check before PostGIS
+      if (Date.now() > deadline) {
+        return res.status(204).end();
       }
 
       // Step 1: PostGIS — find which geofences contain this point
@@ -5930,7 +5937,7 @@ export async function registerRoutes(
 
       if (matches.length === 0) {
         // Outside all geofences — free harvest, no capture
-        return res.status(204).json({});
+        return res.status(204).end();
       }
 
       const match = matches[0];
@@ -5987,10 +5994,10 @@ export async function registerRoutes(
       })();
 
       // Step 5: Bidding logic
-      // First try campaign-based bidding: look up active campaigns linked
-      // to the matched geofence. If any exist and have a matching creative,
-      // bid at the campaign's bidPriceCpm. Otherwise fall back to the legacy
-      // target_maids Redis logic.
+      // Check tmax deadline before campaign lookup
+      if (Date.now() > deadline) {
+        return res.status(204).end();
+      }
       const activeCampaigns = await storage.getActiveCampaignsForGeofence(match.id);
 
       if (activeCampaigns.length > 0 && imps.length > 0) {
@@ -6001,7 +6008,7 @@ export async function registerRoutes(
 
         const imp = imps[0];
         const bidId = `bid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const serverDomain = process.env.BIDDER_DOMAIN || `https://leadcaffeine.com`;
+        const serverDomain = (process.env.BIDDER_DOMAIN || `https://leadcaffeine.com`).replace(/^http:/, "https:");
         const bidPrice = campaign.bidPriceCpm;
 
         // Banner impression: need an image creative
@@ -6041,13 +6048,14 @@ export async function registerRoutes(
                   impid: imp.id || "1",
                   price: bidPrice,
                   adid: campaign.id,
+                  adomain: ["leadcaffeine.com"],
                   adm,
                   nurl: `${serverDomain}/api/openrtb/win?price=\${AUCTION_PRICE}&maid=${encodeURIComponent(maid || "")}&geofence=${encodeURIComponent(match.id)}&campaign=${encodeURIComponent(campaign.id)}&creative=${encodeURIComponent(imageCreative.id)}`,
                   w,
                   h,
                 }],
               }],
-              cur: ["USD"],
+              cur: "USD",
             };
 
             // Fire-and-forget stat increment
@@ -6085,13 +6093,14 @@ export async function registerRoutes(
                   impid: imp.id || "1",
                   price: bidPrice,
                   adid: campaign.id,
+                  adomain: ["leadcaffeine.com"],
                   adm,
                   nurl: `${serverDomain}/api/openrtb/win?price=\${AUCTION_PRICE}&maid=${encodeURIComponent(maid || "")}&geofence=${encodeURIComponent(match.id)}&campaign=${encodeURIComponent(campaign.id)}&creative=${encodeURIComponent(videoCreative.id)}`,
                   w,
                   h,
                 }],
               }],
-              cur: ["USD"],
+              cur: "USD",
             };
 
             storage.incrementCampaignStats(campaign.id, { impressions: 1 }).catch(() => {});
@@ -6102,7 +6111,7 @@ export async function registerRoutes(
         }
 
         // Impression type doesn't match any creative — fall through to no-bid
-        return res.status(204).json({});
+        return res.status(204).end();
       }
 
       // Fall back to legacy target_maids Redis logic
@@ -6114,7 +6123,7 @@ export async function registerRoutes(
         const bidPrice = 0.50;
         const imp = imps[0];
         const bidId = `bid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const serverDomain = process.env.BIDDER_DOMAIN || `https://leadcaffeine.com`;
+        const serverDomain = (process.env.BIDDER_DOMAIN || `https://leadcaffeine.com`).replace(/^http:/, "https:");
 
         const bidResponse = {
           id: bid.id || bidId,
@@ -6125,23 +6134,24 @@ export async function registerRoutes(
               impid: imp.id || "1",
               price: bidPrice,
               adid: "campaign_geo_01",
+              adomain: ["leadcaffeine.com"],
               adm: `<a href="${serverDomain}/api/openrtb/click?maid=${encodeURIComponent(maid || "")}"><img src="${serverDomain}/api/openrtb/creative?maid=${encodeURIComponent(maid || "")}" width="${imp.banner?.w || 320}" height="${imp.banner?.h || 50}" border="0" alt="Geofence Targeted Ad"/></a>`,
               nurl: `${serverDomain}/api/openrtb/win?price=\${AUCTION_PRICE}&maid=${encodeURIComponent(maid || "")}&geofence=${encodeURIComponent(match.id)}`,
               w: imp.banner?.w || 320,
               h: imp.banner?.h || 50,
             }],
           }],
-          cur: ["USD"],
+          cur: "USD",
         };
 
         return res.status(200).json(bidResponse);
       }
 
       // NOT TARGETED: return 204 no-bid (free harvest)
-      res.status(204).json({});
+      res.status(204).end();
     } catch {
       // On error, always return 204 no-bid so SSP doesn't penalize
-      res.status(204).json({});
+      res.status(204).end();
     }
   });
 

@@ -3,7 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { mkdirSync } from "fs";
-import { gunzipSync } from "zlib";
+import { gunzip } from "zlib";
 
 // Prevent crashes during startup when dependent services (DB, Redis, ClickHouse)
 // are temporarily unavailable. Once they come up, connections retry automatically.
@@ -41,22 +41,27 @@ declare module "http" {
 }
 
 // Gzip decompression for incoming bid requests (BidSwitch and other exchanges send gzip)
-// Exchanges send Content-Encoding: gzip — we decompress before JSON parsing
-app.use((req: Request, _res: Response, next: NextFunction) => {
+// Uses async gunzip to avoid blocking the event loop under high QPS
+app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.headers["content-encoding"] === "gzip") {
     let chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
-      try {
-        const decompressed = gunzipSync(Buffer.concat(chunks));
-        (req as any).body = JSON.parse(decompressed.toString());
-        next();
-      } catch (err) {
-        // If decompression fails, let express.json try to handle it
-        next();
-      }
+      gunzip(Buffer.concat(chunks), (err, decompressed) => {
+        if (err) {
+          // Malformed gzip — return 204 no-bid, don't crash
+          return res.status(204).end();
+        }
+        try {
+          (req as any).body = JSON.parse(decompressed.toString());
+          next();
+        } catch {
+          // Malformed JSON inside gzip — return 204
+          return res.status(204).end();
+        }
+      });
     });
-    req.on("error", () => next());
+    req.on("error", () => res.status(204).end());
   } else {
     next();
   }
@@ -72,6 +77,14 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false, limit: "10mb" }));
+
+// Handle malformed JSON — return 204 no-bid instead of 500 (exchange compliance)
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
+    return res.status(204).end();
+  }
+  next(err);
+});
 
 // Health check — registered BEFORE Vite middleware so it always responds
 // even when the event loop is under pressure from discovery workers.
