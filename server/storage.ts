@@ -261,6 +261,7 @@ export interface IStorage {
   createCreative(creative: InsertCreative): Promise<Creative>;
   getCreative(id: string): Promise<Creative | undefined>;
   getCreativesByCampaign(campaignId: string): Promise<Creative[]>;
+  updateCreative(id: string, updates: Partial<Creative>): Promise<Creative | undefined>;
   deleteCreative(id: string): Promise<void>;
 
   // Campaign-Geofence links
@@ -1853,6 +1854,11 @@ export class DatabaseStorage implements IStorage {
 
   async getCreativesByCampaign(campaignId: string): Promise<Creative[]> {
     return await db.select().from(creatives).where(eq(creatives.campaignId, campaignId)).orderBy(desc(creatives.createdAt));
+  }
+
+  async updateCreative(id: string, updates: Partial<Creative>): Promise<Creative | undefined> {
+    const [updated] = await db.update(creatives).set(updates).where(eq(creatives.id, id)).returning();
+    return updated;
   }
 
   async deleteCreative(id: string): Promise<void> {

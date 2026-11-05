@@ -6438,5 +6438,166 @@ export async function registerRoutes(
     }
   });
 
+  // ── Exchange Connection Management ───────────────────────────────────
+
+  // List available exchange partners (static info)
+  app.get("/api/exchanges/available", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { EXCHANGE_PARTNERS } = await import("./exchange-manager");
+      res.json(EXCHANGE_PARTNERS);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // List configured exchange connections
+  app.get("/api/exchanges", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { getExchangePartners } = await import("./exchange-manager");
+      const partners = await getExchangePartners();
+      res.json(partners);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Add a new exchange connection (generates API key)
+  app.post("/api/exchanges", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { name, endpoint, notes } = req.body;
+      if (!name) return res.status(400).json({ error: "name required" });
+      const { generateApiKey, saveExchangePartner } = await import("./exchange-manager");
+      const apiKey = generateApiKey();
+      const bidEndpoint = `${process.env.BIDDER_DOMAIN || "https://leadcaffeine.com"}/api/openrtb/auction`;
+      const id = await saveExchangePartner({
+        name,
+        endpoint: endpoint || "",
+        bidEndpoint,
+        apiKey,
+        status: "pending",
+        notes: notes || "",
+      });
+      res.json({ id, name, apiKey, bidEndpoint, message: `Connection created. Give the SSP this bid endpoint: ${bidEndpoint} and this API key: ${apiKey}` });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Activate/suspend an exchange connection
+  app.patch("/api/exchanges/:id/status", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { status } = req.body;
+      if (!["pending", "active", "suspended"].includes(status)) {
+        return res.status(400).json({ error: "status must be pending, active, or suspended" });
+      }
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`UPDATE exchange_partners SET status = ${status} WHERE id = ${req.params.id}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Creative Self-Approval ───────────────────────────────────────────
+
+  // Audit a creative (automated IAB compliance check)
+  app.post("/api/creative/audit", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { auditCreative } = await import("./creative-audit");
+      const result = auditCreative(req.body);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Approve all creatives for a campaign (self-approval, no Epom needed)
+  app.post("/api/campaigns/:id/approve-all", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { auditCreative } = await import("./creative-audit");
+      const creatives = await storage.getCreativesByCampaign(req.params.id);
+      let approved = 0;
+      let rejected = 0;
+      const details: any[] = [];
+
+      for (const c of creatives) {
+        const audit = auditCreative({
+          adm: c.type === "image" ? `<img src="${process.env.BIDDER_DOMAIN || "https://leadcaffeine.com"}/api/creative/${c.id}">` : undefined,
+          adomain: c.clickUrl ? new URL(c.clickUrl).hostname : undefined,
+          contentType: c.type,
+          clickUrl: c.clickUrl || undefined,
+        });
+
+        if (audit.status === "APPROVED") {
+          await storage.updateCreative(c.id, { status: "active" });
+          approved++;
+          details.push({ creativeId: c.id, status: "APPROVED" });
+        } else {
+          rejected++;
+          details.push({ creativeId: c.id, status: "REJECTED", reason: audit.reason });
+        }
+      }
+
+      res.json({ approved, rejected, details, message: `${approved} approved, ${rejected} rejected` });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── S2S Conversion Tracking ──────────────────────────────────────────
+
+  // Track a conversion (called from landing page tracker)
+  app.post("/api/conversion", async (req: Request, res: Response) => {
+    try {
+      const { tid, event_id, conversion_value, creative_id, campaign_id, geofence_id, maid, ip, ua } = req.body;
+      if (!tid) return res.status(400).json({ error: "tid (tracking id) required" });
+
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+
+      // Store conversion
+      await db.execute(sql`
+        INSERT INTO conversions (tracking_id, creative_id, campaign_id, event_id, conversion_value, geofence_id, maid, ip, user_agent, recorded_at)
+        VALUES (${tid}, ${creative_id || null}, ${campaign_id || null}, ${event_id || 1}, ${conversion_value || 0}, ${geofence_id || null}, ${maid || null}, ${ip || null}, ${ua || null}, NOW())
+        ON CONFLICT DO NOTHING
+      `);
+
+      // Auto-optimize bidder weights based on conversion
+      await db.execute(sql`
+        INSERT INTO bidder_weights (tracking_id, creative_id, campaign_id, geofence_id, conversion_score, bid_multiplier, updated_at)
+        VALUES (${tid}, ${creative_id || null}, ${campaign_id || null}, ${geofence_id || null}, 1.5, 1.2, NOW())
+        ON CONFLICT (tracking_id) DO UPDATE
+        SET conversion_score = bidder_weights.conversion_score + 1.5,
+            bid_multiplier = LEAST(bidder_weights.bid_multiplier + 0.1, 3.0),
+            updated_at = NOW()
+      `).catch(() => {});
+
+      res.json({ status: "success", bid_auto_optimized: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get conversion analytics
+  app.get("/api/conversions", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const campaignId = req.query.campaignId as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 50;
+
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+
+      const query = campaignId
+        ? sql`SELECT * FROM conversions WHERE campaign_id = ${campaignId} ORDER BY recorded_at DESC LIMIT ${limit}`
+        : sql`SELECT * FROM conversions ORDER BY recorded_at DESC LIMIT ${limit}`;
+
+      const result = await db.execute(query);
+      res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return httpServer;
 }
