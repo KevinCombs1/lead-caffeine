@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MapPin, Radio, Users, Loader2, Power, Trash2, RefreshCw, Smartphone, Send, Zap, Megaphone, Upload, FileUp } from "lucide-react";
+import { MapPin, Radio, Users, Loader2, Power, Trash2, RefreshCw, Smartphone, Send, Zap, Megaphone, Upload, FileUp, Network, CheckCircle, XCircle, DollarSign, TrendingUp, Plus } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import CampaignBuilder from "@/components/campaign-builder";
@@ -66,7 +66,7 @@ interface GeofenceGroup {
   source: string;
 }
 
-type Tab = "dashboard" | "geofences" | "devices" | "segments" | "bidstream" | "sync" | "campaigns";
+type Tab = "dashboard" | "geofences" | "devices" | "segments" | "bidstream" | "sync" | "campaigns" | "exchanges" | "conversions";
 
 export default function GeofencePage() {
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -230,8 +230,10 @@ export default function GeofencePage() {
     { key: "devices", label: "Captured Devices", icon: Smartphone },
     { key: "segments", label: "Audience Segments", icon: Users },
     { key: "bidstream", label: "Bidstream Test", icon: Radio },
+    { key: "exchanges", label: "Exchanges", icon: Network },
     { key: "sync", label: "DSP Sync", icon: Send },
     { key: "campaigns", label: "Campaigns", icon: Megaphone },
+    { key: "conversions", label: "Conversions", icon: TrendingUp },
   ];
 
   return (
@@ -616,6 +618,14 @@ export default function GeofencePage() {
         {/* Campaign Builder tab */}
         {tab === "campaigns" && (
           <CampaignBuilder />
+        )}
+
+        {tab === "exchanges" && (
+          <ExchangeConnectionsTab />
+        )}
+
+        {tab === "conversions" && (
+          <ConversionsTab />
         )}
       </div>
     </div>
@@ -1336,6 +1346,272 @@ Content-Type: application/json
             <span className="w-2 h-2 rounded-full bg-green-400" /> Epom — self-serve, no minimum
           </a>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Exchange Connections Tab ───────────────────────────────────────────
+
+function ExchangeConnectionsTab() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [addResult, setAddResult] = useState<any>(null);
+
+  const { data: available = [] } = useQuery<any[]>({
+    queryKey: ["exchanges-available"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/exchanges/available");
+      return res.json();
+    },
+  });
+
+  const { data: connections = [] } = useQuery<any[]>({
+    queryKey: ["exchanges"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/exchanges");
+      return res.json();
+    },
+    refetchInterval: 5000,
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async (data: { name: string; notes?: string }) => {
+      const res = await apiRequest("POST", "/api/exchanges", data);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setAddResult(data);
+      toast({ title: `Connection created for ${data.name}` });
+      setNewName("");
+      setNewNotes("");
+      setShowAdd(false);
+      queryClient.invalidateQueries({ queryKey: ["exchanges"] });
+    },
+    onError: (err: any) => {
+      toast({ title: `Failed: ${err.message}`, variant: "destructive" });
+    },
+  });
+
+  const toggleStatus = async (id: string, status: string) => {
+    try {
+      await apiRequest("PATCH", `/api/exchanges/${id}/status`, { status });
+      toast({ title: `Connection ${status}` });
+      queryClient.invalidateQueries({ queryKey: ["exchanges"] });
+    } catch (err: any) {
+      toast({ title: `Failed: ${err.message}`, variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-card border rounded-lg p-4">
+        <h3 className="text-sm font-semibold mb-1 flex items-center gap-1.5"><Network className="w-4 h-4" /> SSP / Exchange Connections</h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Connect directly to SSPs and ad exchanges. They send OpenRTB bid requests to your endpoint, you bid with your campaigns.
+          No middleman. No creative review boards. Full control.
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
+          <StatCard label="Connections" value={connections.length} icon={Network} color="text-blue-400" />
+          <StatCard label="Active" value={connections.filter((c: any) => c.status === "active").length} icon={CheckCircle} color="text-green-400" />
+          <StatCard label="Bid Requests" value={connections.reduce((sum: number, c: any) => sum + (c.bidRequestsReceived || 0), 0)} icon={Radio} color="text-orange-400" />
+        </div>
+
+        {/* Your bid endpoint */}
+        <div className="bg-muted/30 rounded p-2 mb-3">
+          <p className="text-xs font-medium mb-1">Your Bid Endpoint:</p>
+          <code className="text-[10px] text-primary">POST https://leadcaffeine.com/api/openrtb/auction</code>
+          <p className="text-[10px] text-muted-foreground mt-1">Give this URL to SSPs when registering as a bidder. They send OpenRTB 2.5 bid requests here.</p>
+        </div>
+
+        {/* Active connections */}
+        {connections.length > 0 && (
+          <div className="space-y-2 mb-4">
+            <p className="text-xs font-medium">Your Connections:</p>
+            {connections.map((c: any) => (
+              <div key={c.id} className="border rounded p-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${c.status === "active" ? "bg-green-400" : c.status === "pending" ? "bg-yellow-400" : "bg-red-400"}`} />
+                    <span className="text-xs font-medium">{c.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{c.status}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-muted-foreground">{c.bidRequestsReceived || 0} requests</span>
+                    {c.status === "pending" && (
+                      <button onClick={() => toggleStatus(c.id, "active")} className="text-[10px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700">Activate</button>
+                    )}
+                    {c.status === "active" && (
+                      <button onClick={() => toggleStatus(c.id, "suspended")} className="text-[10px] px-2 py-0.5 rounded bg-red-600 text-white hover:bg-red-700">Suspend</button>
+                    )}
+                    {c.status === "suspended" && (
+                      <button onClick={() => toggleStatus(c.id, "active")} className="text-[10px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700">Reactivate</button>
+                    )}
+                  </div>
+                </div>
+                {c.apiKey && (
+                  <div className="mt-1 flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground">API Key:</span>
+                    <code className="text-[10px] text-primary">{c.apiKey}</code>
+                  </div>
+                )}
+                {c.lastBidRequest && (
+                  <div className="text-[10px] text-muted-foreground mt-0.5">Last request: {new Date(c.lastBidRequest).toLocaleString()}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add new connection */}
+        <button
+          onClick={() => setShowAdd(!showAdd)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
+        >
+          <Plus className="w-3 h-3" />
+          Add Exchange Connection
+        </button>
+
+        {showAdd && (
+          <div className="mt-2 space-y-2 border rounded p-3">
+            <div>
+              <label className="text-xs font-medium block mb-1">Exchange Name</label>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. BidsCube, Magnite, BidSwitch" className="bg-input border rounded px-2 py-1 text-xs w-full" />
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1">Notes</label>
+              <input value={newNotes} onChange={(e) => setNewNotes(e.target.value)} placeholder="Account info, contact, etc." className="bg-input border rounded px-2 py-1 text-xs w-full" />
+            </div>
+            <button
+              onClick={() => addMutation.mutate({ name: newName, notes: newNotes })}
+              disabled={addMutation.isPending || !newName}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+            >
+              {addMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+              Create Connection
+            </button>
+            {addResult && (
+              <div className="bg-muted/30 rounded p-2 text-xs space-y-1">
+                <p className="text-green-400 font-medium">Connection created!</p>
+                <p>Give the SSP this bid endpoint:</p>
+                <code className="text-[10px] text-primary block">{addResult.bidEndpoint}</code>
+                <p>And this API key:</p>
+                <code className="text-[10px] text-primary block">{addResult.apiKey}</code>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Available SSPs */}
+      <div className="bg-card border rounded-lg p-4">
+        <h3 className="text-sm font-semibold mb-2">Available SSP / Exchange Partners</h3>
+        <p className="text-xs text-muted-foreground mb-3">Sign up with these SSPs, register your bid endpoint, and they'll start sending you real bid traffic.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {available.map((p: any) => (
+            <div key={p.name} className="border rounded p-3 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">{p.name}</span>
+                <a href={p.signupUrl} target="_blank" rel="noopener" className="text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground hover:bg-primary/90">Sign Up</a>
+              </div>
+              <p className="text-[10px] text-muted-foreground">{p.description}</p>
+              <div className="flex flex-wrap gap-1 pt-1">
+                {p.requirements?.map((r: string) => (
+                  <span key={r} className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{r}</span>
+                ))}
+              </div>
+              {p.docsUrl && (
+                <a href={p.docsUrl} target="_blank" rel="noopener" className="text-[10px] text-primary hover:underline block">Docs →</a>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Conversions Tab ────────────────────────────────────────────────────
+
+function ConversionsTab() {
+  const { data: conversions = [] } = useQuery<any[]>({
+    queryKey: ["conversions"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/conversions?limit=50");
+      return res.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  const totalValue = conversions.reduce((sum: number, c: any) => sum + (parseFloat(c.conversion_value) || 0), 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-card border rounded-lg p-4">
+        <h3 className="text-sm font-semibold mb-1 flex items-center gap-1.5"><TrendingUp className="w-4 h-4" /> S2S Conversion Tracking</h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Conversions from landing pages feed back into the bidding engine. Creatives that convert get higher bid multipliers automatically.
+        </p>
+
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <StatCard label="Total Conversions" value={conversions.length} icon={CheckCircle} color="text-green-400" />
+          <StatCard label="Conversion Value" value={`$${totalValue.toFixed(2)}`} icon={DollarSign} color="text-blue-400" />
+          <StatCard label="Avg Value" value={conversions.length > 0 ? `$${(totalValue / conversions.length).toFixed(2)}` : "$0"} icon={TrendingUp} color="text-orange-400" />
+        </div>
+
+        {/* Conversion tracking snippet */}
+        <div className="bg-muted/30 rounded p-2 mb-3">
+          <p className="text-xs font-medium mb-1">Landing Page Tracking Snippet:</p>
+          <p className="text-[10px] text-muted-foreground mb-2">Add this to your landing pages to fire conversion events back to the bidding engine:</p>
+          <pre className="text-[10px] font-mono overflow-x-auto">{`<script>
+fetch("https://leadcaffeine.com/api/conversion", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({
+    tid: new URLSearchParams(location.search).get("tid"),
+    event_id: 1,
+    conversion_value: 250.00,
+    creative_id: "your-creative-id",
+    campaign_id: "your-campaign-id"
+  })
+});
+</script>`}</pre>
+        </div>
+
+        {/* Conversion log */}
+        {conversions.length > 0 ? (
+          <table className="w-full text-xs">
+            <thead className="border-b">
+              <tr>
+                <th className="text-left p-1.5 font-medium">Tracking ID</th>
+                <th className="text-left p-1.5 font-medium">Campaign</th>
+                <th className="text-right p-1.5 font-medium">Value</th>
+                <th className="text-left p-1.5 font-medium">MAID</th>
+                <th className="text-left p-1.5 font-medium">Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {conversions.map((c: any) => (
+                <tr key={c.id} className="border-b border-border/50">
+                  <td className="p-1.5 text-[10px] font-mono">{(c.tracking_id || "").slice(0, 12)}...</td>
+                  <td className="p-1.5 text-[10px]">{(c.campaign_id || "").slice(0, 8) || "—"}</td>
+                  <td className="p-1.5 text-right">${(parseFloat(c.conversion_value) || 0).toFixed(2)}</td>
+                  <td className="p-1.5 text-[10px]">{(c.maid || "").slice(0, 8) || "—"}</td>
+                  <td className="p-1.5 text-[10px] text-muted-foreground">{c.recorded_at ? new Date(c.recorded_at).toLocaleString() : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="text-center py-8">
+            <TrendingUp className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-xs text-muted-foreground">No conversions yet. Add the tracking snippet to your landing pages to start receiving conversion events.</p>
+          </div>
+        )}
       </div>
     </div>
   );
