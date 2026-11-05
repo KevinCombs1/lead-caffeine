@@ -5935,48 +5935,56 @@ export async function registerRoutes(
 
       const match = matches[0];
 
-      // Step 2: Redis dedup
-      const isNew = await checkMaidDedup(maid, 300);
+      // ── ASYNC CAPTURE: fire and forget ──
+      // These operations are non-blocking — they run in the background
+      // while we construct and send the bid response immediately.
+      // This keeps the endpoint under 100ms SLA for exchange partners.
+      (async () => {
+        try {
+          // Redis dedup
+          await checkMaidDedup(maid, 300);
 
-      // Step 3: PostgreSQL — upsert captured device
-      const captureResult = await storage.captureDevice({
-        maid,
-        deviceType: bid?.app ? "mobile" : (bid?.dooh ? "dooh" : "mobile"),
-        os: device.os,
-        osv: device.osv,
-        make: device.make,
-        model: device.model,
-        carrier: device.carrier,
-        latitude: lat,
-        longitude: lng,
-        geofenceId: match.id,
-        geofenceName: match.name,
-        ip: device.ip,
-        ua: device.ua,
-      });
+          // PostgreSQL — upsert captured device
+          const captureResult = await storage.captureDevice({
+            maid,
+            deviceType: bid?.app ? "mobile" : (bid?.dooh ? "dooh" : "mobile"),
+            os: device.os,
+            osv: device.osv,
+            make: device.make,
+            model: device.model,
+            carrier: device.carrier,
+            latitude: lat,
+            longitude: lng,
+            geofenceId: match.id,
+            geofenceName: match.name,
+            ip: device.ip,
+            ua: device.ua,
+          });
 
-      // Step 3b: Add to Redis audience set for this geofence
-      if (maid) {
-        await addToAudienceSet(match.id, maid);
-      }
+          // Redis audience set
+          if (maid) {
+            await addToAudienceSet(match.id, maid);
+          }
 
-      // Step 4: ClickHouse — log capture event
-      await logToClickHouse({
-        id: captureResult.device.id,
-        maid: maid || "",
-        device_type: bid?.app ? "mobile" : (bid?.dooh ? "dooh" : "mobile"),
-        os: device.os || "",
-        osv: device.osv || "",
-        make: device.make || "",
-        model: device.model || "",
-        latitude: lat,
-        longitude: lng,
-        geofence_id: match.id,
-        geofence_name: match.name || "",
-        ip: device.ip || "",
-        ua: device.ua || "",
-        hit_count: captureResult.device.hitCount,
-      });
+          // ClickHouse log (non-critical)
+          await logToClickHouse({
+            id: captureResult.device.id,
+            maid: maid || "",
+            device_type: bid?.app ? "mobile" : (bid?.dooh ? "dooh" : "mobile"),
+            os: device.os || "",
+            osv: device.osv || "",
+            make: device.make || "",
+            model: device.model || "",
+            latitude: lat,
+            longitude: lng,
+            geofence_id: match.id,
+            geofence_name: match.name || "",
+            ip: device.ip || "",
+            ua: device.ua || "",
+            hit_count: captureResult.device.hitCount,
+          });
+        } catch {}
+      })();
 
       // Step 5: Bidding logic
       // First try campaign-based bidding: look up active campaigns linked
