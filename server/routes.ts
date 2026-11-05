@@ -6320,9 +6320,67 @@ export async function registerRoutes(
 
       const { syncGeofencesToEpom } = await import("./dsp/orchestrator");
       const result = await syncGeofencesToEpom(
-        { login, password, baseUrl: baseUrl || "https://api.epom.com" },
+        { login, password, baseUrl: baseUrl || "https://dsp-api.epommarket.com" },
         epomGeofences,
       );
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Fetch Epom campaigns
+  app.post("/api/dsp/epom/campaigns", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { login, password, baseUrl } = req.body;
+      if (!login || !password) return res.status(400).json({ error: "login and password required" });
+      const { EpomAdapter } = await import("./dsp/epom-adapter");
+      const adapter = new EpomAdapter({ login, password, baseUrl: baseUrl || "https://dsp-api.epommarket.com" });
+      const campaigns = await adapter.getCampaigns();
+      res.json({ campaigns });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get Epom campaign details (with creatives)
+  app.post("/api/dsp/epom/campaigns/:campaignId/details", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { login, password, baseUrl } = req.body;
+      if (!login || !password) return res.status(400).json({ error: "login and password required" });
+      const { EpomAdapter } = await import("./dsp/epom-adapter");
+      const adapter = new EpomAdapter({ login, password, baseUrl: baseUrl || "https://dsp-api.epommarket.com" });
+      const details = await adapter.getCampaignDetails(req.params.campaignId);
+      res.json(details);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Approve a single creative
+  app.post("/api/dsp/epom/creative/approve", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { login, password, baseUrl, campaignId, creativeId } = req.body;
+      if (!login || !password || !campaignId || !creativeId) {
+        return res.status(400).json({ error: "login, password, campaignId, and creativeId required" });
+      }
+      const { EpomAdapter } = await import("./dsp/epom-adapter");
+      const adapter = new EpomAdapter({ login, password, baseUrl: baseUrl || "https://dsp-api.epommarket.com" });
+      await adapter.setCreativeApprovalStatus(campaignId, creativeId, "APPROVED");
+      res.json({ success: true, message: "Creative approved" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Approve ALL creatives in a campaign
+  app.post("/api/dsp/epom/campaign/:campaignId/approve-all", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { login, password, baseUrl } = req.body;
+      if (!login || !password) return res.status(400).json({ error: "login and password required" });
+      const { EpomAdapter } = await import("./dsp/epom-adapter");
+      const adapter = new EpomAdapter({ login, password, baseUrl: baseUrl || "https://dsp-api.epommarket.com" });
+      const result = await adapter.approveAllCreatives(req.params.campaignId);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

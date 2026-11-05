@@ -365,4 +365,107 @@ export class EpomAdapter {
 
     return res.json();
   }
+
+  // ── Campaign & Creative Management ─────────────────────────────────
+
+  /**
+   * Fetch all campaigns from Epom.
+   */
+  async getCampaigns(): Promise<any[]> {
+    const headers = await this.authHeaders();
+    const res = await fetch(`${this.credentials.baseUrl}/demand/management/campaigns`, {
+      method: "GET",
+      headers,
+    });
+    if (!res.ok) {
+      throw new Error(`Epom getCampaigns failed (${res.status}): ${await res.text()}`);
+    }
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.campaigns || data.items || []);
+  }
+
+  /**
+   * Get campaign details including creatives.
+   */
+  async getCampaignDetails(campaignId: string): Promise<any> {
+    const headers = await this.authHeaders();
+    const res = await fetch(`${this.credentials.baseUrl}/demand/management/campaigns/${campaignId}/details`, {
+      method: "GET",
+      headers,
+    });
+    if (!res.ok) {
+      throw new Error(`Epom getCampaignDetails failed (${res.status}): ${await res.text()}`);
+    }
+    return res.json();
+  }
+
+  /**
+   * Get all creatives for a campaign.
+   */
+  async getCreatives(campaignId: string): Promise<any[]> {
+    const headers = await this.authHeaders();
+    const res = await fetch(`${this.credentials.baseUrl}/demand/management/campaigns/${campaignId}/creatives`, {
+      method: "GET",
+      headers,
+    });
+    if (!res.ok) {
+      throw new Error(`Epom getCreatives failed (${res.status}): ${await res.text()}`);
+    }
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.creatives || data.items || []);
+  }
+
+  /**
+   * Change creative approval status.
+   * Epom expects the approval status as the request body.
+   * Values: "APPROVED", "PENDING_APPROVAL", "DISAPPROVED"
+   */
+  async setCreativeApprovalStatus(campaignId: string, creativeId: string, status: "APPROVED" | "PENDING_APPROVAL" | "DISAPPROVED"): Promise<boolean> {
+    const headers = await this.authHeaders();
+    const url = `${this.credentials.baseUrl}/demand/management/campaigns/${campaignId}/creative/approvalStatus/${creativeId}`;
+    const res = await fetch(url, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(status),
+    });
+
+    if (!res.ok) {
+      // Try numeric code as fallback (0=APPROVED, 1=PENDING, 2=DISAPPROVED)
+      const codeMap = { APPROVED: 0, PENDING_APPROVAL: 1, DISAPPROVED: 2 };
+      const res2 = await fetch(url, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(codeMap[status]),
+      });
+      if (!res2.ok) {
+        throw new Error(`Epom setCreativeApprovalStatus failed (${res.status}/${res2.status}): ${await res.text()}`);
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Approve all creatives in a campaign.
+   */
+  async approveAllCreatives(campaignId: string): Promise<{ approved: number; failed: number; details: any[] }> {
+    const creatives = await this.getCreatives(campaignId);
+    let approved = 0;
+    let failed = 0;
+    const details: any[] = [];
+
+    for (const c of creatives) {
+      const creativeId = c.id || c.creativeId;
+      try {
+        await this.setCreativeApprovalStatus(campaignId, creativeId, "APPROVED");
+        approved++;
+        details.push({ creativeId, status: "APPROVED" });
+      } catch (err: any) {
+        failed++;
+        details.push({ creativeId, error: err.message });
+      }
+    }
+
+    return { approved, failed, details };
+  }
 }

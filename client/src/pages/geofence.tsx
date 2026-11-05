@@ -747,6 +747,11 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
   const [geoSyncing, setGeoSyncing] = useState(false);
   const [geoSyncResult, setGeoSyncResult] = useState<any>(null);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [epomCampaigns, setEpomCampaigns] = useState<any[]>([]);
+  const [epomCreatives, setEpomCreatives] = useState<any[]>([]);
+  const [fetchingCampaigns, setFetchingCampaigns] = useState(false);
+  const [approvingAll, setApprovingAll] = useState(false);
+  const [approveResult, setApproveResult] = useState<any>(null);
   const { toast } = useToast();
 
   // Fetch geofence groups
@@ -844,6 +849,70 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
       toast({ title: `Geofence sync failed: ${err.message}`, variant: "destructive" });
     }
     setGeoSyncing(false);
+  };
+
+  const fetchEpomCampaigns = async () => {
+    if (!epomLogin || !epomPassword) {
+      toast({ title: "Epom login and password required", variant: "destructive" });
+      return;
+    }
+    setFetchingCampaigns(true);
+    try {
+      const res = await apiRequest("POST", "/api/dsp/epom/campaigns", {
+        login: epomLogin,
+        password: epomPassword,
+        baseUrl: epomBaseUrl,
+      });
+      const data = await res.json();
+      setEpomCampaigns(data.campaigns || []);
+      if ((data.campaigns || []).length === 0) {
+        toast({ title: "No campaigns found on Epom" });
+      } else {
+        toast({ title: `Found ${(data.campaigns || []).length} campaigns on Epom` });
+      }
+    } catch (err: any) {
+      toast({ title: `Failed to fetch campaigns: ${err.message}`, variant: "destructive" });
+    }
+    setFetchingCampaigns(false);
+  };
+
+  const fetchEpomCreatives = async (campaignId: string) => {
+    try {
+      const res = await apiRequest("POST", `/api/dsp/epom/campaigns/${campaignId}/details`, {
+        login: epomLogin,
+        password: epomPassword,
+        baseUrl: epomBaseUrl,
+      });
+      const data = await res.json();
+      setEpomCreatives(data.creatives || []);
+    } catch (err: any) {
+      toast({ title: `Failed to fetch creatives: ${err.message}`, variant: "destructive" });
+    }
+  };
+
+  const approveAllCreatives = async (campaignId: string) => {
+    if (!epomLogin || !epomPassword) return;
+    setApprovingAll(true);
+    setApproveResult(null);
+    try {
+      const res = await apiRequest("POST", `/api/dsp/epom/campaign/${campaignId}/approve-all`, {
+        login: epomLogin,
+        password: epomPassword,
+        baseUrl: epomBaseUrl,
+      });
+      const result = await res.json();
+      setApproveResult(result);
+      if (result.failed === 0) {
+        toast({ title: `Approved ${result.approved} creatives` });
+      } else {
+        toast({ title: `Approved ${result.approved}, failed ${result.failed}`, variant: "destructive" });
+      }
+      // Refresh creatives
+      fetchEpomCreatives(campaignId);
+    } catch (err: any) {
+      toast({ title: `Approve failed: ${err.message}`, variant: "destructive" });
+    }
+    setApprovingAll(false);
   };
 
   const testSdkIngest = async () => {
@@ -1039,6 +1108,104 @@ function DspSyncTab({ stats, geofences }: { stats: GeofenceStats | undefined; ge
           {geoSyncResult && (
             <div className="bg-muted/30 rounded p-2 text-xs font-mono">
               <pre>{JSON.stringify(geoSyncResult, null, 2)}</pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Epom Campaign & Creative Management */}
+      {dsp === "epom" && (
+        <div className="bg-card border rounded-lg p-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Epom Campaigns & Creative Approval</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Fetch your Epom campaigns and approve creatives directly from here. No more manual approval in Epom's dashboard.
+            </p>
+          </div>
+          <button
+            onClick={fetchEpomCampaigns}
+            disabled={fetchingCampaigns || !epomLogin || !epomPassword}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+          >
+            {fetchingCampaigns ? <Loader2 className="w-3 h-3 animate-spin" /> : <Megaphone className="w-3 h-3" />}
+            Fetch Epom Campaigns
+          </button>
+
+          {epomCampaigns.length > 0 && (
+            <div className="space-y-2">
+              {epomCampaigns.map((c: any) => (
+                <div key={c.id || c.campaignId} className="border rounded p-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-medium">{c.name || c.campaignName}</span>
+                      <span className="text-[10px] text-muted-foreground ml-2">ID: {c.id || c.campaignId}</span>
+                      {c.status && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground ml-2">{c.status}</span>}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => fetchEpomCreatives(c.id || c.campaignId)}
+                        className="px-2 py-1 rounded bg-muted hover:bg-muted/70 text-[10px] font-medium"
+                      >
+                        Show Creatives
+                      </button>
+                      <button
+                        onClick={() => approveAllCreatives(c.id || c.campaignId)}
+                        disabled={approvingAll}
+                        className="px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 text-[10px] font-medium disabled:opacity-50"
+                      >
+                        {approvingAll ? "Approving..." : "Approve All"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {approveResult && (
+                <div className="bg-muted/30 rounded p-2 text-xs font-mono">
+                  <pre>{JSON.stringify(approveResult, null, 2)}</pre>
+                </div>
+              )}
+            </div>
+          )}
+
+          {epomCreatives.length > 0 && (
+            <div className="border rounded p-2">
+              <p className="text-xs font-medium mb-1.5">Creatives:</p>
+              <div className="space-y-1">
+                {epomCreatives.map((cr: any) => (
+                  <div key={cr.id || cr.creativeId} className="flex items-center justify-between p-1.5 rounded hover:bg-muted/30">
+                    <div>
+                      <span className="text-xs">{cr.name || cr.creativeName || "Unnamed"}</span>
+                      <span className="text-[10px] text-muted-foreground ml-2">ID: {cr.id || cr.creativeId}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {cr.approvalStatus && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          cr.approvalStatus === "APPROVED" ? "bg-green-500/20 text-green-400" :
+                          cr.approvalStatus === "DISAPPROVED" ? "bg-red-500/20 text-red-400" :
+                          "bg-yellow-500/20 text-yellow-400"
+                        }`}>{cr.approvalStatus}</span>
+                      )}
+                      <button
+                        onClick={() => {
+                          const campaignId = epomCampaigns[0]?.id || epomCampaigns[0]?.campaignId;
+                          if (campaignId) {
+                            apiRequest("POST", "/api/dsp/epom/creative/approve", {
+                              login: epomLogin, password: epomPassword, baseUrl: epomBaseUrl,
+                              campaignId, creativeId: cr.id || cr.creativeId,
+                            }).then(() => {
+                              toast({ title: "Creative approved" });
+                              fetchEpomCreatives(campaignId);
+                            }).catch((err: any) => toast({ title: `Failed: ${err.message}`, variant: "destructive" }));
+                          }
+                        }}
+                        className="text-[10px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700"
+                      >
+                        Approve
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
