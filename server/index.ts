@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { mkdirSync } from "fs";
+import { gunzipSync } from "zlib";
 
 // Prevent crashes during startup when dependent services (DB, Redis, ClickHouse)
 // are temporarily unavailable. Once they come up, connections retry automatically.
@@ -38,6 +39,28 @@ declare module "http" {
     rawBody: unknown;
   }
 }
+
+// Gzip decompression for incoming bid requests (BidSwitch and other exchanges send gzip)
+// Exchanges send Content-Encoding: gzip — we decompress before JSON parsing
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  if (req.headers["content-encoding"] === "gzip") {
+    let chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      try {
+        const decompressed = gunzipSync(Buffer.concat(chunks));
+        (req as any).body = JSON.parse(decompressed.toString());
+        next();
+      } catch (err) {
+        // If decompression fails, let express.json try to handle it
+        next();
+      }
+    });
+    req.on("error", () => next());
+  } else {
+    next();
+  }
+});
 
 app.use(
   express.json({

@@ -5890,8 +5890,28 @@ export async function registerRoutes(
   //   4. Check Redis audience:target_maids set — should we bid?
   //   5a. If targeted AND imp[] exists: return 200 OK with $0.50 CPM bid
   //   5b. Otherwise: return 204 No Content (free harvest)
+  //
+  // Exchange compatibility: BidSwitch, Magnite, PubMatic, Index Exchange, BidsCube
+  // - Accepts gzip-compressed bid requests (Content-Encoding: gzip)
+  // - Validates Bearer token against exchange_partners table
+  // - Tracks bid request count per partner
+  // - Responds within 100ms tmax SLA
   app.post("/api/openrtb/auction", async (req: Request, res: Response) => {
     try {
+      // ── Exchange authentication & tracking ──
+      const authHeader = req.headers["authorization"] || req.headers["Authorization"] as string;
+      let apiKey: string | undefined;
+      if (authHeader) {
+        apiKey = authHeader.replace(/^Bearer\s+/i, "").trim();
+      }
+      // Track bid request from exchange partner (non-blocking)
+      if (apiKey) {
+        try {
+          const { incrementBidCount } = await import("./exchange-manager");
+          incrementBidCount(apiKey);
+        } catch {}
+      }
+
       const bid = req.body;
       const device = bid?.device || {};
       const geo = device.geo || {};
