@@ -825,5 +825,3 @@ function StatMini({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
-import { MapPin } from "lucide-react";

@@ -2,7 +2,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { mandyProfiles, mandyJobs } from "../shared/schema";
 import { eq, sql, isNull } from "drizzle-orm";
-import { parseMandyProfileHtml, MandyProfileData } from "./mandy-extract";
+import { parseMandyProfileHtml, MandyProfileData, deepContactEnrichment } from "./mandy-extract";
 import {
   flaresolverr,
   httpsGet,
@@ -289,6 +289,8 @@ class MandyEngine {
     this.log("[mandy-engine] Rate limit: 5s between requests (conservative)");
 
     // Create FlareSolverr session for mandy.com (Innovation 2: Per-Domain Session)
+    // Destroy any stale session first (FlareSolverr restart leaves dead sessions)
+    await flaresolverr.destroySession(MANDY_SESSION_ID).catch(() => {});
     const healthy = await flaresolverr.healthCheck();
     if (healthy) {
       this.log("[mandy-engine] FlareSolverr healthy — creating mandy.com session");
@@ -465,6 +467,20 @@ class MandyEngine {
           const data = html ? parseMandyProfileHtml(html, profile.profileUrl) : null;
 
           if (data && data.name) {
+            // Deep contact enrichment: only scrape websites if Mandy profile
+            // didn't already provide a phone or email
+            let phoneFromWebsite: string | null = null;
+            let emailFromWebsite: string | null = null;
+            if (!data.phone || !data.email) {
+              try {
+                const contacts = await deepContactEnrichment(data);
+                phoneFromWebsite = contacts.phoneFromWebsite;
+                emailFromWebsite = contacts.emailFromWebsite;
+              } catch (err) {
+                // Website scraping failed — not critical, continue
+              }
+            }
+
             // Update profile in DB
             await db
               .update(mandyProfiles)
@@ -499,6 +515,8 @@ class MandyEngine {
                 phone: data.phone,
                 email: data.email,
                 website: data.website,
+                phoneFromWebsite,
+                emailFromWebsite,
                 calendlyUrl: data.calendlyUrl,
                 calcomUrl: data.calcomUrl,
                 status: "enriched",
@@ -622,6 +640,8 @@ export async function getMandyStats(): Promise<{
   withEmail: number;
   withWebsite: number;
   withCalendly: number;
+  withPhoneFromWebsite: number;
+  withEmailFromWebsite: number;
 }> {
   const [total] = await db
     .select({ count: sql`count(*)` })
@@ -652,6 +672,14 @@ export async function getMandyStats(): Promise<{
     .where(
       sql`${mandyProfiles.calendlyUrl} IS NOT NULL OR ${mandyProfiles.calcomUrl} IS NOT NULL`
     );
+  const [withPhoneFromWebsite] = await db
+    .select({ count: sql`count(*)` })
+    .from(mandyProfiles)
+    .where(sql`${mandyProfiles.phoneFromWebsite} IS NOT NULL`);
+  const [withEmailFromWebsite] = await db
+    .select({ count: sql`count(*)` })
+    .from(mandyProfiles)
+    .where(sql`${mandyProfiles.emailFromWebsite} IS NOT NULL`);
   return {
     totalProfiles: Number(total.count),
     enriched: Number(enriched.count),
@@ -660,5 +688,7 @@ export async function getMandyStats(): Promise<{
     withEmail: Number(withEmail.count),
     withWebsite: Number(withWebsite.count),
     withCalendly: Number(withCalendly.count),
+    withPhoneFromWebsite: Number(withPhoneFromWebsite.count),
+    withEmailFromWebsite: Number(withEmailFromWebsite.count),
   };
 }

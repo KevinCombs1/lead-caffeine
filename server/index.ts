@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -77,6 +78,7 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false, limit: "10mb" }));
+app.use(cookieParser(process.env.SESSION_SECRET || "light-engine-dev-secret"));
 
 // Handle malformed JSON — return 204 no-bid instead of 500 (exchange compliance)
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {

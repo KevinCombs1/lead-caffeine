@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { httpsGet } from "./flaresolverr-client";
+import { scrapeWebsiteForContacts, getDomainFromEmail } from "./backstage-extract";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Mandy Extractor — parse Mandy.com profile pages
@@ -571,4 +572,78 @@ export async function fetchMandyProfileViaWayback(
   } catch {
     return null;
   }
+}
+
+// ── Deep contact enrichment: scrape personal websites for missing phone/email ─
+//
+// Only fires when the Mandy profile HTML didn't already provide a phone or email.
+// Chain: profile website → email domain → representative agency website.
+// Results go in phone_from_website / email_from_website (separate from Mandy's own).
+//
+export async function deepContactEnrichment(
+  profile: MandyProfileData
+): Promise<{ phoneFromWebsite: string | null; emailFromWebsite: string | null }> {
+  // Skip entirely if Mandy already found both
+  if (profile.phone && profile.email) {
+    return { phoneFromWebsite: null, emailFromWebsite: null };
+  }
+
+  let phoneFromWebsite: string | null = null;
+  let emailFromWebsite: string | null = null;
+
+  // 1. Scrape the personal website linked from the Mandy profile
+  if (profile.website && (!phoneFromWebsite || !emailFromWebsite)) {
+    const scraped = await scrapeWebsiteForContacts(profile.website);
+    if (scraped.phone && !profile.phone && !phoneFromWebsite) {
+      phoneFromWebsite = scraped.phone;
+    }
+    if (scraped.email && !profile.email && !emailFromWebsite) {
+      emailFromWebsite = scraped.email;
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  // 2. If we have email but no phone, try the email domain's website
+  if (!profile.phone && !phoneFromWebsite && profile.email) {
+    const domain = getDomainFromEmail(profile.email);
+    if (domain) {
+      const scraped = await scrapeWebsiteForContacts(`https://${domain}`);
+      if (scraped.phone && !phoneFromWebsite) {
+        phoneFromWebsite = scraped.phone;
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+
+  // 3. If we have email but no phone, try the website-scraped email's domain
+  if (!profile.phone && !phoneFromWebsite && emailFromWebsite) {
+    const domain = getDomainFromEmail(emailFromWebsite);
+    if (domain) {
+      const scraped = await scrapeWebsiteForContacts(`https://${domain}`);
+      if (scraped.phone && !phoneFromWebsite) {
+        phoneFromWebsite = scraped.phone;
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+
+  // 4. Check representatives — scrape agency website for phone
+  if (!profile.phone && !phoneFromWebsite && profile.representation) {
+    // representation field contains "Name - Company - Phone - Email" lines
+    // Look for URLs in the representation text
+    const urls = profile.representation.match(/https?:\/\/[^\s\n]+/g) || [];
+    for (const url of urls) {
+      if (phoneFromWebsite) break;
+      const scraped = await scrapeWebsiteForContacts(url);
+      if (scraped.phone && !phoneFromWebsite) {
+        phoneFromWebsite = scraped.phone;
+      }
+      if (scraped.email && !profile.email && !emailFromWebsite) {
+        emailFromWebsite = scraped.email;
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+
+  return { phoneFromWebsite, emailFromWebsite };
 }

@@ -1684,6 +1684,9 @@ export const mandyProfiles = pgTable("mandy_profiles", {
   website: text("website"),
   calendlyUrl: text("calendly_url"),
   calcomUrl: text("calcom_url"),
+  // Contact info scraped from personal websites (only filled when Mandy profile had no phone/email)
+  phoneFromWebsite: text("phone_from_website"),
+  emailFromWebsite: text("email_from_website"),
   // Discovery
   source: text("source"),
   status: text("status").notNull().default("pending"),

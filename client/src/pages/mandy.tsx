@@ -15,6 +15,8 @@ interface MandyProfile {
   bio: string | null;
   phone: string | null;
   email: string | null;
+  phoneFromWebsite: string | null;
+  emailFromWebsite: string | null;
   website: string | null;
   calendlyUrl: string | null;
   calcomUrl: string | null;
@@ -34,6 +36,8 @@ interface MandyStats {
   withEmail: number;
   withWebsite: number;
   withCalendly: number;
+  withPhoneFromWebsite: number;
+  withEmailFromWebsite: number;
 }
 
 export default function MandyPage() {
@@ -168,6 +172,16 @@ export default function MandyPage() {
           <div className="text-[10px] text-gray-500 uppercase">Websites</div>
         </div>
         <div className="border border-gray-700 rounded-lg bg-gray-900 p-3 text-center">
+          <Phone className="w-4 h-4 text-blue-300 mx-auto mb-1" />
+          <div className="text-xl font-bold text-blue-300">{stats?.withPhoneFromWebsite ?? 0}</div>
+          <div className="text-[10px] text-gray-500 uppercase">Phone (Web)</div>
+        </div>
+        <div className="border border-gray-700 rounded-lg bg-gray-900 p-3 text-center">
+          <Mail className="w-4 h-4 text-purple-300 mx-auto mb-1" />
+          <div className="text-xl font-bold text-purple-300">{stats?.withEmailFromWebsite ?? 0}</div>
+          <div className="text-[10px] text-gray-500 uppercase">Email (Web)</div>
+        </div>
+        <div className="border border-gray-700 rounded-lg bg-gray-900 p-3 text-center">
           <Calendar className="w-4 h-4 text-pink-400 mx-auto mb-1" />
           <div className="text-xl font-bold text-pink-400">{stats?.withCalendly ?? 0}</div>
           <div className="text-[10px] text-gray-500 uppercase">Booking</div>
@@ -268,8 +282,8 @@ export default function MandyPage() {
                   <td className="p-2 text-gray-200">{p.name || p.username}</td>
                   <td className="p-2 text-gray-400">{p.profileType || "-"}</td>
                   <td className="p-2 text-gray-400">{p.location || "-"}</td>
-                  <td className="p-2 text-blue-400">{p.phone ? "✓" : "-"}</td>
-                  <td className="p-2 text-purple-400">{p.email ? "✓" : "-"}</td>
+                  <td className="p-2 text-blue-400">{p.phone ? "✓" : (p.phoneFromWebsite ? "↗" : "-")}</td>
+                  <td className="p-2 text-purple-400">{p.email ? "✓" : (p.emailFromWebsite ? "↗" : "-")}</td>
                   <td className="p-2 text-cyan-400">{p.website ? "✓" : "-"}</td>
                   <td className="p-2 text-pink-400">{(p.calendlyUrl || p.calcomUrl) ? "✓" : "-"}</td>
                   <td className="p-2">
@@ -314,6 +328,8 @@ export default function MandyPage() {
               {selectedProfile.bio && <div><span className="text-gray-500">Bio:</span> {selectedProfile.bio}</div>}
               {selectedProfile.phone && <div><span className="text-gray-500">Phone:</span> <span className="text-blue-400">{selectedProfile.phone}</span></div>}
               {selectedProfile.email && <div><span className="text-gray-500">Email:</span> <span className="text-purple-400">{selectedProfile.email}</span></div>}
+              {selectedProfile.phoneFromWebsite && <div><span className="text-gray-500">Phone (from website):</span> <span className="text-blue-300">{selectedProfile.phoneFromWebsite}</span></div>}
+              {selectedProfile.emailFromWebsite && <div><span className="text-gray-500">Email (from website):</span> <span className="text-purple-300">{selectedProfile.emailFromWebsite}</span></div>}
               {selectedProfile.website && <div><span className="text-gray-500">Website:</span> <a href={selectedProfile.website} target="_blank" rel="noopener" className="text-cyan-400 hover:underline">{selectedProfile.website}</a></div>}
               {selectedProfile.calendlyUrl && <div><span className="text-gray-500">Calendly:</span> <a href={selectedProfile.calendlyUrl} target="_blank" rel="noopener" className="text-pink-400 hover:underline">{selectedProfile.calendlyUrl}</a></div>}
               {selectedProfile.calcomUrl && <div><span className="text-gray-500">cal.com:</span> <a href={selectedProfile.calcomUrl} target="_blank" rel="noopener" className="text-pink-400 hover:underline">{selectedProfile.calcomUrl}</a></div>}

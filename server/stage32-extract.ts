@@ -1,6 +1,7 @@
 import * as zlib from "zlib";
 import * as https from "https";
 import * as http from "http";
+import { HttpsProxyAgent } from "https-proxy-agent";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Stage 32 Extractor
@@ -107,9 +108,20 @@ export interface WebsiteContactInfo {
 }
 
 // ── bffGet: fetch JSON from Stage 32 BFF via https.request ────────────────
+const STAGE32_PROXY = process.env.STAGE32_PROXY || "";
+let stage32ProxyAgent: HttpsProxyAgent | null = null;
+function getStage32ProxyAgent(): HttpsProxyAgent | null {
+  if (!STAGE32_PROXY) return null;
+  if (!stage32ProxyAgent) {
+    stage32ProxyAgent = new HttpsProxyAgent(STAGE32_PROXY);
+  }
+  return stage32ProxyAgent;
+}
+
 export function bffGetStage32<T>(path: string, timeoutMs: number = 15000): Promise<{ data: T | null; status: number; ms: number }> {
   return new Promise((resolve) => {
     const start = Date.now();
+    const agent = getStage32ProxyAgent();
     const req = https.request({
       hostname: "backend.stage32.com",
       path: `/api/v2/${path}`,
@@ -122,6 +134,7 @@ export function bffGetStage32<T>(path: string, timeoutMs: number = 15000): Promi
         Referer: "https://www.stage32.com/",
         Connection: "close",
       },
+      ...(agent ? { agent } : {}),
     }, (res) => {
       const chunks: Buffer[] = [];
       let stream: any = res;

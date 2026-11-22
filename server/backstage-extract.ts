@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import * as https from "https";
+import * as http from "http";
 import { BackstageProfileData } from "./backstage-engine";
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -57,7 +58,7 @@ function shouldScrapeUrl(url: string): boolean {
   return !SKIP_DOMAINS.some(d => lower.includes(d));
 }
 
-function getDomainFromEmail(email: string): string | null {
+export function getDomainFromEmail(email: string): string | null {
   const domain = email.split("@")[1];
   if (!domain) return null;
   // Skip common email providers
@@ -69,14 +70,17 @@ function getDomainFromEmail(email: string): string | null {
   return domain;
 }
 
-// ── Fetch a URL and return HTML ──────────────────────────────────────────
-function fetchUrl(url: string, timeoutMs = 15000): Promise<string> {
+// ── Fetch a URL and return HTML (follows redirects, handles http+https) ──
+function fetchUrl(url: string, timeoutMs = 15000, redirectDepth = 0): Promise<string> {
+  if (redirectDepth > 5) return Promise.resolve("");
   return new Promise((resolve) => {
     try {
       const u = new URL(url.startsWith("http") ? url : `https://${url}`);
-      const req = https.request({
+      const isHttps = u.protocol === "https:";
+      const reqFn = isHttps ? https.request : http.request;
+      const req = reqFn({
         hostname: u.hostname,
-        port: u.port || 443,
+        port: u.port || (isHttps ? 443 : 80),
         path: u.pathname + u.search,
         method: "GET",
         headers: {
@@ -85,7 +89,16 @@ function fetchUrl(url: string, timeoutMs = 15000): Promise<string> {
           "Accept-Encoding": "identity",
         },
         timeout: timeoutMs,
-      }, (res) => {
+      }, (res: any) => {
+        // Follow redirects
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          const redirectUrl = res.headers.location.startsWith("http")
+            ? res.headers.location
+            : `${u.protocol}//${u.host}${res.headers.location}`;
+          fetchUrl(redirectUrl, timeoutMs, redirectDepth + 1).then(resolve);
+          return;
+        }
         if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
           res.resume();
           resolve("");

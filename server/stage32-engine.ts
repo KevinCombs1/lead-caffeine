@@ -20,8 +20,8 @@ import * as https from "https";
 // ───────────────────────────────────────────────────────────────────────────
 
 const MAX_LOG_BUFFER = 5000;
-const WORKER_COUNT = 2;        // 2 workers
-const GAP_MS = 1000;            // 1s gap = ~120 req/min
+const WORKER_COUNT = 8;        // 8 workers (4x from 2)
+const GAP_MS = 250;             // 250ms gap (4x from 1000ms) = ~1920 req/min
 const MAX_ID_DEFAULT = 1500000;
 const SERPER_API_KEY = process.env.SERPER_API_KEY || "";
 
